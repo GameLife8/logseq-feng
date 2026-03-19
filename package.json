@@ -106,6 +106,7 @@
         "postinstall": "yarn ui:build"
     },
     "dependencies": {
+        "@excalidraw/excalidraw": "^0.17.6",
         "@aparajita/capacitor-secure-storage": "^7.1.6",
         "@capacitor-community/safe-area": "7.0.0-alpha.1",
         "@capacitor/action-sheet": "7.0.1",

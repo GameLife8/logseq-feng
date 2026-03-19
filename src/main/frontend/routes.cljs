@@ -11,6 +11,7 @@
             [frontend.components.repo :as repo]
             [frontend.components.settings :as settings]
             [frontend.components.user.login :as login]
+            [frontend.components.whiteboard :as whiteboard]
             [frontend.config :as config]
             [logseq.shui.demo :as shui]))
 
@@ -76,6 +77,10 @@
    ["/file/:path"
     {:name :file
      :view file/file}]
+
+   ["/whiteboard/:name"
+    {:name :whiteboard
+     :view whiteboard/whiteboard}]
 
    (when config/dev?
      ["/ui"

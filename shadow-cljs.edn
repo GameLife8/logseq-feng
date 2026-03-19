@@ -23,6 +23,9 @@
                         {:init-fn frontend.core/init}
                         :code-editor
                         {:entries [frontend.extensions.code]
+                         :depends-on #{:main}}
+                        :excalidraw
+                        {:entries    [frontend.extensions.excalidraw.core]
                          :depends-on #{:main}}}
 
         :output-dir       "./static/js"

@@ -15,6 +15,7 @@
             [frontend.handler.page :as page-handler]
             [frontend.handler.recent :as recent-handler]
             [frontend.handler.route :as route-handler]
+            [frontend.handler.whiteboard :as whiteboard-handler]
             [frontend.state :as state]
             [frontend.storage :as storage]
             [frontend.ui :as ui]
@@ -313,6 +314,78 @@
           :title (block-handler/block-unique-title page)}
          (page-name page true)])])))
 
+;; ── Whiteboards sidebar section ──────────────────────────────────────────────
+
+(rum/defc sidebar-whiteboards < rum/reactive db-mixins/query
+  "Shows all whiteboard pages with a 'New Whiteboard' button."
+  [route-match]
+  (let [route-name  (get-in route-match [:data :name])
+        whiteboards (whiteboard-handler/get-all-whiteboards)
+        [creating? set-creating!] (rum/use-state false)
+        [new-name set-new-name!] (rum/use-state "")]
+    (sidebar-content-group
+     [:a.wrap-th
+      [:strong.flex-1 "白板"]
+      [:button.ml-1
+       {:title    "新建白板"
+        :on-click (fn [^js e]
+                    (.stopPropagation e)
+                    (set-creating! true)
+                    (set-new-name! ""))
+        :style    {:background "none" :border "none" :cursor "pointer"
+                   :opacity "0.7" :padding "0 2px"}}
+       (ui/icon "plus" {:size 14})]]
+     {:class "whiteboards"
+      :count (count whiteboards)}
+     [:div
+      ;; inline new-whiteboard input
+      (when creating?
+        [:div.flex.items-center.gap-1.px-1.py-1
+         [:input.flex-1
+          {:type        "text"
+           :placeholder "白板名称…"
+           :auto-focus  true
+           :value       new-name
+           :style       {:fontSize "13px" :padding "3px 6px"
+                         :borderRadius "4px"
+                         :border "1px solid var(--lx-gray-07, #d1d5db)"
+                         :outline "none"}
+           :on-change   #(set-new-name! (.. % -target -value))
+           :on-key-down (fn [^js e]
+                          (case (.-key e)
+                            "Enter"  (do (set-creating! false)
+                                         (when (seq (string/trim new-name))
+                                           (whiteboard-handler/<create-whiteboard! new-name)))
+                            "Escape" (set-creating! false)
+                            nil))}]
+         [:button {:on-click (fn []
+                               (set-creating! false)
+                               (when (seq (string/trim new-name))
+                                 (whiteboard-handler/<create-whiteboard! new-name)))
+                   :style {:background "none" :border "none" :cursor "pointer"
+                           :fontSize "12px" :opacity "0.7"}}
+          "✓"]])
+      ;; whiteboard list
+      (if (seq whiteboards)
+        [:ul.text-sm
+         (for [wb whiteboards
+               :let [uuid  (str (:block/uuid wb))
+                     title (or (:block/title wb) "Untitled")
+                     active? (and (= route-name :whiteboard)
+                                  (= uuid (get-in route-match [:path-params :name])))]]
+           [:li.select-none.font-medium
+            {:key (str "wb-" uuid)
+             :class (when active? "active")}
+            [:a.item.group.flex.items-center.text-sm.rounded-md
+             {:on-click #(whiteboard-handler/redirect-to-whiteboard! uuid)
+              :href     (rfe/href :whiteboard {:name uuid})
+              :class    (when active? "active")}
+             (ui/icon "layout-board" {:size 14 :class "mr-1 shrink-0 opacity-70"})
+             [:span.flex-1.truncate title]]])]
+        [:div.px-2.py-1.text-xs.opacity-50 "暂无白板，点击 + 新建"])])))
+
+;; ──────────────────────────────────────────────────────────────────────────────
+
 (rum/defc ^:large-vars/cleanup-todo sidebar-container
   [route-match close-modal-fn left-sidebar-open? srs-open?
    *closing? close-signal touching-x-offset]
@@ -402,6 +475,9 @@
        [:div.sidebar-contents-container
         {:on-scroll on-contents-scroll}
         (sidebar-favorites)
+
+        (when (not config/publishing?)
+          (sidebar-whiteboards route-match))
 
         (when (not config/publishing?)
           (sidebar-recent-pages))]]]
