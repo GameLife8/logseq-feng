@@ -316,13 +316,17 @@
 
 ;; ── Whiteboards sidebar section ──────────────────────────────────────────────
 
-(rum/defc sidebar-whiteboards < rum/reactive db-mixins/query
+(rum/defcs sidebar-whiteboards < rum/reactive db-mixins/query
+  (rum/local false ::creating?)
+  (rum/local "" ::new-name)
   "Shows all whiteboard pages with a 'New Whiteboard' button."
-  [route-match]
-  (let [route-name  (get-in route-match [:data :name])
-        whiteboards (whiteboard-handler/get-all-whiteboards)
-        [creating? set-creating!] (rum/use-state false)
-        [new-name set-new-name!] (rum/use-state "")]
+  [state route-match]
+  (let [*creating? (::creating? state)
+        *new-name  (::new-name state)
+        creating?  @*creating?
+        new-name   @*new-name
+        route-name  (get-in route-match [:data :name])
+        whiteboards (whiteboard-handler/get-all-whiteboards)]
     (sidebar-content-group
      [:a.wrap-th
       [:strong.flex-1 "白板"]
@@ -330,8 +334,8 @@
        {:title    "新建白板"
         :on-click (fn [^js e]
                     (.stopPropagation e)
-                    (set-creating! true)
-                    (set-new-name! ""))
+                    (reset! *creating? true)
+                    (reset! *new-name ""))
         :style    {:background "none" :border "none" :cursor "pointer"
                    :opacity "0.7" :padding "0 2px"}}
        (ui/icon "plus" {:size 14})]]
@@ -350,16 +354,16 @@
                          :borderRadius "4px"
                          :border "1px solid var(--lx-gray-07, #d1d5db)"
                          :outline "none"}
-           :on-change   #(set-new-name! (.. % -target -value))
+           :on-change   #(reset! *new-name (.. % -target -value))
            :on-key-down (fn [^js e]
                           (case (.-key e)
-                            "Enter"  (do (set-creating! false)
+                            "Enter"  (do (reset! *creating? false)
                                          (when (seq (string/trim new-name))
                                            (whiteboard-handler/<create-whiteboard! new-name)))
-                            "Escape" (set-creating! false)
+                            "Escape" (reset! *creating? false)
                             nil))}]
          [:button {:on-click (fn []
-                               (set-creating! false)
+                               (reset! *creating? false)
                                (when (seq (string/trim new-name))
                                  (whiteboard-handler/<create-whiteboard! new-name)))
                    :style {:background "none" :border "none" :cursor "pointer"
