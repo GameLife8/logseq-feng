@@ -122,6 +122,7 @@ const common = {
       ]).pipe(gulp.dest(path.join(outputPath, 'js', 'pdfjs', 'cmaps'))),
       () => gulp.src([
         'node_modules/inter-ui/inter.css',
+        'node_modules/@excalidraw/excalidraw/dist/prod/index.css',
       ]).pipe(gulp.dest(path.join(outputPath, 'css'))),
       () => gulp.src('node_modules/inter-ui/Inter (web)/*.*').
         pipe(gulp.dest(path.join(outputPath, 'css', 'Inter (web)'))),

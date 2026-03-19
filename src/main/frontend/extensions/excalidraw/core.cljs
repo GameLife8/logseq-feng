@@ -1,6 +1,8 @@
 (ns frontend.extensions.excalidraw.core
   "Excalidraw React component – loaded as a separate shadow-cljs lazy module.
-   Requires @excalidraw/excalidraw which is only in this lazy bundle.
+   @excalidraw/excalidraw is loaded as a webpack bundle (excalidraw-bundle.js)
+   and exposed as window.ExcalidrawLib global – shadow-cljs resolves the require
+   to that global via :js-options :resolve config.
    Element-manipulation helpers live in frontend.extensions.excalidraw.api
    (main bundle) so the whiteboard UI can call them without loading Excalidraw."
   (:require ["@excalidraw/excalidraw" :refer [Excalidraw]]
@@ -69,18 +71,7 @@
     [:div.excalidraw-wrapper
      {:style {:width "100%" :height "100%" :position "relative"}}
 
-     ;; Inject Excalidraw CSS once (the import is handled by shadow-cljs
-     ;; for CSS-in-JS; since :ignore-asset-requires is true we do it here)
-     (hooks/use-effect!
-      (fn []
-        (when-not (.getElementById js/document "excalidraw-css")
-          (let [link (.createElement js/document "link")]
-            (set! (.-rel link) "stylesheet")
-            (set! (.-id link) "excalidraw-css")
-            (set! (.-href link) "/static/css/excalidraw.css")
-            (.appendChild (.-head js/document) link))))
-      [])
-
+     ;; CSS is loaded globally via resources/index.html → static/css/index.css
      (js/React.createElement
       Excalidraw
       #js {:ref (fn [^js api]

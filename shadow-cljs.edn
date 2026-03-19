@@ -18,7 +18,9 @@
                         :resolve {"react" {:target :global
                                            :global "React"}
                                   "react-dom" {:target :global
-                                               :global "ReactDOM"}}}
+                                               :global "ReactDOM"}
+                                  "@excalidraw/excalidraw" {:target :global
+                                                            :global "ExcalidrawLib"}}}
         :modules       {:main
                         {:init-fn frontend.core/init}
                         :code-editor

@@ -60,9 +60,9 @@
         "release-electron": "run-s gulp:build && yarn webpack-app-build && gulp electronMaker",
         "debug-electron": "cd static/ && yarn electron:debug",
         "webpack-watch": "webpack --watch",
-        "webpack-app-watch": "npx webpack --watch --config-name app",
+        "webpack-app-watch": "npx webpack --watch --config-name app --config-name excalidraw",
         "webpack-mobile-watch": "npx webpack --watch --config-name mobile",
-        "webpack-app-build": "npx webpack build --mode production --config-name app",
+        "webpack-app-build": "npx webpack build --mode production --config-name app --config-name excalidraw",
         "webpack-mobile-build": "npx webpack build --mode production --config-name mobile",
         "sync-android-release": "yarn clean && yarn release-mobile && rm -rf ./static/mobile/**/*.map && npx cap sync android",
         "sync-ios-release": "yarn clean && yarn release-mobile && rm -rf ./static/mobile/**/*.map && npx cap sync ios",
@@ -106,7 +106,6 @@
         "postinstall": "yarn ui:build"
     },
     "dependencies": {
-        "@excalidraw/excalidraw": "^0.17.6",
         "@aparajita/capacitor-secure-storage": "^7.1.6",
         "@capacitor-community/safe-area": "7.0.0-alpha.1",
         "@capacitor/action-sheet": "7.0.1",
@@ -130,6 +129,7 @@
         "@dnd-kit/sortable": "^7.0.2",
         "@emoji-mart/data": "^1.1.2",
         "@emoji-mart/react": "^1.1.1",
+        "@excalidraw/excalidraw": "^0.18.0",
         "@glidejs/glide": "^3.6.0",
         "@highlightjs/cdn-assets": "10.4.1",
         "@huggingface/transformers": "^3.6.3",

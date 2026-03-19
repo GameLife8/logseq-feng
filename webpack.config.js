@@ -55,6 +55,48 @@ var MobileConfig = Object.assign({}, config, {
   },
 });
 
+// Excalidraw is bundled separately and exposed as window.ExcalidrawLib,
+// matching how React/ReactDOM are exposed as globals.
+// shadow-cljs resolves "@excalidraw/excalidraw" to this global.
+var ExcalidrawConfig = {
+  name: "excalidraw",
+  mode: "production",
+  entry: "./src/main/js/excalidraw-entry.js",
+  externals: {
+    'react': 'React',
+    'react-dom': 'ReactDOM',
+  },
+  module: {
+    rules: [
+      {
+        test: /\.m?js/,
+        resolve: { fullySpecified: false },
+      },
+      {
+        // Ignore CSS imports inside excalidraw – CSS is copied separately by gulp
+        test: /\.css$/,
+        type: 'asset/source',
+      },
+      {
+        // Font files – inline as base64 (avoids path issues)
+        test: /\.(woff|woff2|ttf|eot|otf)$/,
+        type: 'asset/inline',
+      },
+    ]
+  },
+  output: {
+    path: path.resolve(__dirname, 'static/js'),
+    filename: 'excalidraw-bundle.js',
+    chunkFilename: 'excalidraw-chunk-[id].js',
+    library: {
+      name: 'ExcalidrawLib',
+      type: 'window',
+    },
+    publicPath: '/static/js/',
+    clean: false,
+  },
+};
+
 module.exports = [
-  AppConfig, MobileConfig,
+  AppConfig, MobileConfig, ExcalidrawConfig,
 ];
