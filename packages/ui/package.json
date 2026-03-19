@@ -6,7 +6,7 @@
   "scripts": {
     "watch:ui:examples": "parcel serve ./examples/index.html",
     "build:ui:only": "parcel build --target ui",
-    "build:ui": "rm -rf .parcel-cache && yarn build:ui:only",
+    "build:ui": "node -e \"require('fs').rmSync('.parcel-cache', {recursive:true,force:true})\" && yarn build:ui:only",
     "watch:storybook": "storybook dev -p 6006",
     "postinstall": "yarn build:ui"
   },
