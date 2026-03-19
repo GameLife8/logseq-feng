@@ -524,9 +524,12 @@
           deleted-block-uuids (set (map :block/uuid deleted-blocks))
           deleted-block-ids (set (map :db/id deleted-blocks))
           _ (when (seq deleted-block-uuids)
-              (swap! worker-state/*deleted-block-uuid->db-id merge
-                     (zipmap (map :block/uuid deleted-blocks)
-                             (map :db/id deleted-blocks))))
+              (swap! worker-state/*deleted-block-uuid->db-id
+                     (fn [m]
+                       (let [m' (merge m (zipmap (map :block/uuid deleted-blocks)
+                                                 (map :db/id deleted-blocks)))]
+                         ;; cap at 10000 entries to prevent unbounded memory growth
+                         (if (> (count m') 10000) {} m')))))
           deleted-assets (keep (fn [id]
                                  (let [e (d/entity (:db-before tx-report) id)]
                                    (when (ldb/asset? e)

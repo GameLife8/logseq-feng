@@ -550,7 +550,8 @@
   [repo q option]
   (let [search-db (get-search-db repo)
         conn (worker-state/get-datascript-conn repo)]
-    (search/search-blocks repo conn search-db q option)))
+    (when (and search-db conn)
+      (search/search-blocks repo conn search-db q option))))
 
 (def-thread-api :thread-api/block-refs-check
   [repo id {:keys [unlinked?]}]
@@ -959,7 +960,7 @@
   [repo options]
   (let [conn (worker-state/get-datascript-conn repo)]
     (try
-      (sqlite-export/build-export @conn options)
+      (when conn (sqlite-export/build-export @conn options))
       (catch :default e
         (js/console.error "export-edn error: " e)
         (js/console.error "Stack:\n" (.-stack e))
@@ -970,32 +971,32 @@
 
 (def-thread-api :thread-api/get-view-data
   [repo view-id option]
-  (let [db @(worker-state/get-datascript-conn repo)]
-    (db-view/get-view-data db view-id option)))
+  (when-let [conn (worker-state/get-datascript-conn repo)]
+    (db-view/get-view-data @conn view-id option)))
 
 (def-thread-api :thread-api/get-class-objects
   [repo class-id]
-  (let [db @(worker-state/get-datascript-conn repo)]
-    (->> (db-class/get-class-objects db class-id)
+  (when-let [conn (worker-state/get-datascript-conn repo)]
+    (->> (db-class/get-class-objects @conn class-id)
          (map entity-util/entity->map))))
 
 (def-thread-api :thread-api/get-property-values
   [repo {:keys [property-ident] :as option}]
-  (let [conn (worker-state/get-datascript-conn repo)]
+  (when-let [conn (worker-state/get-datascript-conn repo)]
     (db-view/get-property-values @conn property-ident option)))
 
 (def-thread-api :thread-api/get-bidirectional-properties
   [repo {:keys [target-id]}]
-  (let [conn (worker-state/get-datascript-conn repo)]
+  (when-let [conn (worker-state/get-datascript-conn repo)]
     (worker-util/profile "get-bidirectional-properties"
                          (ldb/get-bidirectional-properties @conn target-id))))
 
 (def-thread-api :thread-api/build-graph
   [repo option]
-  (let [conn (worker-state/get-datascript-conn repo)]
+  (when-let [conn (worker-state/get-datascript-conn repo)]
     (graph-view/build-graph @conn option)))
 
-(def ^:private *get-all-page-titles-cache (volatile! (cache/lru-cache-factory {})))
+(def ^:private *get-all-page-titles-cache (volatile! (cache/lru-cache-factory {} :threshold 32)))
 (defn- get-all-page-titles
   [db]
   (let [pages (ldb/get-all-pages db)]
@@ -1005,10 +1006,11 @@
   (common.cache/cache-fn
    *get-all-page-titles-cache
    (fn [repo]
-     (let [db @(worker-state/get-datascript-conn repo)]
-       [[repo (:max-tx db)] ;cache-key
-        [db]             ;f-args
-        ]))
+     (when-let [conn (worker-state/get-datascript-conn repo)]
+       (let [db @conn]
+         [[repo (:max-tx db)] ;cache-key
+          [db]                ;f-args
+          ])))
    get-all-page-titles))
 
 (def-thread-api :thread-api/get-all-page-titles
