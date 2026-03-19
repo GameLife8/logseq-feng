@@ -118,7 +118,7 @@
                                          :cursor       "pointer"
                                          :fontSize     "13px"
                                          :marginRight  "6px"}}
-                    "→ 在侧边栏打开")))))})]]))
+                    "→ 在侧边栏打开")))))})]))
 
 ;; Export for shadow.lazy loadable
 (def ^:export editor excalidraw-editor)
