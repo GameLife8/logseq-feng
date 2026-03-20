@@ -21,11 +21,8 @@
 ;; ── whiteboard identification ─────────────────────────────────────────────────
 
 (defn get-all-whiteboards
-  "Returns all whiteboard page entities from the DB, newest-updated first.
-   Uses three strategies (union, deduplicated):
-   1. Pages tagged with :logseq.class/Whiteboard system class
-   2. Pages that have :block/whiteboard-canvas attribute (canvas saved at least once)
-   3. Pages tagged with any user page/tag whose title is 'Whiteboard'"
+  "Returns whiteboard page entities from the local DataScript replica (best-effort).
+   Used only for duplicate-name checks; the gallery UI uses react/q for authoritative data."
   []
   (when-let [database (db/get-db)]
     (let [;; Strategy 1: system class tag
@@ -52,11 +49,6 @@
                       vals
                       (filter :block/title)
                       (sort-by :block/updated-at >))]
-      (js/console.log "[wb] get-all-whiteboards:"
-                      "class=" (count with-class)
-                      "canvas=" (count with-canvas)
-                      "user-tag=" (count with-user-tag)
-                      "total=" (count result))
       result)))
 
 (defn- whiteboard-name-exists?

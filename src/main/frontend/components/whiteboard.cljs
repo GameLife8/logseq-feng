@@ -8,6 +8,8 @@
   (:require [clojure.string :as string]
             [frontend.db :as db]
             [frontend.db-mixins :as db-mixins]
+            [frontend.db.async :as db-async]
+            [frontend.db.react :as react]
             [frontend.extensions.excalidraw.api :as ex-api]
             [frontend.handler.notification :as notification]
             [frontend.handler.route :as route-handler]
@@ -460,9 +462,21 @@
         new-name      (rum/react *new-name)
         editing-uuid  (rum/react *editing-uuid)
         rename-val    (rum/react *rename-val)
-        ;; Subscribe to :current-repo so the component re-renders when the DB finishes loading.
-        _repo         (state/sub :current-repo)
-        whiteboards   (whiteboard-handler/get-all-whiteboards)
+        repo          (state/get-current-repo)
+        wclass-id     (:db/id (db/entity :logseq.class/Whiteboard))
+        ;; Async reactive query via DB worker. react/q sends the query to the DB worker
+        ;; (not the local replica), and re-runs automatically when whiteboard objects
+        ;; change (the worker emits [::objects wclass-id] affected-keys on :block/tags txns).
+        wb-atom       (when (and repo wclass-id)
+                        (react/q repo [:frontend.worker.react/objects wclass-id]
+                                 {:query-fn
+                                  (fn [_db _]
+                                    (p/let [result (db-async/<get-tag-objects repo wclass-id)]
+                                      (->> result
+                                           (filter :block/title)
+                                           (sort-by #(or (:block/updated-at %) 0) >))))}
+                                 nil))
+        whiteboards   (or (some-> wb-atom rum/react) [])
 
         ;; Create: only close input if creation succeeded (not a duplicate)
         do-create!
