@@ -331,7 +331,7 @@
      ;; floating tags bar (top-left, vertically aligned with Excalidraw hamburger)
      [:div.wb-float-tags-wrap
       {:style {:position       "absolute"
-               :top            "10px"
+               :top            "8px"
                :left           "56px"
                :z-index        10
                :pointer-events "auto"

@@ -99,11 +99,11 @@
          (let [el (.createElement js/document "style")]
            (set! (.-id el) "excalidraw-custom-css")
            (set! (.-textContent el)
-                 (str ".context-menu-item kbd { display: none !important; }
+                 (str ".dropdown-menu-item__shortcut { display: none !important; }
 "
                       ".context-menu-option__shortcut { display: none !important; }
 "
-                      ".Island .context-menu kbd { display: none !important; }"))
+                      ".context-menu-item kbd { display: none !important; }"))
            (.. js/document -head (appendChild el)))))
      state)
    :will-unmount
