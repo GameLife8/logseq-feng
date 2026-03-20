@@ -106,7 +106,9 @@
 "
                     ".excalidraw .context-menu-item__shortcut { display: none !important; }
 "
-                    ".excalidraw .context-menu-option__shortcut { display: none !important; }"))))
+                    ".excalidraw .context-menu-option__shortcut { display: none !important; }
+"
+                    ".excalidraw .context-menu-item-separator { display: none !important; }"))))
      state)
    :will-unmount
    (fn [state]
