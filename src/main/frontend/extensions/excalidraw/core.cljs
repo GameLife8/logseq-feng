@@ -165,21 +165,32 @@
            :onChange         (fn [_elements _app-state _files]
                                (reset! *dirty? true)
                                (reset! *sel-el (ex-api/get-selected-block-element @*api)))
-           ;; Double-click on a block card → open in sidebar
+           ;; Double-click on a block card → open in sidebar.
+           ;; On double-click Excalidraw enters text-edit mode and deselects the element
+           ;; BEFORE the second onPointerUp fires, so @*sel-el may already be nil.
+           ;; Fix: on the second pointer-up we fall back to the bid stored in *last-click.
            :onPointerUp      (fn [_active-tool _pointer-state]
-                               (when-let [sel @*sel-el]
-                                 (let [bid  (some-> sel (gobj/get "customData") (gobj/get "blockId"))
-                                       now  (.now js/Date)
-                                       last @*last-click]
-                                   (when (seq bid)
-                                     (if (and last
-                                              (= (:bid last) bid)
-                                              (< (- now (:time last)) 400))
-                                       ;; Second click within 400 ms on same block → open sidebar
-                                       (do (reset! *last-click nil)
-                                           (when on-block-click (on-block-click bid)))
-                                       ;; First click – record time
-                                       (reset! *last-click {:time now :bid bid}))))))
+                               (let [sel  @*sel-el
+                                     bid  (some-> sel (gobj/get "customData") (gobj/get "blockId"))
+                                     now  (.now js/Date)
+                                     last @*last-click]
+                                 (cond
+                                   ;; Second pointer-up within 400 ms after a block click:
+                                   ;; use the previously stored bid (sel may be nil here).
+                                   (and last
+                                        (< (- now (:time last)) 400)
+                                        (or (= (:bid last) bid)   ; same block still selected
+                                            (nil? bid)))           ; Excalidraw deselected it
+                                   (do (reset! *last-click nil)
+                                       (when on-block-click (on-block-click (:bid last))))
+
+                                   ;; First click on a block – record time + bid.
+                                   (seq bid)
+                                   (reset! *last-click {:time now :bid bid})
+
+                                   ;; Click on empty canvas – clear last-click.
+                                   :else
+                                   (reset! *last-click nil))))
            ;; Top-right: back + title + insert block + tags
            :renderTopRightUI
            (fn []

@@ -79,15 +79,18 @@
        (remove #(contains? system-tag-idents (:db/ident %)))))
 
 (defn search-tags
-  "Returns tag entities whose titles match `query`.
-   If query is blank, returns all tag entities in the DB."
+  "Returns user-created tag entities whose titles match `query`.
+   Excludes built-in system classes (entities with :db/ident) which cannot
+   be assigned to pages via set-block-property!.
+   If query is blank, returns all eligible tag entities."
   [query]
   (when-let [database (db/get-db)]
-    (let [all-tags (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title])
+    (let [all-tags (->> (d/q '[:find (pull ?b [:db/id :db/ident :block/uuid :block/title])
                                :where [?b :block/tags :logseq.class/Tag]]
                              database)
                         (map first)
-                        (filter :block/title))]
+                        (filter :block/title)
+                        (remove :db/ident))]   ; built-in entities have :db/ident; user tags do not
       (if (string/blank? query)
         all-tags
         (let [q (string/lower-case (string/trim query))]
