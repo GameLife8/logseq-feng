@@ -34,15 +34,23 @@
 
 (defn save-canvas-to-db!
   "Saves Excalidraw canvas as a JSON string on the whiteboard page entity.
-   Also bumps :block/updated-at so the gallery sorts correctly."
+   Also bumps :block/updated-at so the gallery sorts correctly.
+   Returns true if the save was attempted, false if preconditions failed."
   [page-uuid canvas-json]
-  (when (and (seq page-uuid) (seq canvas-json))
-    (when-let [page (db/entity [:block/uuid (uuid page-uuid)])]
-      (db/transact! (state/get-current-repo)
-                    [{:db/id                   (:db/id page)
-                      :block/whiteboard-canvas canvas-json
-                      :block/updated-at        (.now js/Date)}]
-                    {:outliner-op :save-block}))))
+  (if-not (and (seq page-uuid) (seq canvas-json))
+    (do (js/console.warn "[whiteboard] save-canvas-to-db! skipped: missing page-uuid or canvas-json")
+        false)
+    (if-let [page (db/entity [:block/uuid (uuid page-uuid)])]
+      (do
+        (js/console.log "[whiteboard] saving canvas to DB, page-id:" (:db/id page))
+        (db/transact! (state/get-current-repo)
+                      [{:db/id                   (:db/id page)
+                        :block/whiteboard-canvas canvas-json
+                        :block/updated-at        (.now js/Date)}]
+                      {:outliner-op :save-block})
+        true)
+      (do (js/console.warn "[whiteboard] save-canvas-to-db! failed: page not found for uuid" page-uuid)
+          false))))
 
 (defn load-canvas-from-db
   "Returns the canvas JSON string stored on the page entity, or nil."

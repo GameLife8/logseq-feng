@@ -269,12 +269,14 @@
      (ensure-excalidraw-loaded!
       (fn [] (reset! (::loaded? state) true)))
      state)}
-  [state {:keys [page-uuid on-api-ready on-block-click on-insert-block]}]
+  [state {:keys [page-uuid page-title on-back on-api-ready on-block-click on-insert-block]}]
   (let [loaded? (rum/react (::loaded? state))]
     [:div.wb-canvas {:style {:width "100%" :height "100%"}}
      (if loaded?
        (@lazy-excalidraw
         {:page-uuid       page-uuid
+         :page-title      page-title
+         :on-back         on-back
          :on-api-ready    on-api-ready
          :on-block-click  on-block-click
          :on-insert-block on-insert-block
@@ -287,7 +289,9 @@
 ;; ── full whiteboard page ──────────────────────────────────────────────────────
 
 (rum/defcs whiteboard-page
-  "Full-page whiteboard. Canvas fills the entire viewport; controls float inside."
+  "Full-page whiteboard. Canvas fills the entire viewport.
+   Back button, title and insert-block are inside Excalidraw's renderTopRightUI.
+   A small floating tags bar sits at bottom-left of the canvas."
   < rum/reactive
   (rum/local false ::show-picker?)
   (rum/local nil   ::canvas-api)
@@ -300,60 +304,21 @@
     [:div.whiteboard-page
      {:style {:position "relative" :width "100%" :height "100vh" :overflow "hidden"}}
 
-     ;; ── canvas fills the entire area ──────────────────────────────────────
+     ;; ── canvas fills entire viewport; back/title live inside renderTopRightUI ──
      [:div {:style {:position "absolute" :inset 0}}
       (whiteboard-canvas
        {:page-uuid       page-uuid
+        :page-title      page-title
+        :on-back         #(route-handler/redirect! {:to :all-whiteboards})
         :on-api-ready    (fn [api] (reset! *canvas-api api))
         :on-block-click  (fn [bid] (whiteboard-handler/open-block-in-sidebar! bid))
         :on-insert-block #(swap! *show-picker not)})]
 
-     ;; ── floating title + back button (beside Excalidraw hamburger) ────────
-     [:div.wb-float-header
-      {:style {:position       "absolute"
-               :top            "8px"
-               :left           "56px"
-               :z-index        200
-               :display        "flex"
-               :align-items    "center"
-               :gap            "4px"
-               :pointer-events "auto"}}
-      ;; back / save button
-      [:button
-       {:title    "保存并退出"
-        :on-click #(route-handler/redirect! {:to :all-whiteboards})
-        :style    {:display         "inline-flex"
-                   :align-items     "center"
-                   :justify-content "center"
-                   :width           "28px"
-                   :height          "28px"
-                   :background      "rgba(255,255,255,0.92)"
-                   :border          "1px solid var(--lx-gray-05,#e5e7eb)"
-                   :border-radius   "6px"
-                   :cursor          "pointer"
-                   :box-shadow      "0 1px 4px rgba(0,0,0,0.1)"}}
-       (ui/icon "arrow-left" {:size 14})]
-      ;; title chip
-      [:span
-       {:style {:background    "rgba(255,255,255,0.92)"
-                :border        "1px solid var(--lx-gray-05,#e5e7eb)"
-                :border-radius "6px"
-                :padding       "3px 10px"
-                :font-size     "12px"
-                :font-weight   "600"
-                :max-width     "220px"
-                :overflow      "hidden"
-                :text-overflow "ellipsis"
-                :white-space   "nowrap"
-                :box-shadow    "0 1px 4px rgba(0,0,0,0.1)"
-                :line-height   "22px"}}
-       page-title]]
-
-     ;; ── floating tags bar (below the title row) ───────────────────────────
+     ;; ── floating tags bar (bottom-left, out of the way) ──────────────────
      [:div.wb-float-tags-wrap
       {:style {:position       "absolute"
-               :top            "44px"
-               :left           "56px"
+               :bottom         "16px"
+               :left           "16px"
                :z-index        200
                :pointer-events "auto"}}
       (tags-bar page-uuid page-entity)]

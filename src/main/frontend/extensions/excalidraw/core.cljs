@@ -8,7 +8,8 @@
    - Authoritative store: Logseq DB (via on-save-data / on-load-data callbacks
                           provided by the main-bundle whiteboard-canvas component)
    - On mount : prefer DB data (via on-load-data), migrate from localStorage if absent
-   - On unmount: flush to DB via on-save-data AND update localStorage cache"
+   - On back  : explicit save to localStorage + DB BEFORE navigation
+   - On unmount: fallback save to localStorage"
   (:require ["@excalidraw/excalidraw" :refer [Excalidraw]]
             [frontend.extensions.excalidraw.api :as ex-api]
             [frontend.state :as state]
@@ -54,6 +55,18 @@
 (defn- lib-key []
   (str "wb-library-" (state/get-current-repo)))
 
+;; ── context-menu CSS override ─────────────────────────────────────────────────
+
+(defn- inject-excalidraw-css! []
+  (when-not (.querySelector js/document "#wb-excalidraw-fixes")
+    (let [el (.createElement js/document "style")]
+      (set! (.-id el) "wb-excalidraw-fixes")
+      (set! (.-textContent el)
+            ".excalidraw .context-menu li { padding: 2px 0 !important; }
+             .excalidraw .context-menu .context-menu-option { padding: 4px 12px !important; min-height: 28px !important; }
+             .excalidraw .Island.context-menu { padding: 4px 0 !important; }")
+      (.appendChild (.-head js/document) el))))
+
 ;; ── Excalidraw component ──────────────────────────────────────────────────────
 
 (rum/defcs excalidraw-editor
@@ -61,6 +74,8 @@
 
    Props map:
      :page-uuid       – UUID string of the whiteboard page
+     :page-title      – Display title string shown in the toolbar chip
+     :on-back         – fn() called to navigate back (after save)
      :on-block-click  – fn called with block-id-string when a card is clicked
      :on-api-ready    – fn called with the ExcalidrawImperativeAPI once mounted
      :on-insert-block – fn called when the user clicks '+ 插入块' in canvas toolbar
@@ -74,6 +89,7 @@
   (rum/local nil   ::library-items)
   {:did-mount
    (fn [state]
+     (inject-excalidraw-css!)
      (let [*timer   (::timer-id state)
            *dirty?  (::dirty? state)
            *api     (::api state)
@@ -98,13 +114,13 @@
            p-uuid    (-> state :rum/args first :page-uuid)
            save-fn   (-> state :rum/args first :on-save-data)]
        (when timer (js/clearInterval timer))
+       ;; Fallback save on unmount (explicit back-button save already ran)
        (when api
-         ;; Flush to localStorage cache
          (save-to-ls! p-uuid api)
-         ;; Flush to DB (authoritative store)
          (when save-fn (save-fn p-uuid (canvas-json api)))))
      state)}
-  [state {:keys [page-uuid on-block-click on-api-ready on-insert-block on-load-data on-save-data]}]
+  [state {:keys [page-uuid page-title on-back on-block-click on-api-ready
+                 on-insert-block on-load-data on-save-data]}]
   (let [*api      (::api state)
         *sel-el   (::selected-block-el state)
         *dirty?   (::dirty? state)
@@ -115,7 +131,15 @@
                           (when-let [json-str (on-load-data page-uuid)]
                             (js/JSON.parse json-str))
                           (catch :default _ nil)))
-                      (load-from-ls page-uuid))]
+                      (load-from-ls page-uuid))
+        ;; Save-and-navigate: called explicitly on the back button
+        save-and-back!
+        (fn []
+          (let [api @*api]
+            (when api
+              (save-to-ls! page-uuid api)
+              (when on-save-data (on-save-data page-uuid (canvas-json api))))
+            (when on-back (on-back))))]
 
     [:div.excalidraw-wrapper
      {:style {:width "100%" :height "100%" :position "relative"}}
@@ -146,7 +170,7 @@
                                                    (gobj/get "blockId"))]
                                    (when (and (seq bid) on-block-click)
                                      (on-block-click bid)))))
-           ;; Custom buttons in Excalidraw's top-right area
+           ;; Top-right area: back button + title + insert block + sidebar
            :renderTopRightUI
            (fn []
              (let [sel-el @*sel-el
@@ -155,6 +179,38 @@
                (js/React.createElement
                 "div"
                 #js {:style #js {:display "flex" :gap "6px" :alignItems "center"}}
+                ;; ← 返回 (back / save-and-exit)
+                (js/React.createElement
+                 "button"
+                 #js {:title   "保存并返回白板列表"
+                      :onClick save-and-back!
+                      :style   #js {:display      "flex"
+                                    :alignItems   "center"
+                                    :gap          "4px"
+                                    :padding      "5px 10px"
+                                    :background   "var(--lx-gray-03,#f3f4f6)"
+                                    :color        "var(--lx-gray-12,#111)"
+                                    :border       "1px solid var(--lx-gray-06,#e5e7eb)"
+                                    :borderRadius "6px"
+                                    :cursor       "pointer"
+                                    :fontSize     "13px"
+                                    :whiteSpace   "nowrap"}}
+                 "← 返回")
+                ;; Page title chip
+                (when (seq page-title)
+                  (js/React.createElement
+                   "span"
+                   #js {:style #js {:padding      "4px 10px"
+                                    :background   "var(--lx-gray-02,#f9fafb)"
+                                    :border       "1px solid var(--lx-gray-05,#e5e7eb)"
+                                    :borderRadius "6px"
+                                    :fontSize     "13px"
+                                    :fontWeight   "600"
+                                    :maxWidth     "180px"
+                                    :overflow     "hidden"
+                                    :textOverflow "ellipsis"
+                                    :whiteSpace   "nowrap"}}
+                   page-title))
                 ;; "插入块" – always visible
                 (js/React.createElement
                  "button"
