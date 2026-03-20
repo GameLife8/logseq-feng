@@ -451,6 +451,13 @@
   (rum/local "" ::new-name)
   (rum/local nil  ::editing-uuid)
   (rum/local ""   ::rename-val)
+  (rum/local 0    ::tick)   ; bumped after mount to force a re-query once DB is stable
+  {:did-mount
+   (fn [state]
+     ;; DB may not have fully committed all data at initial render time.
+     ;; Schedule a forced re-render after a short delay.
+     (js/setTimeout #(swap! (::tick state) inc) 300)
+     state)}
   [state]
   (let [*creating?    (::creating? state)
         *new-name     (::new-name state)
@@ -460,9 +467,8 @@
         new-name      (rum/react *new-name)
         editing-uuid  (rum/react *editing-uuid)
         rename-val    (rum/react *rename-val)
-        whiteboards   (do
-                        (js/console.log "[wb] all-whiteboards rendering, db ready:" (some? (db/get-db)))
-                        (whiteboard-handler/get-all-whiteboards))
+        _tick         (rum/react (::tick state))  ; subscribes to forced re-renders
+        whiteboards   (whiteboard-handler/get-all-whiteboards)
 
         ;; Create: only close input if creation succeeded (not a duplicate)
         do-create!

@@ -22,25 +22,40 @@
 
 (defn get-all-whiteboards
   "Returns all whiteboard page entities from the DB, newest-updated first.
-   Identifies whiteboards as pages that have :block/whiteboard-canvas attribute
-   (set when canvas data is first saved), falling back to :logseq.class/Whiteboard tag."
+   Uses three strategies (union, deduplicated):
+   1. Pages tagged with :logseq.class/Whiteboard system class
+   2. Pages that have :block/whiteboard-canvas attribute (canvas saved at least once)
+   3. Pages tagged with any user page/tag whose title is 'Whiteboard'"
   []
   (when-let [database (db/get-db)]
-    (let [with-canvas (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
-                                   :where [?b :block/whiteboard-canvas _]]
-                                 database)
-                           (map first))
-          with-tag    (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
+    (let [;; Strategy 1: system class tag
+          with-class  (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
                                    :where [?b :block/tags ?t]
                                           [?t :db/ident :logseq.class/Whiteboard]]
                                  database)
                            (map first))
-          all         (concat with-canvas with-tag)
-          deduped     (vals (into {} (map (juxt :db/id identity) all)))
-          result      (->> deduped (filter :block/title) (sort-by :block/updated-at >))]
+          ;; Strategy 2: canvas attribute
+          with-canvas (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
+                                   :where [?b :block/whiteboard-canvas _]]
+                                 database)
+                           (map first))
+          ;; Strategy 3: user tag named "Whiteboard"
+          with-user-tag (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
+                                     :where [?t :block/title "Whiteboard"]
+                                            [(missing? $ ?t :db/ident)]
+                                            [?b :block/tags ?t]
+                                            [(missing? $ ?b :db/ident)]]
+                                   database)
+                             (map first))
+          result (->> (concat with-class with-canvas with-user-tag)
+                      (into {} (map (juxt :db/id identity)))  ; deduplicate by :db/id
+                      vals
+                      (filter :block/title)
+                      (sort-by :block/updated-at >))]
       (js/console.log "[wb] get-all-whiteboards:"
-                      "with-canvas=" (count with-canvas)
-                      "with-tag=" (count with-tag)
+                      "class=" (count with-class)
+                      "canvas=" (count with-canvas)
+                      "user-tag=" (count with-user-tag)
                       "total=" (count result))
       result)))
 
@@ -128,25 +143,41 @@
 ;; ── public API ────────────────────────────────────────────────────────────────
 
 (defn <create-whiteboard!
-  "Creates a new whiteboard page and redirects to the whiteboard view.
-   Tries to tag with :logseq.class/Whiteboard if the class exists.
-   Returns nil (with a warning notification) if a whiteboard with the same name already exists."
+  "Creates a new whiteboard page, tags it as a whiteboard, and redirects.
+   Tagging strategy (applied in order, both if possible):
+   1. Tag with :logseq.class/Whiteboard system class (if the class exists in DB)
+   2. Tag with the 'Whiteboard' user tag page (find or create it)
+   Returns nil with a warning notification if the name already exists."
   [name]
   (let [title (string/trim (or name "Untitled Whiteboard"))]
     (if (whiteboard-name-exists? title)
       (do (notification/show! (str "白板「" title "」已存在，请使用不同的名称") :warning)
           nil)
       (p/let [page (common-page-handler/<create! title {:redirect? false})]
-        (js/console.log "[wb] <create-whiteboard! page:" (clj->js page))
+        (js/console.log "[wb] <create-whiteboard! created page:" (some-> page :db/id))
         (when page
-          (let [wclass (db/entity :logseq.class/Whiteboard)]
-            (js/console.log "[wb] Whiteboard class entity:" (clj->js wclass))
-            (if wclass
-              (db/transact! (state/get-current-repo)
+          (let [repo     (state/get-current-repo)
+                tags-ids (atom #{})]
+            ;; Strategy 1: system class tag
+            (when-let [wclass (db/entity :logseq.class/Whiteboard)]
+              (js/console.log "[wb] applying :logseq.class/Whiteboard tag, id=" (:db/id wclass))
+              (swap! tags-ids conj (:db/id wclass)))
+            ;; Strategy 2: user tag page named "Whiteboard"
+            (let [database (db/get-db)
+                  tag-eid  (ffirst (d/q '[:find [?e ...]
+                                          :where [?e :block/title "Whiteboard"]
+                                                 [(missing? $ ?e :db/ident)]]
+                                        database))]
+              (if tag-eid
+                (do (js/console.log "[wb] applying user 'Whiteboard' tag, id=" tag-eid)
+                    (swap! tags-ids conj tag-eid))
+                (js/console.log "[wb] no user 'Whiteboard' tag page found; skipping strategy 2")))
+            ;; Apply all collected tags in one transaction
+            (when (seq @tags-ids)
+              (db/transact! repo
                             [{:db/id      (:db/id page)
-                              :block/tags #{(:db/id wclass)}}]
-                            {:outliner-op :save-block})
-              (js/console.warn "[wb] :logseq.class/Whiteboard not found; canvas attribute will identify this page as a whiteboard")))
+                              :block/tags @tags-ids}]
+                            {:outliner-op :save-block})))
           (route-handler/redirect!
            {:to          :whiteboard
             :path-params {:name (str (:block/uuid page))}})
