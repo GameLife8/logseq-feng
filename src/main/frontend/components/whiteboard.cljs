@@ -275,7 +275,7 @@
      (ensure-excalidraw-loaded!
       (fn [] (reset! (::loaded? state) true)))
      state)}
-  [state {:keys [page-uuid page-title on-back on-api-ready on-block-click on-insert-block]}]
+  [state {:keys [page-uuid page-title on-back on-api-ready on-block-click on-insert-block render-tags]}]
   (let [loaded? (rum/react (::loaded? state))]
     [:div.wb-canvas {:style {:width "100%" :height "100%"}}
      (if loaded?
@@ -286,6 +286,7 @@
          :on-api-ready    on-api-ready
          :on-block-click  on-block-click
          :on-insert-block on-insert-block
+         :render-tags     render-tags
          ;; DB persistence callbacks (main bundle → lazy bundle boundary)
          :on-load-data    whiteboard-handler/load-canvas-from-db
          :on-save-data    whiteboard-handler/save-canvas-to-db!})
@@ -315,7 +316,7 @@
     [:div.whiteboard-page
      {:style {:position "relative" :width "100%" :height "100vh"}}
 
-     ;; canvas fills entire viewport
+     ;; canvas fills entire viewport; tags are rendered inside renderTopRightUI
      [:div {:style {:position "absolute" :inset 0 :overflow "hidden"}}
       (whiteboard-canvas
        {:page-uuid       page-uuid
@@ -323,18 +324,9 @@
         :on-back         on-back
         :on-api-ready    (fn [api] (reset! *canvas-api api))
         :on-block-click  (fn [bid] (whiteboard-handler/open-block-in-sidebar! bid))
-        :on-insert-block #(swap! *show-picker not)})]
-
-     ;; floating tags bar (top-left, vertically aligned with Excalidraw hamburger)
-     [:div.wb-float-tags-wrap
-      {:style {:position       "absolute"
-               :top            "8px"
-               :left           "56px"
-               :z-index        10
-               :pointer-events "auto"
-               :display        "flex"
-               :align-items    "center"}}
-      (tags-bar page-uuid page-entity)]
+        :on-insert-block #(swap! *show-picker not)
+        ;; Pass tags as a render fn – Rum components return React elements when called
+        :render-tags     (fn [] (tags-bar page-uuid page-entity))})]
 
      ;; block-picker overlay
      (when show-picker

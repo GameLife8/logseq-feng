@@ -120,7 +120,7 @@
          (when save-fn (save-fn p-uuid (canvas-json api)))))
      state)}
   [state {:keys [page-uuid page-title on-back on-block-click on-api-ready
-                 on-insert-block on-load-data on-save-data]}]
+                 on-insert-block on-load-data on-save-data render-tags]}]
   (let [*api      (::api state)
         *sel-el   (::selected-block-el state)
         *dirty?   (::dirty? state)
@@ -214,6 +214,8 @@
                                     :textOverflow "ellipsis"
                                     :whiteSpace   "nowrap"}}
                    page-title))
+                ;; Tags bar (reactive Rum component from main bundle)
+                (when render-tags (render-tags))
                 ;; 插入块
                 (js/React.createElement
                  "button"
