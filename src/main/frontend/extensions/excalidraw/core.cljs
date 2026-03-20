@@ -101,9 +101,9 @@
            (set! (.-textContent el)
                  (str ".dropdown-menu-item__shortcut { display: none !important; }
 "
-                      ".context-menu-option__shortcut { display: none !important; }
+                      ".context-menu-item__shortcut { display: none !important; }
 "
-                      ".context-menu-item kbd { display: none !important; }"))
+                      ".context-menu-option__shortcut { display: none !important; }"))
            (.. js/document -head (appendChild el)))))
      state)
    :will-unmount

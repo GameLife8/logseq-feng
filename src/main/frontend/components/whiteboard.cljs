@@ -143,14 +143,11 @@
               (str "#" (:block/title tag-entity))])])]
        [:span
         {:style    {:font-size    "13px"
-                    :line-height  "1"
-                    :opacity      "0.7"
                     :cursor       "pointer"
                     :background   "var(--lx-gray-03, #f3f4f6)"
                     :border       "1px solid var(--lx-gray-06, #e5e7eb)"
                     :border-radius "6px"
                     :padding      "5px 10px"
-                    :height       "28px"
                     :display      "inline-flex"
                     :align-items  "center"
                     :user-select  "none"
@@ -336,8 +333,7 @@
                :z-index        10
                :pointer-events "auto"
                :display        "flex"
-               :align-items    "center"
-               :height         "36px"}}
+               :align-items    "center"}}
       (tags-bar page-uuid page-entity)]
 
      ;; block-picker overlay
