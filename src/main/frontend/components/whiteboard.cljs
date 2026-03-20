@@ -394,29 +394,35 @@
      (let [page-uuid (-> state :rum/args first)
            *svg      (::svg-html state)
            gen-svg!  (fn []
-                       (when-let [raw (whiteboard-handler/load-canvas-from-db page-uuid)]
-                         (try
-                           (let [data     (js/JSON.parse raw)
-                                 elements (.-elements data)]
-                             (when (and elements
+                       (let [raw (whiteboard-handler/load-canvas-from-db page-uuid)]
+                         (js/console.log "[wb] thumbnail" page-uuid "raw canvas len:" (some-> raw count))
+                         (if-not raw
+                           (js/console.log "[wb] thumbnail: no canvas data, using placeholder")
+                           (try
+                             (let [data     (js/JSON.parse raw)
+                                   elements (.-elements data)]
+                               (js/console.log "[wb] thumbnail elements count:"
+                                               (if elements (.-length elements) "nil"))
+                               (if (and elements
                                         (pos? (.-length elements))
                                         (exists? js/ExcalidrawLib)
                                         (.-exportToSvg js/ExcalidrawLib))
-                               (-> (js/ExcalidrawLib.exportToSvg
-                                    #js {:elements elements
-                                         :appState #js {:exportWithDarkMode false
-                                                        :exportBackground   true
-                                                        :backgroundColor    "#ffffff"}
-                                         :files #js {}})
-                                   (.then (fn [^js svg]
-                                            (.setAttribute svg "width" "100%")
-                                            (.setAttribute svg "height" "100%")
-                                            (.setAttribute svg "preserveAspectRatio" "xMidYMid meet")
-                                            (reset! *svg (.-outerHTML svg))))
-                                   (.catch (fn [err]
-                                             (js/console.warn "SVG thumbnail export failed" err))))))
-                           (catch :default err
-                             (js/console.warn "Thumbnail parse error" err)))))]
+                                 (-> (js/ExcalidrawLib.exportToSvg
+                                      #js {:elements elements
+                                           :appState #js {:exportWithDarkMode false
+                                                          :exportBackground   true
+                                                          :backgroundColor    "#ffffff"}
+                                           :files #js {}})
+                                     (.then (fn [^js svg]
+                                              (.setAttribute svg "width" "100%")
+                                              (.setAttribute svg "height" "100%")
+                                              (.setAttribute svg "preserveAspectRatio" "xMidYMid meet")
+                                              (reset! *svg (.-outerHTML svg))))
+                                     (.catch (fn [err]
+                                               (js/console.warn "[wb] SVG thumbnail export failed" err))))
+                                 (js/console.log "[wb] thumbnail: empty elements or no ExcalidrawLib")))
+                             (catch :default err
+                               (js/console.warn "[wb] Thumbnail parse error" err))))))]
        ;; Ensure the Excalidraw bundle (which exposes ExcalidrawLib) is loaded
        ;; before attempting SVG export. On first visit the bundle isn't loaded yet.
        (ensure-excalidraw-loaded! gen-svg!))
@@ -443,8 +449,8 @@
   < rum/reactive db-mixins/query
   (rum/local false ::creating?)
   (rum/local "" ::new-name)
-  (rum/local nil  ::editing-uuid)   ; UUID string of the card being renamed, or nil
-  (rum/local ""   ::rename-val)     ; current value in the rename input
+  (rum/local nil  ::editing-uuid)
+  (rum/local ""   ::rename-val)
   [state]
   (let [*creating?    (::creating? state)
         *new-name     (::new-name state)
@@ -454,7 +460,9 @@
         new-name      (rum/react *new-name)
         editing-uuid  (rum/react *editing-uuid)
         rename-val    (rum/react *rename-val)
-        whiteboards   (whiteboard-handler/get-all-whiteboards)
+        whiteboards   (do
+                        (js/console.log "[wb] all-whiteboards rendering, db ready:" (some? (db/get-db)))
+                        (whiteboard-handler/get-all-whiteboards))
 
         ;; Create: only close input if creation succeeded (not a duplicate)
         do-create!

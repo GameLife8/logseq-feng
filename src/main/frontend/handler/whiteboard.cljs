@@ -21,16 +21,28 @@
 ;; ── whiteboard identification ─────────────────────────────────────────────────
 
 (defn get-all-whiteboards
-  "Returns all whiteboard page entities from the DB, newest-updated first."
+  "Returns all whiteboard page entities from the DB, newest-updated first.
+   Identifies whiteboards as pages that have :block/whiteboard-canvas attribute
+   (set when canvas data is first saved), falling back to :logseq.class/Whiteboard tag."
   []
   (when-let [database (db/get-db)]
-    (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/tags :block/updated-at])
-                :where [?b :block/tags ?t]
-                       [?t :db/ident :logseq.class/Whiteboard]]
-              database)
-         (map first)
-         (filter :block/title)
-         (sort-by :block/updated-at >))))
+    (let [with-canvas (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
+                                   :where [?b :block/whiteboard-canvas _]]
+                                 database)
+                           (map first))
+          with-tag    (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
+                                   :where [?b :block/tags ?t]
+                                          [?t :db/ident :logseq.class/Whiteboard]]
+                                 database)
+                           (map first))
+          all         (concat with-canvas with-tag)
+          deduped     (vals (into {} (map (juxt :db/id identity) all)))
+          result      (->> deduped (filter :block/title) (sort-by :block/updated-at >))]
+      (js/console.log "[wb] get-all-whiteboards:"
+                      "with-canvas=" (count with-canvas)
+                      "with-tag=" (count with-tag)
+                      "total=" (count result))
+      result)))
 
 (defn- whiteboard-name-exists?
   "Returns true if a whiteboard with the given title already exists (case-insensitive)."
@@ -116,8 +128,8 @@
 ;; ── public API ────────────────────────────────────────────────────────────────
 
 (defn <create-whiteboard!
-  "Creates a new whiteboard page, tags it with :logseq.class/Whiteboard,
-   and redirects the router to the whiteboard view.
+  "Creates a new whiteboard page and redirects to the whiteboard view.
+   Tries to tag with :logseq.class/Whiteboard if the class exists.
    Returns nil (with a warning notification) if a whiteboard with the same name already exists."
   [name]
   (let [title (string/trim (or name "Untitled Whiteboard"))]
@@ -125,13 +137,16 @@
       (do (notification/show! (str "白板「" title "」已存在，请使用不同的名称") :warning)
           nil)
       (p/let [page (common-page-handler/<create! title {:redirect? false})]
+        (js/console.log "[wb] <create-whiteboard! page:" (clj->js page))
         (when page
           (let [wclass (db/entity :logseq.class/Whiteboard)]
-            (when wclass
+            (js/console.log "[wb] Whiteboard class entity:" (clj->js wclass))
+            (if wclass
               (db/transact! (state/get-current-repo)
-                            [{:db/id       (:db/id page)
-                              :block/tags  #{(:db/id wclass)}}]
-                            {:outliner-op :save-block})))
+                            [{:db/id      (:db/id page)
+                              :block/tags #{(:db/id wclass)}}]
+                            {:outliner-op :save-block})
+              (js/console.warn "[wb] :logseq.class/Whiteboard not found; canvas attribute will identify this page as a whiteboard")))
           (route-handler/redirect!
            {:to          :whiteboard
             :path-params {:name (str (:block/uuid page))}})
