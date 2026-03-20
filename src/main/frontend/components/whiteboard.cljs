@@ -322,7 +322,7 @@
      (ensure-excalidraw-loaded!
       (fn [] (reset! (::loaded? state) true)))
      state)}
-  [state {:keys [page-uuid page-title on-back on-api-ready on-block-click on-insert-block render-tags]}]
+  [state {:keys [page-uuid page-title on-back on-api-ready on-block-click on-insert-block render-tags on-rename]}]
   (let [loaded? (rum/react (::loaded? state))]
     [:div.wb-canvas {:style {:width "100%" :height "100%"}}
      (if loaded?
@@ -333,6 +333,7 @@
          :on-api-ready    on-api-ready
          :on-block-click  on-block-click
          :on-insert-block on-insert-block
+         :on-rename       on-rename
          :render-tags     render-tags
          ;; DB persistence callbacks (main bundle → lazy bundle boundary)
          :on-load-data    whiteboard-handler/load-canvas-from-db
@@ -372,6 +373,8 @@
         :on-api-ready    (fn [api] (reset! *canvas-api api))
         :on-block-click  (fn [bid] (whiteboard-handler/open-block-in-sidebar! bid))
         :on-insert-block #(swap! *show-picker not)
+        :on-rename       (fn [new-title]
+                           (whiteboard-handler/<rename-whiteboard! page-uuid new-title))
         ;; Pass tags as a render fn – Rum components return React elements when called
         :render-tags     (fn [] (tags-bar page-uuid page-entity))})]
 
