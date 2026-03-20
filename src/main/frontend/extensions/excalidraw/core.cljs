@@ -5,11 +5,13 @@
 
    Canvas data persistence strategy:
    - Fast write cache  : native localStorage, saved every 3 s while editing
-   - Authoritative store: Logseq DB (via on-save-data / on-load-data callbacks
-                          provided by the main-bundle whiteboard-canvas component)
-   - On mount : prefer DB data (via on-load-data), migrate from localStorage if absent
-   - On back  : explicit save to localStorage + DB BEFORE navigation
-   - On unmount: fallback save to localStorage"
+   - Authoritative store: Logseq DB (via on-save-data / on-load-data callbacks)
+   - On back  : explicit save to localStorage + DB BEFORE navigation (on-back callback)
+   - On unmount: fallback save to localStorage
+
+   IMPORTANT: Excalidraw is a React.memo-wrapped function component.
+   Using :ref throws 'Function components cannot be given refs' and never fires.
+   The correct API is the :excalidrawAPI prop, which accepts a callback fn(api)."
   (:require ["@excalidraw/excalidraw" :refer [Excalidraw]]
             [frontend.extensions.excalidraw.api :as ex-api]
             [frontend.state :as state]
@@ -55,18 +57,6 @@
 (defn- lib-key []
   (str "wb-library-" (state/get-current-repo)))
 
-;; ── context-menu CSS override ─────────────────────────────────────────────────
-
-(defn- inject-excalidraw-css! []
-  (when-not (.querySelector js/document "#wb-excalidraw-fixes")
-    (let [el (.createElement js/document "style")]
-      (set! (.-id el) "wb-excalidraw-fixes")
-      (set! (.-textContent el)
-            ".excalidraw .context-menu li { padding: 2px 0 !important; }
-             .excalidraw .context-menu .context-menu-option { padding: 4px 12px !important; min-height: 28px !important; }
-             .excalidraw .Island.context-menu { padding: 4px 0 !important; }")
-      (.appendChild (.-head js/document) el))))
-
 ;; ── Excalidraw component ──────────────────────────────────────────────────────
 
 (rum/defcs excalidraw-editor
@@ -75,7 +65,7 @@
    Props map:
      :page-uuid       – UUID string of the whiteboard page
      :page-title      – Display title string shown in the toolbar chip
-     :on-back         – fn() called to navigate back (after save)
+     :on-back         – fn() called to navigate back (after save completes)
      :on-block-click  – fn called with block-id-string when a card is clicked
      :on-api-ready    – fn called with the ExcalidrawImperativeAPI once mounted
      :on-insert-block – fn called when the user clicks '+ 插入块' in canvas toolbar
@@ -89,7 +79,6 @@
   (rum/local nil   ::library-items)
   {:did-mount
    (fn [state]
-     (inject-excalidraw-css!)
      (let [*timer   (::timer-id state)
            *dirty?  (::dirty? state)
            *api     (::api state)
@@ -102,19 +91,17 @@
                          (reset! *dirty? false)))
                      3000)]
        (reset! *timer timer)
-       ;; Load shared library items from localStorage
        (when-let [raw (.getItem js/localStorage (lib-key))]
          (try (reset! *library (js/JSON.parse raw))
               (catch :default _ nil))))
      state)
    :will-unmount
    (fn [state]
-     (let [api       @(::api state)
-           timer     @(::timer-id state)
-           p-uuid    (-> state :rum/args first :page-uuid)
-           save-fn   (-> state :rum/args first :on-save-data)]
+     (let [api     @(::api state)
+           timer   @(::timer-id state)
+           p-uuid  (-> state :rum/args first :page-uuid)
+           save-fn (-> state :rum/args first :on-save-data)]
        (when timer (js/clearInterval timer))
-       ;; Fallback save on unmount (explicit back-button save already ran)
        (when api
          (save-to-ls! p-uuid api)
          (when save-fn (save-fn p-uuid (canvas-json api)))))
@@ -125,36 +112,38 @@
         *sel-el   (::selected-block-el state)
         *dirty?   (::dirty? state)
         *library  (::library-items state)
-        ;; Load order: DB (via callback) → localStorage migration → empty
         init-data (or (when on-load-data
                         (try
                           (when-let [json-str (on-load-data page-uuid)]
                             (js/JSON.parse json-str))
                           (catch :default _ nil)))
                       (load-from-ls page-uuid))
-        ;; Save-and-navigate: called explicitly on the back button
+        ;; Save then navigate – called from the back button
         save-and-back!
         (fn []
           (let [api @*api]
             (when api
               (save-to-ls! page-uuid api)
-              (when on-save-data (on-save-data page-uuid (canvas-json api))))
-            (when on-back (on-back))))]
+              (when on-save-data (on-save-data page-uuid (canvas-json api)))))
+          ;; on-back triggers notification + route change (in main bundle)
+          (when on-back (on-back)))]
 
     [:div.excalidraw-wrapper
      {:style {:width "100%" :height "100%" :position "relative"}}
 
      (js/React.createElement
       Excalidraw
-      #js {:ref (fn [^js api]
-                  (when api
-                    (reset! *api api)
-                    (when on-api-ready (on-api-ready api))))
+      #js {;; ── IMPORTANT: use :excalidrawAPI, NOT :ref ──────────────────────
+           ;; Excalidraw is React.memo(FunctionComponent). Passing :ref warns
+           ;; "Function components cannot be given refs" and never fires.
+           ;; :excalidrawAPI accepts a callback fn(api) and is the correct API.
+           :excalidrawAPI    (fn [^js api]
+                               (reset! *api api)
+                               (when on-api-ready (on-api-ready api)))
            :initialData      (or init-data #js {})
            :theme            (if (= "dark" (state/sub :ui/theme)) "dark" "light")
            :UIOptions        #js {:canvasActions #js {:export    false
                                                       :loadScene false}}
-           ;; Library – per-graph, stored in localStorage
            :libraryItems     (or @*library #js [])
            :onLibraryChange  (fn [^js items]
                                (reset! *library items)
@@ -170,7 +159,7 @@
                                                    (gobj/get "blockId"))]
                                    (when (and (seq bid) on-block-click)
                                      (on-block-click bid)))))
-           ;; Top-right area: back button + title + insert block + sidebar
+           ;; Top-right: back + title + insert block + sidebar
            :renderTopRightUI
            (fn []
              (let [sel-el @*sel-el
@@ -179,7 +168,7 @@
                (js/React.createElement
                 "div"
                 #js {:style #js {:display "flex" :gap "6px" :alignItems "center"}}
-                ;; ← 返回 (back / save-and-exit)
+                ;; ← 返回
                 (js/React.createElement
                  "button"
                  #js {:title   "保存并返回白板列表"
@@ -196,7 +185,7 @@
                                     :fontSize     "13px"
                                     :whiteSpace   "nowrap"}}
                  "← 返回")
-                ;; Page title chip
+                ;; Title chip
                 (when (seq page-title)
                   (js/React.createElement
                    "span"
@@ -211,7 +200,7 @@
                                     :textOverflow "ellipsis"
                                     :whiteSpace   "nowrap"}}
                    page-title))
-                ;; "插入块" – always visible
+                ;; 插入块
                 (js/React.createElement
                  "button"
                  #js {:title   "搜索并插入 Logseq 块卡片到画布"
@@ -228,7 +217,7 @@
                                     :fontSize     "13px"
                                     :whiteSpace   "nowrap"}}
                  "+ 插入块")
-                ;; "在侧边栏打开" – only when a block card is selected
+                ;; 侧边栏 (conditional)
                 (when (seq bid)
                   (js/React.createElement
                    "button"

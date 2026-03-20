@@ -9,6 +9,7 @@
             [frontend.db :as db]
             [frontend.db-mixins :as db-mixins]
             [frontend.extensions.excalidraw.api :as ex-api]
+            [frontend.handler.notification :as notification]
             [frontend.handler.route :as route-handler]
             [frontend.handler.whiteboard :as whiteboard-handler]
             [frontend.search :as search]
@@ -300,30 +301,35 @@
         *canvas-api  (::canvas-api state)
         show-picker  (rum/react *show-picker)
         page-uuid    (str (:block/uuid page-entity))
-        page-title   (or (:block/title page-entity) "Untitled Whiteboard")]
+        page-title   (or (:block/title page-entity) "Untitled Whiteboard")
+        ;; on-back: called by excalidraw/core AFTER save; shows toast then navigates
+        on-back      (fn []
+                       (notification/show! "白板已保存" :success)
+                       (route-handler/redirect! {:to :all-whiteboards}))]
+    ;; No overflow:hidden on outer div — allows Excalidraw dropdown menus to show
     [:div.whiteboard-page
-     {:style {:position "relative" :width "100%" :height "100vh" :overflow "hidden"}}
+     {:style {:position "relative" :width "100%" :height "100vh"}}
 
-     ;; ── canvas fills entire viewport; back/title live inside renderTopRightUI ──
-     [:div {:style {:position "absolute" :inset 0}}
+     ;; canvas fills entire viewport
+     [:div {:style {:position "absolute" :inset 0 :overflow "hidden"}}
       (whiteboard-canvas
        {:page-uuid       page-uuid
         :page-title      page-title
-        :on-back         #(route-handler/redirect! {:to :all-whiteboards})
+        :on-back         on-back
         :on-api-ready    (fn [api] (reset! *canvas-api api))
         :on-block-click  (fn [bid] (whiteboard-handler/open-block-in-sidebar! bid))
         :on-insert-block #(swap! *show-picker not)})]
 
-     ;; ── floating tags bar (bottom-left, out of the way) ──────────────────
+     ;; floating tags bar (top-left, same row as Excalidraw hamburger)
      [:div.wb-float-tags-wrap
       {:style {:position       "absolute"
-               :bottom         "16px"
-               :left           "16px"
-               :z-index        200
+               :top            "8px"
+               :left           "56px"
+               :z-index        10
                :pointer-events "auto"}}
       (tags-bar page-uuid page-entity)]
 
-     ;; ── block-picker overlay ───────────────────────────────────────────────
+     ;; block-picker overlay
      (when show-picker
        (block-picker
         {:on-close  #(reset! *show-picker false)
