@@ -7,10 +7,12 @@
      frontend.components.whiteboard      – page UI / toolbar / block-picker (main bundle)"
   (:require [clojure.string :as string]
             [frontend.db :as db]
+            [frontend.db-mixins :as db-mixins]
             [frontend.extensions.excalidraw.api :as ex-api]
             [frontend.handler.whiteboard :as whiteboard-handler]
             [frontend.search :as search]
             [frontend.state :as state]
+            [frontend.storage :as storage]
             [frontend.ui :as ui]
             [frontend.util :as util]
             [logseq.shui.ui :as shui]
@@ -226,7 +228,154 @@
                         (ex-api/insert-block-elements!
                          api block-id block-title page-title)))}))]))
 
-;; ── route entry-point ─────────────────────────────────────────────────────────
+;; ── whiteboard gallery ────────────────────────────────────────────────────────
+
+(rum/defcs whiteboard-thumbnail
+  "Renders an SVG thumbnail for a whiteboard from localStorage.
+   Falls back to an icon placeholder if ExcalidrawLib is not loaded or data absent."
+  < rum/reactive
+  (rum/local nil ::svg-html)
+  {:did-mount
+   (fn [state]
+     (let [page-uuid (-> state :rum/args first)
+           *svg      (::svg-html state)]
+       (when-let [raw (storage/get (str "whiteboard-data-" page-uuid))]
+         (try
+           (let [data     (js/JSON.parse raw)
+                 elements (.-elements data)]
+             (when (and elements
+                        (pos? (.-length elements))
+                        (exists? js/ExcalidrawLib)
+                        (.-exportToSvg js/ExcalidrawLib))
+               (-> (js/ExcalidrawLib.exportToSvg
+                    #js {:elements elements
+                         :appState #js {:exportWithDarkMode false
+                                        :exportBackground   true
+                                        :backgroundColor    "#ffffff"}
+                         :files #js {}})
+                   (.then (fn [^js svg]
+                            ;; Constrain SVG to fill the thumbnail box
+                            (.setAttribute svg "width" "100%")
+                            (.setAttribute svg "height" "100%")
+                            (.setAttribute svg "preserveAspectRatio" "xMidYMid meet")
+                            (reset! *svg (.-outerHTML svg))))
+                   (.catch (fn [err]
+                             (js/console.warn "SVG thumbnail export failed" err))))))
+           (catch :default err
+             (js/console.warn "Thumbnail parse error" err)))))
+     state)}
+  [state _page-uuid]
+  (let [svg-html (rum/react (::svg-html state))]
+    [:div.wb-thumbnail-area
+     {:style {:width         "100%"
+              :height        "130px"
+              :background    "var(--lx-gray-02, #f9fafb)"
+              :borderRadius  "8px 8px 0 0"
+              :overflow      "hidden"
+              :display       "flex"
+              :alignItems    "center"
+              :justifyContent "center"}}
+     (if svg-html
+       [:div {:style {:width "100%" :height "100%" :overflow "hidden"}
+              :dangerouslySetInnerHTML {:__html svg-html}}]
+       [:div.opacity-25
+        (ui/icon "layout-board" {:size 36})])]))
+
+(rum/defcs all-whiteboards
+  "Gallery page listing all whiteboards in a 3-column grid with SVG thumbnails."
+  < rum/reactive db-mixins/query
+  (rum/local false ::creating?)
+  (rum/local "" ::new-name)
+  []
+  ;; NOTE: db-mixins/query is a class-based mixin – use rum/local only, no hooks
+  [state]
+  (let [*creating? (::creating? state)
+        *new-name  (::new-name state)
+        creating?  (rum/react *creating?)
+        new-name   (rum/react *new-name)
+        whiteboards (whiteboard-handler/get-all-whiteboards)]
+    [:div.all-whiteboards-page
+     {:style {:padding "24px 28px" :maxWidth "1000px" :margin "0 auto"}}
+
+     ;; header
+     [:div.flex.items-center.gap-3.mb-6
+      (ui/icon "layout-board" {:size 22 :class "opacity-70"})
+      [:h1.text-xl.font-bold.flex-1 "白板"]
+      (if creating?
+        [:div.flex.items-center.gap-2
+         [:input
+          {:type        "text"
+           :auto-focus  true
+           :placeholder "白板名称…"
+           :value       new-name
+           :style       {:fontSize "13px" :padding "5px 10px"
+                         :borderRadius "6px"
+                         :border "1px solid var(--lx-gray-07, #d1d5db)"
+                         :outline "none" :width "180px"}
+           :on-change   #(reset! *new-name (.. % -target -value))
+           :on-key-down (fn [^js e]
+                          (case (.-key e)
+                            "Enter"  (do (reset! *creating? false)
+                                         (when (seq (string/trim new-name))
+                                           (whiteboard-handler/<create-whiteboard! new-name)))
+                            "Escape" (do (reset! *creating? false)
+                                         (reset! *new-name ""))
+                            nil))}]
+         (shui/button
+          {:size     :sm
+           :on-click (fn []
+                       (reset! *creating? false)
+                       (when (seq (string/trim new-name))
+                         (whiteboard-handler/<create-whiteboard! new-name)))}
+          "创建")
+         (shui/button
+          {:size :sm :variant :ghost
+           :on-click (fn [] (reset! *creating? false) (reset! *new-name ""))}
+          "取消")]
+        (shui/button
+         {:size     :sm
+          :on-click (fn [] (reset! *creating? true) (reset! *new-name ""))}
+         (ui/icon "plus" {:size 14 :class "mr-1"})
+         "新建白板"))]
+
+     ;; grid
+     (if (seq whiteboards)
+       [:div.wb-gallery-grid
+        {:style {:display             "grid"
+                 :gridTemplateColumns "repeat(3, 1fr)"
+                 :gap                 "16px"}}
+        (for [wb whiteboards
+              :let [uuid  (str (:block/uuid wb))
+                    title (or (:block/title wb) "Untitled")]]
+          [:div.wb-gallery-card
+           {:key   (str "wbcard-" uuid)
+            :style {:border       "1px solid var(--lx-gray-05, #e5e7eb)"
+                    :borderRadius "10px"
+                    :overflow     "hidden"
+                    :cursor       "pointer"
+                    :transition   "box-shadow 0.15s, transform 0.15s"
+                    :background   "var(--lx-gray-01, #fff)"}
+            :on-mouse-enter #(let [^js s (.. % -currentTarget -style)]
+                               (set! (.-boxShadow s) "0 4px 16px rgba(0,0,0,0.12)")
+                               (set! (.-transform s) "translateY(-2px)"))
+            :on-mouse-leave #(let [^js s (.. % -currentTarget -style)]
+                               (set! (.-boxShadow s) "none")
+                               (set! (.-transform s) "none"))
+            :on-click       #(whiteboard-handler/redirect-to-whiteboard! uuid)}
+           ;; SVG thumbnail
+           (whiteboard-thumbnail uuid)
+           ;; card footer
+           [:div.flex.items-center.gap-2.px-3.py-2
+            {:style {:borderTop "1px solid var(--lx-gray-05, #e5e7eb)"}}
+            (ui/icon "layout-board" {:size 13 :class "opacity-50 shrink-0"})
+            [:span.text-sm.font-medium.truncate title]]])]
+       ;; empty state
+       [:div.flex.flex-col.items-center.justify-center.gap-4
+        {:style {:paddingTop "80px"}}
+        (ui/icon "layout-board" {:size 56 :class "opacity-20"})
+        [:div.text-sm.opacity-50 "还没有白板，点击「新建白板」开始"]])]))
+
+;; ── route entry-points ─────────────────────────────────────────────────────────
 
 (rum/defc whiteboard
   "Called by the reitit router.  Expects :path-params {:name <page-uuid>}."

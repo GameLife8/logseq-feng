@@ -82,6 +82,10 @@
     {:name :whiteboard
      :view whiteboard/whiteboard}]
 
+   ["/whiteboards"
+    {:name :all-whiteboards
+     :view (fn [_] (whiteboard/all-whiteboards))}]
+
    (when config/dev?
      ["/ui"
       {:name :ui

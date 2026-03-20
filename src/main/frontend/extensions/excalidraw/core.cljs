@@ -10,7 +10,6 @@
             [frontend.state :as state]
             [frontend.storage :as storage]
             [goog.object :as gobj]
-            [logseq.shui.hooks :as hooks]
             [rum.core :as rum]))
 
 ;; ── storage ───────────────────────────────────────────────────────────────────
@@ -45,28 +44,34 @@
   (rum/local nil  ::api)
   (rum/local nil  ::selected-block-el)
   (rum/local false ::dirty?)
-  {:will-unmount (fn [state]
-                   (let [api    @(::api state)
-                         p-uuid (-> state :rum/args first :page-uuid)]
-                     (save-data! p-uuid api))
-                   state)}
+  (rum/local nil  ::timer-id)
+  {:did-mount
+   (fn [state]
+     (let [*timer  (::timer-id state)
+           *dirty? (::dirty? state)
+           *api    (::api state)
+           p-uuid  (-> state :rum/args first :page-uuid)
+           timer   (js/setInterval
+                    (fn []
+                      (when @*dirty?
+                        (save-data! p-uuid @*api)
+                        (reset! *dirty? false)))
+                    3000)]
+       (reset! *timer timer))
+     state)
+   :will-unmount
+   (fn [state]
+     (let [api    @(::api state)
+           timer  @(::timer-id state)
+           p-uuid (-> state :rum/args first :page-uuid)]
+       (when timer (js/clearInterval timer))
+       (save-data! p-uuid api))
+     state)}
   [state {:keys [page-uuid on-block-click on-api-ready]}]
   (let [*api     (::api state)
         *sel-el  (::selected-block-el state)
         *dirty?  (::dirty? state)
         init-data (load-data page-uuid)]
-
-    ;; auto-save every 3 s when dirty
-    (hooks/use-effect!
-     (fn []
-       (let [timer (js/setInterval
-                    (fn []
-                      (when @*dirty?
-                        (save-data! page-uuid @*api)
-                        (reset! *dirty? false)))
-                    3000)]
-         (fn [] (js/clearInterval timer))))
-     [page-uuid])
 
     [:div.excalidraw-wrapper
      {:style {:width "100%" :height "100%" :position "relative"}}
