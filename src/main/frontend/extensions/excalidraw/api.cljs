@@ -47,21 +47,21 @@
    Line 1: custom-label (user-defined description) or '(未标记)' if not set.
    Line 2: block content truncated to 10 characters."
   [rect-id rect-x rect-y block-title page-title custom-label]
-  (let [line1 (if (seq custom-label) custom-label "(未标记)")
+  (let [line1 (str "⊞ " (if (seq custom-label) custom-label "(未标记)"))
         raw   (or block-title "")
         line2 (if (> (count raw) 10) (str (subs raw 0 10) "…") (if (seq raw) raw "(空内容)"))
         label (str line1 "\n" line2)]
     #js {:id             (str rect-id "-txt")
          :type           "text"
-         :x              (+ rect-x 12)
+         :x              rect-x
          :y              (+ rect-y 10)
-         :width          216
+         :width          240
          :height         60
          :text           label
          :originalText   label
          :fontSize       12
          :fontFamily     1
-         :textAlign      "left"
+         :textAlign      "center"
          :verticalAlign  "top"
          :containerId    rect-id
          :strokeColor    "#3730a3"

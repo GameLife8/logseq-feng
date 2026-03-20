@@ -521,10 +521,11 @@
         {:style {:display             "grid"
                  :gridTemplateColumns "repeat(3, 1fr)"
                  :gap                 "16px"}}
-        (for [wb whiteboards
-              :let [wb-uuid  (str (:block/uuid wb))
-                    wb-title (or (:block/title wb) "Untitled")
-                    renaming? (= editing-uuid wb-uuid)]]
+        (doall
+         (for [wb whiteboards
+               :let [wb-uuid  (str (:block/uuid wb))
+                     wb-title (or (:block/title wb) "Untitled")
+                     renaming? (= editing-uuid wb-uuid)]]
           [:div.wb-gallery-card
            {:key            (str "wbcard-" wb-uuid)
             :style          {:border       "1px solid var(--lx-gray-05, #e5e7eb)"
@@ -605,7 +606,7 @@
                           :padding "2px 4px" :border-radius "4px"
                           :font-size "12px" :color "#ef4444"
                           :opacity "0.6"}}
-              (ui/icon "trash" {:size 13})]]]])]
+              (ui/icon "trash" {:size 13})]]]]))]
        ;; empty state
        [:div.flex.flex-col.items-center.justify-center.gap-4
         {:style {:paddingTop "80px"}}

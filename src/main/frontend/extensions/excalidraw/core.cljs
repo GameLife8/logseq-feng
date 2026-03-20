@@ -72,14 +72,13 @@
      :on-load-data    – fn(page-uuid) → JSON-string | nil  (reads from DB)
      :on-save-data    – fn(page-uuid, json-string)          (writes to DB)
 
-   Double-click a Logseq block card to open it in the right sidebar."
+   Select a Logseq block card, then click '→ 侧边栏' in the top-right toolbar to open it."
   < rum/static
   (rum/local nil   ::api)
   (rum/local nil   ::selected-block-el)
   (rum/local false ::dirty?)
   (rum/local nil   ::timer-id)
   (rum/local nil   ::library-items)
-  (rum/local nil   ::last-click)   ; {:time ms :bid str} for double-click detection
   {:did-mount
    (fn [state]
      (let [*timer   (::timer-id state)
@@ -128,7 +127,6 @@
         *sel-el     (::selected-block-el state)
         *dirty?     (::dirty? state)
         *library    (::library-items state)
-        *last-click (::last-click state)
         init-data   (or (when on-load-data
                           (try
                             (when-let [json-str (on-load-data page-uuid)]
@@ -151,7 +149,17 @@
       #js {;; ── IMPORTANT: use :excalidrawAPI, NOT :ref ──────────────────────
            :excalidrawAPI    (fn [^js api]
                                (reset! *api api)
-                               (when on-api-ready (on-api-ready api)))
+                               (when on-api-ready (on-api-ready api))
+                               ;; Fallback: if scene empty after init (timing race with DB),
+                               ;; reload from DB first, then localStorage.
+                               (when (zero? (.-length (.getSceneElements api)))
+                                 (when-let [data (or (when on-load-data
+                                                       (try (when-let [s (on-load-data page-uuid)]
+                                                              (js/JSON.parse s))
+                                                            (catch :default _ nil)))
+                                                     (load-from-ls page-uuid))]
+                                   (.updateScene api #js {:elements (.-elements data)
+                                                          :appState (.-appState data)}))))
            :initialData      (or init-data #js {})
            :langCode         "zh-CN"
            :theme            (if (= "dark" (state/sub :ui/theme)) "dark" "light")
@@ -165,33 +173,7 @@
            :onChange         (fn [_elements _app-state _files]
                                (reset! *dirty? true)
                                (reset! *sel-el (ex-api/get-selected-block-element @*api)))
-           ;; Double-click on a block card → open in sidebar.
-           ;; On double-click Excalidraw enters text-edit mode and deselects the element
-           ;; BEFORE the second onPointerUp fires, so @*sel-el may already be nil.
-           ;; Fix: on the second pointer-up we fall back to the bid stored in *last-click.
-           :onPointerUp      (fn [_active-tool _pointer-state]
-                               (let [sel  @*sel-el
-                                     bid  (some-> sel (gobj/get "customData") (gobj/get "blockId"))
-                                     now  (.now js/Date)
-                                     last @*last-click]
-                                 (cond
-                                   ;; Second pointer-up within 400 ms after a block click:
-                                   ;; use the previously stored bid (sel may be nil here).
-                                   (and last
-                                        (< (- now (:time last)) 400)
-                                        (or (= (:bid last) bid)   ; same block still selected
-                                            (nil? bid)))           ; Excalidraw deselected it
-                                   (do (reset! *last-click nil)
-                                       (when on-block-click (on-block-click (:bid last))))
-
-                                   ;; First click on a block – record time + bid.
-                                   (seq bid)
-                                   (reset! *last-click {:time now :bid bid})
-
-                                   ;; Click on empty canvas – clear last-click.
-                                   :else
-                                   (reset! *last-click nil))))
-           ;; Top-right: back + title + insert block + tags
+           ;; Top-right: back + title + sidebar-open (when block selected) + insert block + tags
            :renderTopRightUI
            (fn []
              (js/React.createElement
@@ -231,10 +213,30 @@
                  page-title))
               ;; Tags bar (reactive Rum component from main bundle)
               (when render-tags (render-tags))
+              ;; Open selected block card in sidebar (shown when a block card is selected)
+              (when (and @*sel-el on-block-click)
+                (let [bid (some-> @*sel-el (gobj/get "customData") (gobj/get "blockId"))]
+                  (when bid
+                    (js/React.createElement
+                     "button"
+                     #js {:title   "在侧边栏中打开此块"
+                          :onClick (fn [] (on-block-click bid))
+                          :style   #js {:display      "flex"
+                                        :alignItems   "center"
+                                        :gap          "4px"
+                                        :padding      "5px 10px"
+                                        :background   "var(--lx-gray-03,#f3f4f6)"
+                                        :color        "var(--lx-gray-12,#111)"
+                                        :border       "1px solid var(--lx-gray-06,#e5e7eb)"
+                                        :borderRadius "6px"
+                                        :cursor       "pointer"
+                                        :fontSize     "13px"
+                                        :whiteSpace   "nowrap"}}
+                     "→ 侧边栏"))))
               ;; 插入块
               (js/React.createElement
                "button"
-               #js {:title   "搜索并插入 Logseq 块卡片到画布（双击卡片可在侧边栏打开）"
+               #js {:title   "搜索并插入 Logseq 块卡片到画布"
                     :onClick (fn [] (when on-insert-block (on-insert-block)))
                     :style   #js {:display      "flex"
                                   :alignItems   "center"
