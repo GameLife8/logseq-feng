@@ -224,15 +224,15 @@
                                     (route-handler/sidebar-journals!)
                                     (route-handler/go-to-journals!)))
               :icon "calendar"
-              :shortcut :go/journals})))
+              :shortcut :go/journals}))))
 
-        ;; Whiteboards – always shown alongside journals and flashcards
-        (sidebar-item
-         {:class "whiteboards-nav"
-          :active (and (not srs-open?) (= route-name :all-whiteboards))
-          :title "白板"
-          :icon "layout-board"
-          :href (rfe/href :all-whiteboards)}))
+      ;; Whiteboards – new nav item alongside journals and flashcards
+      (sidebar-item
+       {:class "whiteboards-nav"
+        :active (and (not srs-open?) (= route-name :all-whiteboards))
+        :title "白板"
+        :icon "layout-board"
+        :href (rfe/href :all-whiteboards)})
 
       (for [nav checked-navs]
         (cond

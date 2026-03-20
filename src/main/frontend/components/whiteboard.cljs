@@ -286,8 +286,6 @@
   < rum/reactive db-mixins/query
   (rum/local false ::creating?)
   (rum/local "" ::new-name)
-  []
-  ;; NOTE: db-mixins/query is a class-based mixin – use rum/local only, no hooks
   [state]
   (let [*creating? (::creating? state)
         *new-name  (::new-name state)
