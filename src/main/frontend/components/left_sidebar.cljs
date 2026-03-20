@@ -230,7 +230,7 @@
       (sidebar-item
        {:class "whiteboards-nav"
         :active (and (not srs-open?) (= route-name :all-whiteboards))
-        :title "白板"
+        :title "Excalidraw"
         :icon "layout-board"
         :href (rfe/href :all-whiteboards)})
 

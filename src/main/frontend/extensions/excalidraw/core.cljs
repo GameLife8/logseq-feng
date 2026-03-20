@@ -93,7 +93,18 @@
        (reset! *timer timer)
        (when-let [raw (.getItem js/localStorage (lib-key))]
          (try (reset! *library (js/JSON.parse raw))
-              (catch :default _ nil))))
+              (catch :default _ nil)))
+       ;; Inject CSS once: hide shortcut keys in Excalidraw context menu
+       (when-not (.getElementById js/document "excalidraw-custom-css")
+         (let [el (.createElement js/document "style")]
+           (set! (.-id el) "excalidraw-custom-css")
+           (set! (.-textContent el)
+                 (str ".context-menu-item kbd { display: none !important; }
+"
+                      ".context-menu-option__shortcut { display: none !important; }
+"
+                      ".Island .context-menu kbd { display: none !important; }"))
+           (.. js/document -head (appendChild el)))))
      state)
    :will-unmount
    (fn [state]
@@ -141,6 +152,7 @@
                                (reset! *api api)
                                (when on-api-ready (on-api-ready api)))
            :initialData      (or init-data #js {})
+           :langCode         "zh-CN"
            :theme            (if (= "dark" (state/sub :ui/theme)) "dark" "light")
            :UIOptions        #js {:canvasActions #js {:export    false
                                                       :loadScene false}}

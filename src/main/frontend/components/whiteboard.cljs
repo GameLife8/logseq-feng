@@ -142,11 +142,19 @@
                  (reset! *results []))}
               (str "#" (:block/title tag-entity))])])]
        [:span
-        {:style    {:font-size "11px" :opacity "0.5" :cursor "pointer"
-                    :background "rgba(255,255,255,0.85)"
-                    :border "1px dashed var(--lx-gray-05, #d1d5db)"
-                    :border-radius "10px" :padding "1px 7px"
-                    :user-select "none"}
+        {:style    {:font-size    "13px"
+                    :line-height  "1"
+                    :opacity      "0.7"
+                    :cursor       "pointer"
+                    :background   "var(--lx-gray-03, #f3f4f6)"
+                    :border       "1px solid var(--lx-gray-06, #e5e7eb)"
+                    :border-radius "6px"
+                    :padding      "5px 10px"
+                    :height       "28px"
+                    :display      "inline-flex"
+                    :align-items  "center"
+                    :user-select  "none"
+                    :white-space  "nowrap"}
          :on-click (fn []
                      (reset! *adding true)
                      (reset! *results (whiteboard-handler/search-tags "")))}
@@ -320,13 +328,16 @@
         :on-block-click  (fn [bid] (whiteboard-handler/open-block-in-sidebar! bid))
         :on-insert-block #(swap! *show-picker not)})]
 
-     ;; floating tags bar (top-left, same row as Excalidraw hamburger)
+     ;; floating tags bar (top-left, vertically aligned with Excalidraw hamburger)
      [:div.wb-float-tags-wrap
       {:style {:position       "absolute"
-               :top            "8px"
+               :top            "10px"
                :left           "56px"
                :z-index        10
-               :pointer-events "auto"}}
+               :pointer-events "auto"
+               :display        "flex"
+               :align-items    "center"
+               :height         "36px"}}
       (tags-bar page-uuid page-entity)]
 
      ;; block-picker overlay
