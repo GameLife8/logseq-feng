@@ -461,8 +461,7 @@
         editing-uuid  (rum/react *editing-uuid)
         rename-val    (rum/react *rename-val)
         ;; Subscribe to :current-repo so the component re-renders when the DB finishes loading.
-        ;; This is the correct reactive pattern — no setTimeout needed.
-        _repo         (rum/react (state/sub :current-repo))
+        _repo         (state/sub :current-repo)
         whiteboards   (whiteboard-handler/get-all-whiteboards)
 
         ;; Create: only close input if creation succeeded (not a duplicate)
