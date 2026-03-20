@@ -36,88 +36,71 @@
                  (reset! *excalidraw-loaded? true)
                  (on-done)))))
 
-;; ── tags bar (real Logseq block/tags, shows in Pages > Tags column) ──────────
+;; ── tags bar (floating, real Logseq block/tags) ─────────────────────────────
 
 (rum/defcs tags-bar
-  "A slim bar below the main toolbar showing real Logseq tags (block/tags).
-   Tags are stored in the DataScript DB and appear in the Pages view Tags column.
-   Only Tag-class entities (pages tagged with #Tag) can be added here.
-   Clicking a tag navigates to the tag's page."
+  "Floating tags bar overlay. Tags are real Logseq block/tags stored in DB.
+   Only existing Tag-class entities can be added."
   < rum/reactive
   (rum/local false ::adding?)
   (rum/local "" ::tag-input)
   (rum/local [] ::tag-results)
-  {:did-mount
-   (fn [state]
-     state)}
   [state page-uuid page-entity]
   (let [*adding  (::adding? state)
         *input   (::tag-input state)
         *results (::tag-results state)
         adding?  (rum/react *adding)
-        query    (rum/react *input)
+        _query   (rum/react *input)
         results  (rum/react *results)
-        ;; Tags from DB – excludes system tags like #Whiteboard, #Page, #Journal
         tags     (whiteboard-handler/get-page-user-tags page-entity)]
-    [:div.wb-tags-bar
-     {:style {:height        "28px"
-              :display       "flex"
-              :align-items   "center"
-              :padding       "0 12px"
-              :gap           "6px"
-              :overflow-x    "auto"
-              :border-bottom "1px solid var(--lx-gray-05, #e5e7eb)"
-              :background    "var(--lx-gray-01, #fff)"
-              :font-size     "12px"
-              :white-space   "nowrap"
-              :position      "relative"}}
-     (ui/icon "tag" {:size 12 :class "opacity-40 shrink-0"})
-     ;; Existing tag chips (from DB block/tags)
+    [:div.wb-float-tags
+     {:style {:display    "flex"
+              :align-items "center"
+              :gap         "4px"
+              :flex-wrap   "wrap"
+              :position    "relative"}}
      (for [tag tags]
        [:span
         {:key   (str (:db/id tag))
-         :style {:background    "var(--lx-gray-04, #f3f4f6)"
-                 :border        "1px solid var(--lx-gray-06, #e5e7eb)"
-                 :border-radius "4px"
-                 :padding       "0 6px"
+         :style {:background    "rgba(255,255,255,0.92)"
+                 :border        "1px solid var(--lx-gray-05, #e5e7eb)"
+                 :border-radius "12px"
+                 :padding       "1px 8px 1px 6px"
                  :display       "inline-flex"
                  :align-items   "center"
                  :gap           "3px"
-                 :cursor        "pointer"
                  :font-size     "11px"
-                 :height        "18px"}}
-        [:span {:on-click #(route-handler/redirect-to-page! (:block/title tag))}
+                 :box-shadow    "0 1px 3px rgba(0,0,0,0.08)"}}
+        [:span {:on-click #(route-handler/redirect-to-page! (:block/title tag))
+                :style {:cursor "pointer"}}
          (str "#" (:block/title tag))]
         [:span
-         {:style    {:opacity "0.45" :cursor "pointer" :font-size "10px"
-                     :margin-left "2px" :padding "0 2px"}
+         {:style    {:opacity "0.45" :cursor "pointer" :font-size "10px"}
           :on-click (fn [^js e]
                       (.stopPropagation e)
                       (whiteboard-handler/remove-tag-from-page! (uuid page-uuid) tag))}
          "×"]])
-     ;; Add-tag input + dropdown
      (if adding?
        [:div {:style {:position "relative" :display "inline-flex" :align-items "center"}}
         [:input
          {:auto-focus  true
           :type        "text"
-          :value       query
+          :value       @*input
           :placeholder "搜索标签…"
           :style       {:font-size     "11px"
                         :width         "110px"
-                        :height        "18px"
+                        :height        "20px"
                         :outline       "none"
                         :border        "1px solid var(--lx-gray-07, #d1d5db)"
-                        :border-radius "4px"
-                        :padding       "0 6px"
-                        :background    "var(--lx-gray-01, #fff)"}
+                        :border-radius "10px"
+                        :padding       "0 8px"
+                        :background    "rgba(255,255,255,0.95)"}
           :on-change   (fn [^js e]
                          (let [q (.. e -target -value)]
                            (reset! *input q)
                            (reset! *results (whiteboard-handler/search-tags q))))
           :on-focus    #(reset! *results (whiteboard-handler/search-tags ""))
           :on-blur     (fn []
-                         ;; Delay close so click on dropdown item fires first
                          (js/setTimeout
                           (fn []
                             (reset! *adding false)
@@ -130,17 +113,16 @@
                                         (reset! *input "")
                                         (reset! *results []))
                            nil))}]
-        ;; Dropdown results
         (when (seq results)
           [:div
            {:style {:position   "absolute"
-                    :top        "22px"
+                    :top        "24px"
                     :left       0
                     :background "var(--lx-gray-02, #fff)"
                     :border     "1px solid var(--lx-gray-06, #e5e7eb)"
-                    :borderRadius "6px"
-                    :boxShadow  "0 4px 12px rgba(0,0,0,0.12)"
-                    :zIndex     2000
+                    :borderRadius "8px"
+                    :boxShadow  "0 4px 12px rgba(0,0,0,0.15)"
+                    :zIndex     3000
                     :minWidth   "160px"
                     :maxHeight  "200px"
                     :overflowY  "auto"
@@ -148,7 +130,7 @@
            (for [tag-entity results]
              [:div
               {:key      (str (:db/id tag-entity))
-               :style    {:padding "5px 10px" :cursor "pointer"
+               :style    {:padding "6px 12px" :cursor "pointer"
                           :borderBottom "1px solid var(--lx-gray-04, #f3f4f6)"}
                :on-mouse-down
                (fn [^js e]
@@ -159,8 +141,11 @@
                  (reset! *results []))}
               (str "#" (:block/title tag-entity))])])]
        [:span
-        {:style    {:opacity "0.4" :cursor "pointer" :font-size "11px"
-                    :padding "0 4px" :user-select "none"}
+        {:style    {:font-size "11px" :opacity "0.5" :cursor "pointer"
+                    :background "rgba(255,255,255,0.85)"
+                    :border "1px dashed var(--lx-gray-05, #d1d5db)"
+                    :border-radius "10px" :padding "1px 7px"
+                    :user-select "none"}
          :on-click (fn []
                      (reset! *adding true)
                      (reset! *results (whiteboard-handler/search-tags "")))}
@@ -273,22 +258,6 @@
              [:div {:style {:fontSize "11px" :opacity "0.55" :marginTop "1px"}}
               page])])])]))
 
-;; ── toolbar ───────────────────────────────────────────────────────────────────
-
-(rum/defc whiteboard-toolbar
-  "Main toolbar row – title + back button only.
-   The '插入块' button lives inside the Excalidraw canvas (renderTopRightUI)."
-  [{:keys [page-title on-back]}]
-  [:div.wb-toolbar
-   {:style {:height       "48px"
-            :display      "flex"
-            :alignItems   "center"
-            :padding      "0 12px"
-            :gap          "8px"}}
-   (shui/button-ghost-icon :arrow-left {:title "返回" :on-click on-back})
-   (ui/icon "layout-board" {:size 16 :class "opacity-60 shrink-0"})
-   [:span.font-semibold.text-sm.flex-1.truncate page-title]])
-
 ;; ── canvas ────────────────────────────────────────────────────────────────────
 
 (rum/defcs whiteboard-canvas
@@ -318,7 +287,7 @@
 ;; ── full whiteboard page ──────────────────────────────────────────────────────
 
 (rum/defcs whiteboard-page
-  "Full-page whiteboard.  :page-entity is the DataScript entity for the page."
+  "Full-page whiteboard. Canvas fills the entire viewport; controls float inside."
   < rum/reactive
   (rum/local false ::show-picker?)
   (rum/local nil   ::canvas-api)
@@ -330,22 +299,65 @@
         page-title   (or (:block/title page-entity) "Untitled Whiteboard")]
     [:div.whiteboard-page
      {:style {:position "relative" :width "100%" :height "100vh" :overflow "hidden"}}
-     ;; ── header area (main toolbar + tags bar) ─────────────────────────────
-     [:div {:style {:position "absolute" :top 0 :left 0 :right 0
-                    :z-index 100
-                    :background "var(--lx-gray-01, #fff)"
-                    :borderBottom "1px solid var(--lx-gray-05, #e5e7eb)"}}
-      (whiteboard-toolbar {:page-title page-title
-                           :on-back    #(js/history.back)})
-      ;; pass page-entity so tags-bar reads real block/tags from DB
-      (tags-bar page-uuid page-entity)]
-     ;; ── canvas (starts below the 76px header) ─────────────────────────────
-     [:div {:style {:position "absolute" :top "76px" :left 0 :right 0 :bottom 0}}
+
+     ;; ── canvas fills the entire area ──────────────────────────────────────
+     [:div {:style {:position "absolute" :inset 0}}
       (whiteboard-canvas
        {:page-uuid       page-uuid
         :on-api-ready    (fn [api] (reset! *canvas-api api))
         :on-block-click  (fn [bid] (whiteboard-handler/open-block-in-sidebar! bid))
         :on-insert-block #(swap! *show-picker not)})]
+
+     ;; ── floating title + back button (beside Excalidraw hamburger) ────────
+     [:div.wb-float-header
+      {:style {:position       "absolute"
+               :top            "8px"
+               :left           "56px"
+               :z-index        200
+               :display        "flex"
+               :align-items    "center"
+               :gap            "4px"
+               :pointer-events "auto"}}
+      ;; back / save button
+      [:button
+       {:title    "保存并退出"
+        :on-click #(route-handler/redirect! {:to :all-whiteboards})
+        :style    {:display         "inline-flex"
+                   :align-items     "center"
+                   :justify-content "center"
+                   :width           "28px"
+                   :height          "28px"
+                   :background      "rgba(255,255,255,0.92)"
+                   :border          "1px solid var(--lx-gray-05,#e5e7eb)"
+                   :border-radius   "6px"
+                   :cursor          "pointer"
+                   :box-shadow      "0 1px 4px rgba(0,0,0,0.1)"}}
+       (ui/icon "arrow-left" {:size 14})]
+      ;; title chip
+      [:span
+       {:style {:background    "rgba(255,255,255,0.92)"
+                :border        "1px solid var(--lx-gray-05,#e5e7eb)"
+                :border-radius "6px"
+                :padding       "3px 10px"
+                :font-size     "12px"
+                :font-weight   "600"
+                :max-width     "220px"
+                :overflow      "hidden"
+                :text-overflow "ellipsis"
+                :white-space   "nowrap"
+                :box-shadow    "0 1px 4px rgba(0,0,0,0.1)"
+                :line-height   "22px"}}
+       page-title]]
+
+     ;; ── floating tags bar (below the title row) ───────────────────────────
+     [:div.wb-float-tags-wrap
+      {:style {:position       "absolute"
+               :top            "44px"
+               :left           "56px"
+               :z-index        200
+               :pointer-events "auto"}}
+      (tags-bar page-uuid page-entity)]
+
      ;; ── block-picker overlay ───────────────────────────────────────────────
      (when show-picker
        (block-picker
