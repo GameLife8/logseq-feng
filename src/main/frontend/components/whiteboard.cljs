@@ -392,32 +392,34 @@
   {:did-mount
    (fn [state]
      (let [page-uuid (-> state :rum/args first)
-           *svg      (::svg-html state)]
-       ;; Read canvas JSON from DB (authoritative store)
-       (when-let [raw (whiteboard-handler/load-canvas-from-db page-uuid)]
-         (try
-           (let [data     (js/JSON.parse raw)
-                 elements (.-elements data)]
-             (when (and elements
-                        (pos? (.-length elements))
-                        (exists? js/ExcalidrawLib)
-                        (.-exportToSvg js/ExcalidrawLib))
-               (-> (js/ExcalidrawLib.exportToSvg
-                    #js {:elements elements
-                         :appState #js {:exportWithDarkMode false
-                                        :exportBackground   true
-                                        :backgroundColor    "#ffffff"}
-                         :files #js {}})
-                   (.then (fn [^js svg]
-                            ;; Constrain SVG to fill the thumbnail box
-                            (.setAttribute svg "width" "100%")
-                            (.setAttribute svg "height" "100%")
-                            (.setAttribute svg "preserveAspectRatio" "xMidYMid meet")
-                            (reset! *svg (.-outerHTML svg))))
-                   (.catch (fn [err]
-                             (js/console.warn "SVG thumbnail export failed" err))))))
-           (catch :default err
-             (js/console.warn "Thumbnail parse error" err)))))
+           *svg      (::svg-html state)
+           gen-svg!  (fn []
+                       (when-let [raw (whiteboard-handler/load-canvas-from-db page-uuid)]
+                         (try
+                           (let [data     (js/JSON.parse raw)
+                                 elements (.-elements data)]
+                             (when (and elements
+                                        (pos? (.-length elements))
+                                        (exists? js/ExcalidrawLib)
+                                        (.-exportToSvg js/ExcalidrawLib))
+                               (-> (js/ExcalidrawLib.exportToSvg
+                                    #js {:elements elements
+                                         :appState #js {:exportWithDarkMode false
+                                                        :exportBackground   true
+                                                        :backgroundColor    "#ffffff"}
+                                         :files #js {}})
+                                   (.then (fn [^js svg]
+                                            (.setAttribute svg "width" "100%")
+                                            (.setAttribute svg "height" "100%")
+                                            (.setAttribute svg "preserveAspectRatio" "xMidYMid meet")
+                                            (reset! *svg (.-outerHTML svg))))
+                                   (.catch (fn [err]
+                                             (js/console.warn "SVG thumbnail export failed" err))))))
+                           (catch :default err
+                             (js/console.warn "Thumbnail parse error" err)))))]
+       ;; Ensure the Excalidraw bundle (which exposes ExcalidrawLib) is loaded
+       ;; before attempting SVG export. On first visit the bundle isn't loaded yet.
+       (ensure-excalidraw-loaded! gen-svg!))
      state)}
   [state _page-uuid]
   (let [svg-html (rum/react (::svg-html state))]
@@ -441,12 +443,42 @@
   < rum/reactive db-mixins/query
   (rum/local false ::creating?)
   (rum/local "" ::new-name)
+  (rum/local nil  ::editing-uuid)   ; UUID string of the card being renamed, or nil
+  (rum/local ""   ::rename-val)     ; current value in the rename input
   [state]
-  (let [*creating? (::creating? state)
-        *new-name  (::new-name state)
-        creating?  (rum/react *creating?)
-        new-name   (rum/react *new-name)
-        whiteboards (whiteboard-handler/get-all-whiteboards)]
+  (let [*creating?    (::creating? state)
+        *new-name     (::new-name state)
+        *editing-uuid (::editing-uuid state)
+        *rename-val   (::rename-val state)
+        creating?     (rum/react *creating?)
+        new-name      (rum/react *new-name)
+        editing-uuid  (rum/react *editing-uuid)
+        rename-val    (rum/react *rename-val)
+        whiteboards   (whiteboard-handler/get-all-whiteboards)
+
+        ;; Create: only close input if creation succeeded (not a duplicate)
+        do-create!
+        (fn []
+          (let [trimmed (string/trim new-name)]
+            (when (seq trimmed)
+              (when (whiteboard-handler/<create-whiteboard! trimmed)
+                ;; <create-whiteboard! returns nil on duplicate (shows notification)
+                ;; Only close input when the promise resolves to a page
+                (reset! *creating? false)
+                (reset! *new-name "")))))
+
+        ;; Commit rename
+        do-rename!
+        (fn []
+          (let [trimmed (string/trim rename-val)]
+            (when (and (seq trimmed) editing-uuid)
+              (whiteboard-handler/<rename-whiteboard! editing-uuid trimmed)
+              (reset! *editing-uuid nil)
+              (reset! *rename-val ""))))
+
+        cancel-rename!
+        (fn [] (reset! *editing-uuid nil) (reset! *rename-val ""))]
+
     [:div.all-whiteboards-page
      {:style {:padding "24px 28px" :maxWidth "1000px" :margin "0 auto"}}
 
@@ -468,19 +500,11 @@
            :on-change   #(reset! *new-name (.. % -target -value))
            :on-key-down (fn [^js e]
                           (case (.-key e)
-                            "Enter"  (do (reset! *creating? false)
-                                         (when (seq (string/trim new-name))
-                                           (whiteboard-handler/<create-whiteboard! new-name)))
+                            "Enter"  (do-create!)
                             "Escape" (do (reset! *creating? false)
                                          (reset! *new-name ""))
                             nil))}]
-         (shui/button
-          {:size     :sm
-           :on-click (fn []
-                       (reset! *creating? false)
-                       (when (seq (string/trim new-name))
-                         (whiteboard-handler/<create-whiteboard! new-name)))}
-          "创建")
+         (shui/button {:size :sm :on-click do-create!} "创建")
          (shui/button
           {:size :sm :variant :ghost
            :on-click (fn [] (reset! *creating? false) (reset! *new-name ""))}
@@ -498,30 +522,90 @@
                  :gridTemplateColumns "repeat(3, 1fr)"
                  :gap                 "16px"}}
         (for [wb whiteboards
-              :let [uuid  (str (:block/uuid wb))
-                    title (or (:block/title wb) "Untitled")]]
+              :let [wb-uuid  (str (:block/uuid wb))
+                    wb-title (or (:block/title wb) "Untitled")
+                    renaming? (= editing-uuid wb-uuid)]]
           [:div.wb-gallery-card
-           {:key   (str "wbcard-" uuid)
-            :style {:border       "1px solid var(--lx-gray-05, #e5e7eb)"
-                    :borderRadius "10px"
-                    :overflow     "hidden"
-                    :cursor       "pointer"
-                    :transition   "box-shadow 0.15s, transform 0.15s"
-                    :background   "var(--lx-gray-01, #fff)"}
-            :on-mouse-enter #(let [^js s (.. % -currentTarget -style)]
+           {:key            (str "wbcard-" wb-uuid)
+            :style          {:border       "1px solid var(--lx-gray-05, #e5e7eb)"
+                             :borderRadius "10px"
+                             :overflow     "hidden"
+                             :cursor       "pointer"
+                             :transition   "box-shadow 0.15s, transform 0.15s"
+                             :background   "var(--lx-gray-01, #fff)"}
+            :on-mouse-enter #(let [^js s  (.. % -currentTarget -style)
+                                    ^js as (some-> % .-currentTarget
+                                                   (.querySelector ".wb-card-actions") .-style)]
                                (set! (.-boxShadow s) "0 4px 16px rgba(0,0,0,0.12)")
-                               (set! (.-transform s) "translateY(-2px)"))
-            :on-mouse-leave #(let [^js s (.. % -currentTarget -style)]
+                               (set! (.-transform s) "translateY(-2px)")
+                               (when as (set! (.-opacity as) "1")))
+            :on-mouse-leave #(let [^js s  (.. % -currentTarget -style)
+                                    ^js as (some-> % .-currentTarget
+                                                   (.querySelector ".wb-card-actions") .-style)]
                                (set! (.-boxShadow s) "none")
-                               (set! (.-transform s) "none"))
-            :on-click       #(whiteboard-handler/redirect-to-whiteboard! uuid)}
+                               (set! (.-transform s) "none")
+                               (when as (set! (.-opacity as) "0")))
+            :on-click       (fn [^js e]
+                              ;; Don't navigate if clicking action buttons or rename input
+                              (when-not (some-> (.. e -target)
+                                                (.closest ".wb-card-actions, .wb-rename-input"))
+                                (whiteboard-handler/redirect-to-whiteboard! wb-uuid)))}
            ;; SVG thumbnail
-           (whiteboard-thumbnail uuid)
+           (whiteboard-thumbnail wb-uuid)
            ;; card footer
            [:div.flex.items-center.gap-2.px-3.py-2
             {:style {:borderTop "1px solid var(--lx-gray-05, #e5e7eb)"}}
             (ui/icon "layout-board" {:size 13 :class "opacity-50 shrink-0"})
-            [:span.text-sm.font-medium.truncate title]]])]
+            ;; Title or rename input
+            (if renaming?
+              [:input.wb-rename-input
+               {:type        "text"
+                :auto-focus  true
+                :value       rename-val
+                :style       {:flex       "1"
+                              :fontSize   "13px"
+                              :padding    "1px 4px"
+                              :borderRadius "4px"
+                              :border     "1px solid var(--lx-gray-07,#d1d5db)"
+                              :outline    "none"
+                              :minWidth   0}
+                :on-change   #(reset! *rename-val (.. % -target -value))
+                :on-blur     (fn [] (js/setTimeout cancel-rename! 150))
+                :on-key-down (fn [^js e]
+                               (case (.-key e)
+                                 "Enter"  (do-rename!)
+                                 "Escape" (cancel-rename!)
+                                 nil))}]
+              [:span.text-sm.font-medium.truncate {:style {:flex "1"}} wb-title])
+            ;; Action buttons (rename + delete)
+            [:div.wb-card-actions
+             {:style {:display "flex" :gap "2px" :opacity "0"
+                      :transition "opacity 0.15s"}
+              ;; Show on card hover via inline style toggling
+              :on-mouse-enter #(set! (.. % -currentTarget -style -opacity) "1")
+              :on-mouse-leave #(set! (.. % -currentTarget -style -opacity) "0")}
+             [:button
+              {:title    "重命名"
+               :on-click (fn [^js e]
+                           (.stopPropagation e)
+                           (reset! *editing-uuid wb-uuid)
+                           (reset! *rename-val wb-title))
+               :style    {:background "none" :border "none" :cursor "pointer"
+                          :padding "2px 4px" :border-radius "4px"
+                          :font-size "12px" :opacity "0.6"
+                          :color "var(--lx-gray-11,#374151)"}}
+              (ui/icon "pencil" {:size 13})]
+             [:button
+              {:title    "删除"
+               :on-click (fn [^js e]
+                           (.stopPropagation e)
+                           (when (.confirm js/window (str "确定删除白板「" wb-title "」？\n此操作不可撤销。"))
+                             (whiteboard-handler/<delete-whiteboard! wb-uuid)))
+               :style    {:background "none" :border "none" :cursor "pointer"
+                          :padding "2px 4px" :border-radius "4px"
+                          :font-size "12px" :color "#ef4444"
+                          :opacity "0.6"}}
+              (ui/icon "trash" {:size 13})]]]])]
        ;; empty state
        [:div.flex.flex-col.items-center.justify-center.gap-4
         {:style {:paddingTop "80px"}}

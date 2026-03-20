@@ -13,6 +13,7 @@
             [frontend.handler.db-based.property :as db-property-handler]
             [frontend.handler.editor :as editor-handler]
             [frontend.handler.notification :as notification]
+            [frontend.handler.page :as page-handler]
             [frontend.handler.route :as route-handler]
             [frontend.state :as state]
             [promesa.core :as p]))
@@ -135,6 +136,24 @@
            {:to          :whiteboard
             :path-params {:name (str (:block/uuid page))}})
           page)))))
+
+(defn <delete-whiteboard!
+  "Deletes a whiteboard page. Shows success notification on completion."
+  [page-uuid-str]
+  (common-page-handler/<delete!
+   (uuid page-uuid-str)
+   (fn [] (notification/show! "白板已删除" :success))))
+
+(defn <rename-whiteboard!
+  "Renames a whiteboard page. Rejects duplicate names (case-insensitive)."
+  [page-uuid-str new-name]
+  (let [trimmed (string/trim new-name)]
+    (if (whiteboard-name-exists? trimmed)
+      (do (notification/show! (str "白板「" trimmed "」已存在，请使用不同的名称") :warning)
+          nil)
+      (p/do!
+       (page-handler/rename! page-uuid-str trimmed)
+       (notification/show! "白板已重命名" :success)))))
 
 (defn redirect-to-whiteboard!
   "Navigate to the whiteboard identified by page-uuid (string or uuid)."
