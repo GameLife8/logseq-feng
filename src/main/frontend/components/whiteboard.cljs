@@ -40,122 +40,148 @@
 ;; ── tags bar (floating, real Logseq block/tags) ─────────────────────────────
 
 (rum/defcs tags-bar
-  "Floating tags bar overlay. Tags are real Logseq block/tags stored in DB.
-   Only existing Tag-class entities can be added."
+  "Tags dropdown button in the whiteboard toolbar.
+   Click to open a panel showing selected tags and a search to add/remove tags."
   < rum/reactive
-  (rum/local false ::adding?)
+  (rum/local false ::open?)
   (rum/local "" ::tag-input)
   (rum/local [] ::tag-results)
   [state page-uuid page-entity]
-  (let [*adding  (::adding? state)
+  (let [*open?   (::open? state)
         *input   (::tag-input state)
         *results (::tag-results state)
-        adding?  (rum/react *adding)
-        _query   (rum/react *input)
+        open?    (rum/react *open?)
+        _        (rum/react *input)
         results  (rum/react *results)
-        tags     (whiteboard-handler/get-page-user-tags page-entity)]
-    [:div.wb-float-tags
-     {:style {:display    "flex"
-              :align-items "center"
-              :gap         "4px"
-              :flex-wrap   "wrap"
-              :position    "relative"}}
-     (for [tag tags]
-       [:span
-        {:key   (str (:db/id tag))
-         :style {:background    "rgba(255,255,255,0.92)"
-                 :border        "1px solid var(--lx-gray-05, #e5e7eb)"
-                 :border-radius "12px"
-                 :padding       "1px 8px 1px 6px"
-                 :display       "inline-flex"
-                 :align-items   "center"
-                 :gap           "3px"
-                 :font-size     "11px"
-                 :box-shadow    "0 1px 3px rgba(0,0,0,0.08)"}}
-        [:span {:on-click #(route-handler/redirect-to-page! (:block/title tag))
-                :style {:cursor "pointer"}}
-         (str "#" (:block/title tag))]
-        [:span
-         {:style    {:opacity "0.45" :cursor "pointer" :font-size "10px"}
-          :on-click (fn [^js e]
-                      (.stopPropagation e)
-                      (whiteboard-handler/remove-tag-from-page! (uuid page-uuid) tag))}
-         "×"]])
-     (if adding?
-       [:div {:style {:position "relative" :display "inline-flex" :align-items "center"}}
-        [:input
-         {:auto-focus  true
-          :type        "text"
-          :value       @*input
-          :placeholder "搜索标签…"
-          :style       {:font-size     "11px"
-                        :width         "110px"
-                        :height        "20px"
-                        :outline       "none"
-                        :border        "1px solid var(--lx-gray-07, #d1d5db)"
-                        :border-radius "10px"
-                        :padding       "0 8px"
-                        :background    "rgba(255,255,255,0.95)"}
-          :on-change   (fn [^js e]
-                         (let [q (.. e -target -value)]
-                           (reset! *input q)
-                           (reset! *results (whiteboard-handler/search-tags q))))
-          :on-focus    #(reset! *results (whiteboard-handler/search-tags ""))
-          :on-blur     (fn []
-                         (js/setTimeout
-                          (fn []
-                            (reset! *adding false)
-                            (reset! *input "")
-                            (reset! *results []))
-                          150))
-          :on-key-down (fn [^js e]
-                         (case (.-key e)
-                           "Escape" (do (reset! *adding false)
-                                        (reset! *input "")
-                                        (reset! *results []))
-                           nil))}]
+        tags     (whiteboard-handler/get-page-user-tags page-entity)
+        cnt      (count tags)
+        close!   (fn []
+                   (reset! *open? false)
+                   (reset! *input "")
+                   (reset! *results []))]
+    [:div {:style {:position "relative" :display "inline-block"}}
+     ;; ── Trigger button ──────────────────────────────────────────────────────
+     [:button
+      {:on-click #(if open? (close!) (do (reset! *open? true)
+                                         (reset! *results (whiteboard-handler/search-tags ""))))
+       :style    {:display       "flex"
+                  :align-items   "center"
+                  :gap           "5px"
+                  :padding       "5px 10px"
+                  :background    (if open? "var(--lx-gray-04,#e5e7eb)" "var(--lx-gray-03,#f3f4f6)")
+                  :color         "var(--lx-gray-12,#111)"
+                  :border        "1px solid var(--lx-gray-06,#e5e7eb)"
+                  :border-radius "6px"
+                  :cursor        "pointer"
+                  :font-size     "13px"
+                  :white-space   "nowrap"}}
+      "🏷"
+      (if (pos? cnt) (str "标签 (" cnt ")") "+ 标签")]
+
+     ;; ── Dropdown panel ──────────────────────────────────────────────────────
+     (when open?
+       [:div {:style {:position      "absolute"
+                      :top           "calc(100% + 6px)"
+                      :right         0
+                      :background    "var(--lx-gray-01, #fff)"
+                      :border        "1px solid var(--lx-gray-06,#e5e7eb)"
+                      :border-radius "10px"
+                      :box-shadow    "0 6px 20px rgba(0,0,0,0.15)"
+                      :z-index       3000
+                      :min-width     "220px"
+                      :padding       "10px 10px 8px"}}
+
+        ;; Header
+        [:div {:style {:display         "flex"
+                       :justify-content "space-between"
+                       :align-items     "center"
+                       :margin-bottom   "8px"}}
+         [:span {:style {:font-size "12px" :font-weight "600" :opacity "0.6"}} "标签"]
+         [:button {:on-click close!
+                   :style {:background "none" :border "none" :cursor "pointer"
+                           :opacity "0.4" :font-size "16px" :line-height "1" :padding "0 2px"}}
+          "×"]]
+
+        ;; Already-selected tags
+        (if (seq tags)
+          [:div {:style {:margin-bottom "6px"}}
+           (for [tag tags]
+             [:div {:key   (str "sel-" (:db/id tag))
+                    :style {:display         "flex"
+                            :align-items     "center"
+                            :justify-content "space-between"
+                            :padding         "4px 8px"
+                            :border-radius   "6px"
+                            :background      "#eef2ff"
+                            :margin-bottom   "3px"}}
+              [:span {:style {:font-size "12px" :color "#4f46e5"}} (str "#" (:block/title tag))]
+              [:button {:on-click (fn [^js e]
+                                    (.stopPropagation e)
+                                    (whiteboard-handler/remove-tag-from-page! (uuid page-uuid) tag))
+                        :style {:background "none" :border "none" :cursor "pointer"
+                                :opacity "0.5" :font-size "12px" :padding "0 2px"
+                                :line-height "1"}}
+               "×"]])]
+          [:div {:style {:font-size "12px" :opacity "0.4" :text-align "center"
+                         :padding "4px 0 6px"}}
+           "暂无标签"])
+
+        ;; Divider
+        [:hr {:style {:border "none" :border-top "1px solid var(--lx-gray-05,#e5e7eb)"
+                      :margin "6px 0"}}]
+
+        ;; Search input
+        [:input {:type        "text"
+                 :placeholder "搜索标签…"
+                 :value       @*input
+                 :style       {:display       "block"
+                               :width         "100%"
+                               :padding       "5px 8px"
+                               :border-radius "6px"
+                               :border        "1px solid var(--lx-gray-07,#d1d5db)"
+                               :outline       "none"
+                               :font-size     "12px"
+                               :box-sizing    "border-box"}
+                 :on-change   (fn [^js e]
+                                (let [q (.. e -target -value)]
+                                  (reset! *input q)
+                                  (reset! *results (whiteboard-handler/search-tags q))))
+                 :on-focus    #(reset! *results (whiteboard-handler/search-tags ""))
+                 :on-blur     (fn [] (js/setTimeout close! 200))
+                 :on-key-down (fn [^js e]
+                                (when (= "Escape" (.-key e)) (close!)))}]
+
+        ;; Candidates list (all tags, already-selected shown with ✓)
         (when (seq results)
-          [:div
-           {:style {:position   "absolute"
-                    :top        "24px"
-                    :left       0
-                    :background "var(--lx-gray-02, #fff)"
-                    :border     "1px solid var(--lx-gray-06, #e5e7eb)"
-                    :borderRadius "8px"
-                    :boxShadow  "0 4px 12px rgba(0,0,0,0.15)"
-                    :zIndex     3000
-                    :minWidth   "160px"
-                    :maxHeight  "200px"
-                    :overflowY  "auto"
-                    :fontSize   "12px"}}
-           (for [tag-entity results]
-             [:div
-              {:key      (str (:db/id tag-entity))
-               :style    {:padding "6px 12px" :cursor "pointer"
-                          :borderBottom "1px solid var(--lx-gray-04, #f3f4f6)"}
-               :on-mouse-down
-               (fn [^js e]
-                 (.preventDefault e)
-                 (whiteboard-handler/add-tag-to-page! (uuid page-uuid) tag-entity)
-                 (reset! *adding false)
-                 (reset! *input "")
-                 (reset! *results []))}
-              (str "#" (:block/title tag-entity))])])]
-       [:span
-        {:style    {:font-size    "13px"
-                    :cursor       "pointer"
-                    :background   "var(--lx-gray-03, #f3f4f6)"
-                    :border       "1px solid var(--lx-gray-06, #e5e7eb)"
-                    :border-radius "6px"
-                    :padding      "5px 10px"
-                    :display      "inline-flex"
-                    :align-items  "center"
-                    :user-select  "none"
-                    :white-space  "nowrap"}
-         :on-click (fn []
-                     (reset! *adding true)
-                     (reset! *results (whiteboard-handler/search-tags "")))}
-        "+ 标签"])]))
+          [:div {:style {:max-height "160px" :overflow-y "auto" :margin-top "4px"}}
+           (for [tag-entity results
+                 :let [already? (some #(= (:db/id %) (:db/id tag-entity)) tags)]]
+             [:div {:key          (str "res-" (:db/id tag-entity))
+                    :style        {:display         "flex"
+                                   :align-items     "center"
+                                   :justify-content "space-between"
+                                   :padding         "5px 8px"
+                                   :border-radius   "6px"
+                                   :cursor          "pointer"
+                                   :background      (if already? "var(--lx-gray-03,#f3f4f6)" "transparent")
+                                   :margin-bottom   "2px"}
+                    :on-mouse-enter #(when-not already?
+                                       (set! (.. % -currentTarget -style -background)
+                                             "var(--lx-gray-04,#f3f4f6)"))
+                    :on-mouse-leave #(when-not already?
+                                       (set! (.. % -currentTarget -style -background) "transparent"))
+                    :on-mouse-down  (fn [^js e]
+                                      (.preventDefault e)
+                                      (if already?
+                                        (whiteboard-handler/remove-tag-from-page! (uuid page-uuid) tag-entity)
+                                        (do (whiteboard-handler/add-tag-to-page! (uuid page-uuid) tag-entity)
+                                            (reset! *input "")
+                                            (reset! *results (whiteboard-handler/search-tags "")))))}
+              [:span {:style {:font-size "12px"}} (str "#" (:block/title tag-entity))]
+              (when already?
+                [:span {:style {:font-size "10px" :color "#6366f1" :opacity "0.8"}} "✓"])])])
+        ])]))
+
 
 ;; ── block-picker panel ────────────────────────────────────────────────────────
 
