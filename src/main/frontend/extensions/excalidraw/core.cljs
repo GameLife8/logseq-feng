@@ -57,25 +57,6 @@
 (defn- lib-key []
   (str "wb-library-" (state/get-current-repo)))
 
-;; ── scene → wrapper pixel coordinate conversion ───────────────────────────────
-
-(defn- scene->wrapper-px
-  "Convert a scene coordinate to pixels relative to the wrapper div.
-   Formula: viewportPx = (scene + scroll) * zoom  (relative to canvas element)
-            wrapperPx  = viewportPx + offsetLeft/Top - wrapperRect.left/top"
-  [scene-x scene-y ^js app-state ^js wrapper-el]
-  (when (and app-state wrapper-el)
-    (let [scroll-x  (gobj/get app-state "scrollX")
-          scroll-y  (gobj/get app-state "scrollY")
-          zoom      (or (gobj/getValueByKeys app-state "zoom" "value") 1)
-          offset-l  (or (gobj/get app-state "offsetLeft") 0)
-          offset-t  (or (gobj/get app-state "offsetTop") 0)
-          rect      (.getBoundingClientRect wrapper-el)
-          wrapper-l (.-left rect)
-          wrapper-t (.-top rect)]
-      {:x (+ (* (+ scene-x scroll-x) zoom) offset-l (- wrapper-l))
-       :y (+ (* (+ scene-y scroll-y) zoom) offset-t (- wrapper-t))})))
-
 ;; ── Excalidraw component ──────────────────────────────────────────────────────
 
 (rum/defcs excalidraw-editor
@@ -85,18 +66,20 @@
      :page-uuid       – UUID string of the whiteboard page
      :page-title      – Display title string shown in the toolbar chip
      :on-back         – fn() called to navigate back (after save completes)
-     :on-block-click  – fn called with block-id-string to open in sidebar
+     :on-block-click  – fn called with block-id-string to open block in sidebar
      :on-api-ready    – fn called with the ExcalidrawImperativeAPI once mounted
      :on-insert-block – fn called when the user clicks '+ 插入块' in canvas toolbar
      :on-load-data    – fn(page-uuid) → JSON-string | nil  (reads from DB)
-     :on-save-data    – fn(page-uuid, json-string)          (writes to DB)"
+     :on-save-data    – fn(page-uuid, json-string)          (writes to DB)
+
+   Double-click a Logseq block card to open it in the right sidebar."
   < rum/static
   (rum/local nil   ::api)
   (rum/local nil   ::selected-block-el)
   (rum/local false ::dirty?)
   (rum/local nil   ::timer-id)
   (rum/local nil   ::library-items)
-  (rum/local nil   ::wrapper-el)        ; DOM ref to .excalidraw-wrapper div
+  (rum/local nil   ::last-click)   ; {:time ms :bid str} for double-click detection
   {:did-mount
    (fn [state]
      (let [*timer   (::timer-id state)
@@ -114,7 +97,7 @@
        (when-let [raw (.getItem js/localStorage (lib-key))]
          (try (reset! *library (js/JSON.parse raw))
               (catch :default _ nil)))
-       ;; Inject/update CSS: hide shortcut keys in Excalidraw menus
+       ;; Inject/update CSS: hide shortcut keys + compact context menu
        (let [el (or (.getElementById js/document "excalidraw-custom-css")
                     (let [new-el (.createElement js/document "style")]
                       (set! (.-id new-el) "excalidraw-custom-css")
@@ -141,43 +124,27 @@
      state)}
   [state {:keys [page-uuid page-title on-back on-block-click on-api-ready
                  on-insert-block on-load-data on-save-data render-tags]}]
-  (let [*api      (::api state)
-        *sel-el   (::selected-block-el state)
-        *dirty?   (::dirty? state)
-        *library  (::library-items state)
-        *wrapper  (::wrapper-el state)
-        init-data (or (when on-load-data
-                        (try
-                          (when-let [json-str (on-load-data page-uuid)]
-                            (js/JSON.parse json-str))
-                          (catch :default _ nil)))
-                      (load-from-ls page-uuid))
+  (let [*api        (::api state)
+        *sel-el     (::selected-block-el state)
+        *dirty?     (::dirty? state)
+        *library    (::library-items state)
+        *last-click (::last-click state)
+        init-data   (or (when on-load-data
+                          (try
+                            (when-let [json-str (on-load-data page-uuid)]
+                              (js/JSON.parse json-str))
+                            (catch :default _ nil)))
+                        (load-from-ls page-uuid))
         save-and-back!
         (fn []
           (let [api @*api]
             (when api
               (save-to-ls! page-uuid api)
               (when on-save-data (on-save-data page-uuid (canvas-json api)))))
-          (when on-back (on-back)))
-
-        ;; Compute floating icon position for selected block (nil when none selected)
-        icon-info
-        (when-let [sel @*sel-el]
-          (when-let [api @*api]
-            (let [bid   (some-> sel (gobj/get "customData") (gobj/get "blockId"))
-                  title (some-> sel (gobj/get "customData") (gobj/get "blockTitle"))]
-              (when (seq bid)
-                (when-let [pos (scene->wrapper-px
-                                (+ (gobj/get sel "x") (gobj/get sel "width"))
-                                (gobj/get sel "y")
-                                (.getAppState api)
-                                @*wrapper)]
-                  (assoc pos :bid bid :title title))))))]
+          (when on-back (on-back)))]
 
     [:div.excalidraw-wrapper
-     {:style {:width "100%" :height "100%" :position "relative"}
-      ;; Capture DOM ref so we can compute getBoundingClientRect for overlay positioning
-      :ref   (fn [el] (reset! *wrapper el))}
+     {:style {:width "100%" :height "100%" :position "relative"}}
 
      (js/React.createElement
       Excalidraw
@@ -198,6 +165,21 @@
            :onChange         (fn [_elements _app-state _files]
                                (reset! *dirty? true)
                                (reset! *sel-el (ex-api/get-selected-block-element @*api)))
+           ;; Double-click on a block card → open in sidebar
+           :onPointerUp      (fn [_active-tool _pointer-state]
+                               (when-let [sel @*sel-el]
+                                 (let [bid  (some-> sel (gobj/get "customData") (gobj/get "blockId"))
+                                       now  (.now js/Date)
+                                       last @*last-click]
+                                   (when (seq bid)
+                                     (if (and last
+                                              (= (:bid last) bid)
+                                              (< (- now (:time last)) 400))
+                                       ;; Second click within 400 ms on same block → open sidebar
+                                       (do (reset! *last-click nil)
+                                           (when on-block-click (on-block-click bid)))
+                                       ;; First click – record time
+                                       (reset! *last-click {:time now :bid bid}))))))
            ;; Top-right: back + title + insert block + tags
            :renderTopRightUI
            (fn []
@@ -241,7 +223,7 @@
               ;; 插入块
               (js/React.createElement
                "button"
-               #js {:title   "搜索并插入 Logseq 块卡片到画布"
+               #js {:title   "搜索并插入 Logseq 块卡片到画布（双击卡片可在侧边栏打开）"
                     :onClick (fn [] (when on-insert-block (on-insert-block)))
                     :style   #js {:display      "flex"
                                   :alignItems   "center"
@@ -254,38 +236,7 @@
                                   :cursor       "pointer"
                                   :fontSize     "13px"
                                   :whiteSpace   "nowrap"}}
-               "+ 插入块")))})
-
-     ;; ── Floating sidebar-open icon ────────────────────────────────────────────
-     ;; Positioned at the top-right corner of the selected Logseq block card.
-     ;; Uses HTML overlay (not canvas) so it can respond to Rum state changes.
-     (when icon-info
-       (let [{:keys [x y bid title]} icon-info]
-         [:button.wb-block-open-btn
-          {:title    (str "在侧边栏打开: " title)
-           :on-click (fn [^js e]
-                       (.stopPropagation e)
-                       (.preventDefault e)
-                       (when on-block-click (on-block-click bid)))
-           :style    {:position         "absolute"
-                      :left             (str (js/Math.round x) "px")
-                      :top              (str (js/Math.round (- y 22)) "px")
-                      :width            "20px"
-                      :height           "20px"
-                      :display          "flex"
-                      :align-items      "center"
-                      :justify-content  "center"
-                      :background       "#6366f1"
-                      :color            "#fff"
-                      :border           "none"
-                      :border-radius    "4px"
-                      :cursor           "pointer"
-                      :font-size        "12px"
-                      :z-index          200
-                      :line-height      "1"
-                      :pointer-events   "all"
-                      :box-shadow       "0 1px 4px rgba(99,102,241,0.4)"}}
-          "↗"]))]))
+               "+ 插入块")))})]))
 
 ;; Export for shadow.lazy loadable
 (def ^:export editor excalidraw-editor)
