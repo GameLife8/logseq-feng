@@ -12,6 +12,7 @@
             [frontend.handler.common.page :as common-page-handler]
             [frontend.handler.db-based.property :as db-property-handler]
             [frontend.handler.editor :as editor-handler]
+            [frontend.handler.notification :as notification]
             [frontend.handler.route :as route-handler]
             [frontend.state :as state]
             [promesa.core :as p]))
@@ -29,6 +30,13 @@
          (map first)
          (filter :block/title)
          (sort-by :block/updated-at >))))
+
+(defn- whiteboard-name-exists?
+  "Returns true if a whiteboard with the given title already exists (case-insensitive)."
+  [title]
+  (some #(= (string/lower-case (or (:block/title %) ""))
+            (string/lower-case title))
+        (get-all-whiteboards)))
 
 ;; ── canvas data (stored on the page entity) ───────────────────────────────────
 
@@ -105,21 +113,25 @@
 
 (defn <create-whiteboard!
   "Creates a new whiteboard page, tags it with :logseq.class/Whiteboard,
-   and redirects the router to the whiteboard view."
+   and redirects the router to the whiteboard view.
+   Returns nil (with a warning notification) if a whiteboard with the same name already exists."
   [name]
   (let [title (string/trim (or name "Untitled Whiteboard"))]
-    (p/let [page (common-page-handler/<create! title {:redirect? false})]
-      (when page
-        (let [wclass (db/entity :logseq.class/Whiteboard)]
-          (when wclass
-            (db/transact! (state/get-current-repo)
-                          [{:db/id       (:db/id page)
-                            :block/tags  #{(:db/id wclass)}}]
-                          {:outliner-op :save-block})))
-        (route-handler/redirect!
-         {:to          :whiteboard
-          :path-params {:name (str (:block/uuid page))}})
-        page))))
+    (if (whiteboard-name-exists? title)
+      (do (notification/show! (str "白板「" title "」已存在，请使用不同的名称") :warning)
+          nil)
+      (p/let [page (common-page-handler/<create! title {:redirect? false})]
+        (when page
+          (let [wclass (db/entity :logseq.class/Whiteboard)]
+            (when wclass
+              (db/transact! (state/get-current-repo)
+                            [{:db/id       (:db/id page)
+                              :block/tags  #{(:db/id wclass)}}]
+                            {:outliner-op :save-block})))
+          (route-handler/redirect!
+           {:to          :whiteboard
+            :path-params {:name (str (:block/uuid page))}})
+          page)))))
 
 (defn redirect-to-whiteboard!
   "Navigate to the whiteboard identified by page-uuid (string or uuid)."

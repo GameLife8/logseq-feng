@@ -12,7 +12,7 @@
 
 (defn make-block-element
   "Returns an Excalidraw rectangle element representing a Logseq block card."
-  [block-id block-title page-title x y]
+  [block-id block-title page-title x y custom-label]
   (let [id (gen-id)]
     #js {:id             id
          :type           "rectangle"
@@ -36,18 +36,21 @@
          :versionNonce   (rand-int 100000)
          :angle          0
          :locked         false
-         :customData     #js {:type       "logseq-block"
-                              :blockId    (str block-id)
-                              :blockTitle (or block-title "")
-                              :pageTitle  (or page-title "")}}))
+         :customData     #js {:type        "logseq-block"
+                              :blockId     (str block-id)
+                              :blockTitle  (or block-title "")
+                              :pageTitle   (or page-title "")
+                              :customLabel (or custom-label "")}}))
 
 (defn make-block-text-element
-  "Returns an Excalidraw text element bound to the given block rectangle."
-  [rect-id rect-x rect-y block-title page-title]
-  (let [label (str (when (seq page-title) (str "📄 " page-title "\n"))
-                   (if (> (count block-title) 55)
-                     (str (subs block-title 0 55) "…")
-                     (or block-title "(空内容)")))]
+  "Returns an Excalidraw text element bound to the given block rectangle.
+   Line 1: custom-label (user-defined description) or '(未标记)' if not set.
+   Line 2: block content truncated to 10 characters."
+  [rect-id rect-x rect-y block-title page-title custom-label]
+  (let [line1 (if (seq custom-label) custom-label "(未标记)")
+        raw   (or block-title "")
+        line2 (if (> (count raw) 10) (str (subs raw 0 10) "…") (if (seq raw) raw "(空内容)"))
+        label (str line1 "\n" line2)]
     #js {:id             (str rect-id "-txt")
          :type           "text"
          :x              (+ rect-x 12)
@@ -83,8 +86,9 @@
 
 (defn insert-block-elements!
   "Add a Logseq block card (rectangle + text) to the Excalidraw canvas.
-   `api` – ExcalidrawImperativeAPI instance obtained from the :ref callback."
-  [^js api block-id block-title page-title]
+   `api`          – ExcalidrawImperativeAPI instance obtained from the :ref callback.
+   `custom-label` – User-provided description shown as line 1 of the card."
+  [^js api block-id block-title page-title custom-label]
   (when api
     (let [existing  (.getSceneElements api)
           app-state (.getAppState api)
@@ -99,9 +103,9 @@
           ;; jitter so repeated inserts don't perfectly overlap
           x         (+ cx (- (rand-int 60) 30))
           y         (+ cy (- (rand-int 40) 20))
-          rect      (make-block-element block-id block-title page-title x y)
+          rect      (make-block-element block-id block-title page-title x y custom-label)
           rect-id   (gobj/get rect "id")
-          txt       (make-block-text-element rect-id x y block-title page-title)
+          txt       (make-block-text-element rect-id x y block-title page-title custom-label)
           new-elems (.concat existing #js [rect txt])]
       (.updateScene api #js {:elements new-elems}))))
 

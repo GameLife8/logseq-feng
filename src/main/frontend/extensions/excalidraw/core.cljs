@@ -108,7 +108,11 @@
 "
                     ".excalidraw .context-menu-option__shortcut { display: none !important; }
 "
-                    ".excalidraw .context-menu-item-separator { display: none !important; }"))))
+                    ".excalidraw .context-menu-item-separator { display: none !important; }
+"
+                    ".excalidraw .context-menu-item__label { font-size: 12px !important; }
+"
+                    ".excalidraw .context-menu-item { min-height: 28px !important; }"))))
      state)
    :will-unmount
    (fn [state]
@@ -168,13 +172,6 @@
            :onChange         (fn [_elements _app-state _files]
                                (reset! *dirty? true)
                                (reset! *sel-el (ex-api/get-selected-block-element @*api)))
-           :onPointerUp      (fn [_active-tool _pointer-state]
-                               (when-let [el @*sel-el]
-                                 (let [bid (some-> el
-                                                   (gobj/get "customData")
-                                                   (gobj/get "blockId"))]
-                                   (when (and (seq bid) on-block-click)
-                                     (on-block-click bid)))))
            ;; Top-right: back + title + insert block + sidebar
            :renderTopRightUI
            (fn []

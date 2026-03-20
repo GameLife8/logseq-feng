@@ -167,6 +167,7 @@
   (rum/local "" ::query)
   (rum/local [] ::results)
   (rum/local false ::searching?)
+  (rum/local "" ::custom-label)
   {:did-mount (fn [state]
                 (js/setTimeout
                  #(when-let [el (.querySelector js/document ".wb-picker-input")]
@@ -177,6 +178,7 @@
   (let [*q      (::query state)
         *res    (::results state)
         *busy?  (::searching? state)
+        *label  (::custom-label state)
         query   (rum/react *q)
         results (rum/react *res)]
     [:div.wb-block-picker
@@ -225,6 +227,22 @@
                             {:built-in? false :enable-snippet? false})]
                  (reset! *res (vec (take 25 (or res []))))
                  (reset! *busy? false))))))}]
+     ;; custom label input
+     [:div {:style {:marginTop "10px"}}
+      [:div {:style {:fontSize "11px" :opacity "0.55" :marginBottom "4px"}} "自定义标签（第一行显示内容，可选）"]
+      [:input
+       {:type        "text"
+        :placeholder "描述这个块的用途，如：待办、重要决策…"
+        :value       @*label
+        :style       {:display     "block"
+                      :width       "100%"
+                      :padding     "6px 10px"
+                      :borderRadius "6px"
+                      :border      "1px solid var(--lx-gray-07, #d1d5db)"
+                      :outline     "none"
+                      :fontSize    "12px"
+                      :boxSizing   "border-box"}
+        :on-change   #(reset! *label (.. % -target -value))}]]
      ;; results
      (cond
        @*busy?
@@ -252,9 +270,10 @@
             #(set! (.. % -currentTarget -style -background) "transparent")
             :on-click
             (fn []
-              (on-insert {:block-id    (str uuid)
-                          :block-title title
-                          :page-title  (or page "")})
+              (on-insert {:block-id     (str uuid)
+                          :block-title  title
+                          :page-title   (or page "")
+                          :custom-label @*label})
               (on-close))}
            [:div.text-sm.font-medium
             {:style {:overflow "hidden" :textOverflow "ellipsis"
@@ -332,10 +351,10 @@
      (when show-picker
        (block-picker
         {:on-close  #(reset! *show-picker false)
-         :on-insert (fn [{:keys [block-id block-title page-title]}]
+         :on-insert (fn [{:keys [block-id block-title page-title custom-label]}]
                       (when-let [api @*canvas-api]
                         (ex-api/insert-block-elements!
-                         api block-id block-title page-title)))}))]))
+                         api block-id block-title page-title custom-label)))}))]))
 
 ;; ── whiteboard gallery ────────────────────────────────────────────────────────
 
