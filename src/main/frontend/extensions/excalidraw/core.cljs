@@ -94,17 +94,19 @@
        (when-let [raw (.getItem js/localStorage (lib-key))]
          (try (reset! *library (js/JSON.parse raw))
               (catch :default _ nil)))
-       ;; Inject CSS once: hide shortcut keys in Excalidraw context menu
-       (when-not (.getElementById js/document "excalidraw-custom-css")
-         (let [el (.createElement js/document "style")]
-           (set! (.-id el) "excalidraw-custom-css")
-           (set! (.-textContent el)
-                 (str ".dropdown-menu-item__shortcut { display: none !important; }
+       ;; Inject/update CSS: hide shortcut keys in Excalidraw menus
+       ;; Always update content so new builds take effect immediately
+       (let [el (or (.getElementById js/document "excalidraw-custom-css")
+                    (let [new-el (.createElement js/document "style")]
+                      (set! (.-id new-el) "excalidraw-custom-css")
+                      (.. js/document -head (appendChild new-el))
+                      new-el))]
+         (set! (.-textContent el)
+               (str ".excalidraw .dropdown-menu-item__shortcut { display: none !important; }
 "
-                      ".context-menu-item__shortcut { display: none !important; }
+                    ".excalidraw .context-menu-item__shortcut { display: none !important; }
 "
-                      ".context-menu-option__shortcut { display: none !important; }"))
-           (.. js/document -head (appendChild el)))))
+                    ".excalidraw .context-menu-option__shortcut { display: none !important; }"))))
      state)
    :will-unmount
    (fn [state]
