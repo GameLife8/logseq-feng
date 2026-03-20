@@ -19,7 +19,7 @@
          :x              (or x 120)
          :y              (or y 140)
          :width          240
-         :height         80
+         :height         100
          :strokeColor    "#6366f1"
          :backgroundColor "#eef2ff"
          :fillStyle      "solid"
@@ -44,19 +44,21 @@
 
 (defn make-block-text-element
   "Returns an Excalidraw text element bound to the given block rectangle.
-   Line 1: custom-label (user-defined description) or '(未标记)' if not set.
-   Line 2: block content truncated to 10 characters."
+   Line 1: '📌 Insert Block' header badge.
+   Line 2: custom-label (user-defined description) or '(未标记)' if not set.
+   Line 3: block content truncated to 10 characters."
   [rect-id rect-x rect-y block-title page-title custom-label]
-  (let [line1 (str "⊞ " (if (seq custom-label) custom-label "(未标记)"))
+  (let [line1 "📌 Insert Block"
+        line2 (str "⊞ " (if (seq custom-label) custom-label "(未标记)"))
         raw   (or block-title "")
-        line2 (if (> (count raw) 10) (str (subs raw 0 10) "…") (if (seq raw) raw "(空内容)"))
-        label (str line1 "\n" line2)]
+        line3 (if (> (count raw) 10) (str (subs raw 0 10) "…") (if (seq raw) raw "(空内容)"))
+        label (str line1 "\n" line2 "\n" line3)]
     #js {:id             (str rect-id "-txt")
          :type           "text"
          :x              rect-x
          :y              (+ rect-y 10)
          :width          240
-         :height         60
+         :height         80
          :text           label
          :originalText   label
          :fontSize       12
