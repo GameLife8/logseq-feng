@@ -2,6 +2,7 @@
   "日程页面 – 任务日历 + 看板，原生集成 Logseq DB。
    设计灵感来自 logseq-plugin-agenda (haydenull)，按 DB 版规范重写。"
   (:require [clojure.string :as string]
+            [datascript.core :as d]
             [frontend.db :as db]
             [frontend.db.async :as db-async]
             [frontend.handler.db-based.property :as db-property-handler]
@@ -148,9 +149,11 @@
        :block/page              [:db/id :block/title :block/uuid :block/journal-day]}])
 
 (defn- <load-tasks
-  "从 DB Worker 加载所有带状态的块，返回 promise<seq>"
+  "从 DB Worker 加载所有带状态的块，返回 promise<seq>。
+   使用 transact-db? false 确保每次都直接查询 DB Worker 获取最新数据，
+   避免缓存导致新建任务不显示的问题。"
   [repo]
-  (db-async/<q repo {:transact-db? true}
+  (db-async/<q repo {:transact-db? false}
                '[:find [(pull ?block ?pull-spec) ...]
                  :in $ ?pull-spec
                  :where
@@ -704,19 +707,36 @@
            *sel    (::selected-ymd state)
            td      (today-ymd)
            [y m _] td
+           *timer  (volatile! nil)
            do-load! (fn []
                       (p/let [tasks (some-> (state/get-current-repo) (<load-tasks))]
                         (reset! *tasks (or tasks []))
-                        (notify-on-load! (or tasks []))))]
+                        (notify-on-load! (or tasks []))))
+           ;; 监听的属性：新建任务/状态变更/日期变更 都会触发刷新
+           watch-attrs #{:logseq.property/status
+                         :logseq.property/scheduled
+                         :logseq.property/deadline}]
        (reset! *month [y m])
        (reset! *week  td)
        (reset! *sel   td)
        ;; 注册全局刷新函数，供 task-card 状态修改后调用
        (reset! *global-reload! do-load!)
+       ;; 监听前端 DB 变化，自动刷新任务列表（防抖 400ms）
+       (when-let [conn (db/get-db (state/get-current-repo) false)]
+         (d/listen! conn ::agenda-auto-refresh
+                    (fn [{:keys [tx-data]}]
+                      (when (some #(contains? watch-attrs (.-a %)) tx-data)
+                        (js/clearTimeout @*timer)
+                        (vreset! *timer (js/setTimeout do-load! 400))))))
        (do-load!)
        (p/catch (p/let [_ (p/delay 0)] nil)
                 (fn [err]
                   (reset! *err (str err)))))
+     state)
+   :will-unmount
+   (fn [state]
+     (when-let [conn (db/get-db (state/get-current-repo) false)]
+       (d/unlisten! conn ::agenda-auto-refresh))
      state)}
   [state]
   (let [*view      (::view state)
