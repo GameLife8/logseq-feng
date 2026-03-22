@@ -10,9 +10,11 @@
             [frontend.handler.db-based.property :as db-property-handler]
             [frontend.handler.editor :as editor-handler]
             [frontend.handler.notification :as notification]
+            [frontend.handler.page :as page-handler]
             [frontend.handler.route :as route-handler]
             [frontend.state :as state]
             [frontend.ui :as ui]
+            [frontend.util :as util]
             [promesa.core :as p]
             [rum.core :as rum]))
 
@@ -269,17 +271,21 @@
 ;; ── 任务创建 ──────────────────────────────────────────────────────────────────
 
 (defn- <create-task!
-  "在今日日记页新建任务块，设置状态和可选日期属性。
-   type: :todo | :scheduled | :deadline
-   date-ms: UTC 毫秒时间戳（nil 时不设置日期）"
+  "在指定日期的日记页新建任务块，设置状态和可选日期属性（精确到分钟）。
+   type     : :todo | :scheduled | :deadline
+   date-ms  : UTC 毫秒（nil = 今天）；scheduled/deadline 含时间直接存为属性值
+   任务所在日记页 = date-ms 对应日期，页不存在时先创建。"
   [title type date-ms]
   (when-not (string/blank? title)
-    (let [today-page (db-model/get-journal-page (date/today))]
-      (when today-page
+    (p/let [page-name (if date-ms
+                        (date/js-date->journal-title (js/Date. date-ms))
+                        (date/today))
+            _         (when-not (db-model/get-journal-page page-name)
+                        (page-handler/<create! page-name {:redirect? false}))
+            target    (db-model/get-journal-page page-name)]
+      (when target
         (p/let [block (editor-handler/api-insert-new-block!
-                       title
-                       {:page (:block/uuid today-page)
-                        :edit-block? false})]
+                       title {:page (:block/uuid target) :edit-block? false})]
           (when block
             (let [uuid (:block/uuid block)]
               (db-property-handler/batch-set-property-closed-value!
@@ -290,9 +296,8 @@
                  (if (= type :scheduled)
                    :logseq.property/scheduled
                    :logseq.property/deadline)
-                 date-ms
-                 {}))
-              block)))))))
+                 date-ms {}))
+              block))))))
 
 ;; ── 小型日历选择器 ─────────────────────────────────────────────────────────────
 
@@ -357,7 +362,16 @@
           [:div {:key      (str ymd)
                  :on-click (fn [e]
                               (.stopPropagation e)
-                              (when current? (on-select (.getTime (ymd->date ymd)))))
+                              (when current?
+                                ;; 保留已选时间（小时:分钟），只改日期部分
+                                (let [base (ymd->date ymd)
+                                      d    (if selected-ms
+                                             (doto base
+                                               (.setHours (.getHours (js/Date. selected-ms))
+                                                          (.getMinutes (js/Date. selected-ms))
+                                                          0 0))
+                                             base)]
+                                  (on-select (.getTime d)))))
                  :style {:textAlign "center" :fontSize "12px"
                          :padding "4px 2px" :borderRadius "4px"
                          :cursor (if current? "pointer" "default")
@@ -388,7 +402,19 @@
         type     (rum/react *type)
         date-ms  (rum/react *date-ms)
         saving?  (rum/react *saving?)
-        can-save (not (string/blank? title))
+        ;; 计划/截止必须选日期；待办可选（nil = 今天）
+        can-save (and (not (string/blank? title))
+                      (or (= type :todo) (some? date-ms)))
+        ;; 当前时分（用于时间选择器回显）
+        cur-h    (if date-ms (.getHours   (js/Date. date-ms)) 9)
+        cur-m    (if date-ms (.getMinutes (js/Date. date-ms)) 0)
+        ;; 更新 date-ms 的时分，保留日期
+        set-time (fn [new-h new-m]
+                   (let [base (if date-ms
+                                (js/Date. date-ms)
+                                (doto (js/Date.) (.setHours 0 0 0 0)))]
+                     (.setHours base new-h new-m 0 0)
+                     (reset! *date-ms (.getTime base))))
         do-save! (fn []
                    (when can-save
                      (reset! *saving? true)
@@ -397,7 +423,11 @@
                        (on-close)
                        (js/setTimeout #(when-let [r! @*global-reload!] (r!)) 300))))
         btn-base {:padding "5px 14px" :borderRadius "6px" :fontSize "12px"
-                  :cursor "pointer" :fontWeight "500"}]
+                  :cursor "pointer" :fontWeight "500"}
+        sel-sty  {:padding "4px 6px" :borderRadius "6px" :fontSize "13px"
+                  :border "1px solid var(--lx-gray-05,#e5e7eb)"
+                  :background "var(--lx-gray-01,#fff)"
+                  :cursor "pointer" :outline "none"}]
     [:div {:on-click #(.stopPropagation %)
            :style {:background "#fff"
                    :border "1px solid var(--lx-gray-05,#e5e7eb)"
@@ -427,8 +457,7 @@
      [:div {:style {:display "flex" :gap "4px" :marginBottom "12px"}}
       (for [[t lbl ico] [[:todo "待办" "☑"] [:scheduled "计划" "📅"] [:deadline "截止" "⏰"]]]
         [:button {:key      (name t)
-                  :on-click #(do (reset! *type t)
-                                 (when (= t :todo) (reset! *date-ms nil)))
+                  :on-click #(reset! *type t)
                   :style {:flex "1" :padding "6px 4px" :borderRadius "6px"
                           :fontSize "12px" :cursor "pointer"
                           :border (if (= t type)
@@ -443,23 +472,45 @@
                           :fontWeight (if (= t type) "600" "400")}}
          (str ico " " lbl)])]
 
-     ;; 日期选择器（计划 / 截止）
-     (when (#{:scheduled :deadline} type)
-       [:div {:style {:marginBottom "12px" :padding "10px"
-                      :background "var(--lx-gray-02,#f9fafb)"
-                      :borderRadius "8px"
-                      :border "1px solid var(--lx-gray-04,#e8eaed)"}}
-        [:div {:style {:fontSize "11px" :fontWeight "600" :opacity "0.55"
-                       :marginBottom "8px"}}
-         (if (= type :scheduled) "📅 选择计划日期" "⏰ 选择截止日期")]
-        (rum/with-key
-          (mini-date-picker #(reset! *date-ms %) date-ms)
-          (str "dp-" (name type)))
-        (when date-ms
-          (let [[y m d] (ms->ymd date-ms)]
-            [:div {:style {:fontSize "11px" :marginTop "6px" :textAlign "center"
-                           :color "var(--lx-accent-09,#4f46e5)" :fontWeight "600"}}
-             (str "✓ " y "年" (inc m) "月" d "日")]))])
+     ;; ── 日期 + 时间选择器 ──────────────────────────────────────────────────────
+     [:div {:style {:marginBottom "12px" :padding "10px"
+                    :background "var(--lx-gray-02,#f9fafb)"
+                    :borderRadius "8px"
+                    :border "1px solid var(--lx-gray-04,#e8eaed)"}}
+      [:div {:style {:fontSize "11px" :fontWeight "600" :opacity "0.55" :marginBottom "8px"}}
+       (case type
+         :todo      "📌 选择归属日期（空 = 今天）"
+         :scheduled "📅 选择计划日期（必填）"
+                    "⏰ 选择截止日期（必填）")]
+      ;; 日历
+      (rum/with-key
+        (mini-date-picker #(reset! *date-ms %) date-ms)
+        (str "dp-" (name type)))
+      ;; 时分（计划 / 截止）
+      (when (#{:scheduled :deadline} type)
+        [:div {:style {:display "flex" :alignItems "center" :gap "6px"
+                       :marginTop "10px" :paddingTop "8px"
+                       :borderTop "1px solid var(--lx-gray-04,#e8eaed)"}}
+         [:span {:style {:fontSize "12px" :opacity "0.6" :whiteSpace "nowrap"}} "⏱ 时间："]
+         [:select {:value     cur-h
+                   :on-change (fn [e] (set-time (js/parseInt (.. e -target -value)) cur-m))
+                   :style sel-sty}
+          (for [h (range 24)]
+            [:option {:key h :value h} (util/zero-pad h)])]
+         [:span {:style {:fontWeight "700" :fontSize "14px"}} "："]
+         [:select {:value     cur-m
+                   :on-change (fn [e] (set-time cur-h (js/parseInt (.. e -target -value))))
+                   :style sel-sty}
+          (for [m (range 60)]
+            [:option {:key m :value m} (util/zero-pad m)])]])
+      ;; 确认提示
+      (when date-ms
+        (let [[y mo d] (ms->ymd date-ms)]
+          [:div {:style {:fontSize "11px" :marginTop "6px" :textAlign "center"
+                         :color "var(--lx-accent-09,#4f46e5)" :fontWeight "600"}}
+           (str "✓ " y "年" (inc mo) "月" d "日"
+                (when (#{:scheduled :deadline} type)
+                  (str " " (util/zero-pad cur-h) ":" (util/zero-pad cur-m))))]))]
 
      ;; 操作按钮
      [:div {:style {:display "flex" :gap "6px" :justifyContent "flex-end"}}
@@ -478,7 +529,7 @@
                                               "var(--lx-gray-05,#e5e7eb)")
                                 :color (if can-save "#fff" "var(--lx-gray-08,#9ca3af)")
                                 :cursor (if can-save "pointer" "not-allowed")})}
-       (if saving? "创建中…" "创建")]]]))
+       (if saving? "创建中…" "创建")]]]])
 
 ;; ── 新建任务按钮（工具栏用）────────────────────────────────────────────────────
 

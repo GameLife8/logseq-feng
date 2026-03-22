@@ -313,71 +313,164 @@
          (when done-choice
            (db-property/property-value-content done-choice))]])]))
 
+;; ── 中文日历辅助 ──────────────────────────────────────────────────────────────
+
+(defn- cn-month-grid
+  "生成月份网格，周从周一开始。返回 42 个 {:ymd [y m d] :current? bool}
+   month 为 0-indexed（0=一月 … 11=十二月）"
+  [year month]
+  (let [first-dow (.getDay (js/Date. year month 1))  ;; 0=Sun..6=Sat
+        offset    (if (zero? first-dow) 6 (dec first-dow))
+        n-cur     (.getDate (js/Date. year (inc month) 0))
+        n-prev    (.getDate (js/Date. year month 0))]
+    (mapv (fn [i]
+            (let [d (- i offset -1)]
+              (cond
+                (<= d 0)
+                (let [pd (+ n-prev d)
+                      pm (dec month)
+                      [py pm'] (if (neg? pm) [(dec year) 11] [year pm])]
+                  {:ymd [py pm' pd] :current? false})
+                (> d n-cur)
+                (let [nd (- d n-cur)
+                      nm (inc month)
+                      [ny nm'] (if (> nm 11) [(inc year) 0] [year nm])]
+                  {:ymd [ny nm' nd] :current? false})
+                :else
+                {:ymd [year month d] :current? true})))
+          (range 42))))
+
 (rum/defcs calendar-inner < rum/reactive db-mixins/query
   (rum/local (str "calendar-inner-" (js/Date.now)) ::identity)
-  {:init (fn [state]
-           (state/set-editor-action! :property-set-date)
-           state)
-   :will-mount (fn [state]
-                 (js/setTimeout
-                  #(some-> @(::identity state)
-                           (js/document.getElementById)
-                           (.querySelector "[aria-selected=true]")
-                           (.focus)) 16)
-                 state)
+  (rum/local nil ::cal-month)
+  {:init    (fn [state] (state/set-editor-action! :property-set-date) state)
    :will-unmount (fn [state]
                    (shui/popup-hide!)
                    (state/set-editor-action! nil)
                    state)}
   [state id {:keys [block property datetime? on-change del-btn? on-delete]}]
-  (let [block (db/sub-block (:db/id block))
-        value (get block (:db/ident property))
-        value (cond
-                (map? value)
-                (when-let [day (:block/journal-day value)]
-                  (let [t (date/journal-day->utc-ms day)]
-                    (js/Date. t)))
-
-                (number? value)
-                (js/Date. value)
-
-                :else
-                (let [d (js/Date.)]
-                  (.setHours d 0 0 0)
-                  d))
-        *ident (::identity state)
-        initial-day value
-        initial-month (when value
-                        (let [d (tc/to-date-time value)]
-                          (js/Date. (t/last-day-of-the-month (t/date-time (t/year d) (t/month d))))))
-        select-handler!
-        (fn [^js d]
-          (when d
-            (let [journal (date/js-date->journal-title d)]
-              (p/do!
-               (when-not (model/get-journal-page journal)
-                 (page-handler/<create! journal {:redirect? false}))
-               (when (fn? on-change)
-                 (let [value (if datetime? (tc/to-long d) (model/get-journal-page journal))]
-                   (on-change value)))
-               (when-not datetime?
-                 (shui/popup-hide! id)
-                 (ui/hide-popups-until-preview-popup!))))))]
-    [:div.flex.flex-row.gap-2
-     [:div.flex.flex-1.items-center
-      (ui/nlp-calendar
-       (cond->
-        {:initial-focus true
-         :datetime? datetime?
-         :selected initial-day
-         :id @*ident
-         :del-btn? del-btn?
-         :on-delete on-delete
-         :on-day-click select-handler!}
-         initial-month
-         (assoc :default-month initial-month)))]
-     [:div.hidden.sm:initial
-      (shui/separator {:orientation "vertical"})]
+  (let [block    (db/sub-block (:db/id block))
+        raw      (get block (:db/ident property))
+        ;; 规范化当前值为 js/Date
+        cur-date (cond
+                   (map? raw)   (when-let [day (:block/journal-day raw)]
+                                  (js/Date. (date/journal-day->utc-ms day)))
+                   (number? raw) (js/Date. raw)
+                   :else         (doto (js/Date.) (.setHours 0 0 0 0)))
+        *month   (::cal-month state)
+        now      (js/Date.)
+        ;; 显示哪个月
+        [cy cm]  (or @*month
+                     (when cur-date
+                       [(.getFullYear cur-date) (.getMonth cur-date)])
+                     [(.getFullYear now) (.getMonth now)])
+        _        (when (nil? @*month) (reset! *month [cy cm]))
+        today    [(.getFullYear now) (.getMonth now) (.getDate now)]
+        sel-ymd  (when cur-date
+                   [(.getFullYear cur-date) (.getMonth cur-date) (.getDate cur-date)])
+        grid     (cn-month-grid cy cm)
+        ;; 点击日期：保留已有时分（datetime? 时），保存属性并可选关闭弹窗
+        on-day!  (fn [^js d]
+                   (when d
+                     (let [;; 保留已有时分
+                           d' (if (and datetime? cur-date)
+                                (doto (js/Date. d)
+                                  (.setHours (.getHours cur-date) (.getMinutes cur-date) 0 0))
+                                d)
+                           journal (date/js-date->journal-title d')]
+                       (p/do!
+                        (when-not (model/get-journal-page journal)
+                          (page-handler/<create! journal {:redirect? false}))
+                        (when (fn? on-change)
+                          (on-change (if datetime? (tc/to-long d') (model/get-journal-page journal))))
+                        (when-not datetime?
+                          (shui/popup-hide! id)
+                          (ui/hide-popups-until-preview-popup!))))))
+        ;; 修改时间：保留日期
+        on-time! (fn [new-h new-m]
+                   (when (and datetime? cur-date (fn? on-change))
+                     (let [d (doto (js/Date. cur-date) (.setHours new-h new-m 0 0))]
+                       (on-change (tc/to-long d)))))
+        sel-sty  {:padding "3px 5px" :borderRadius "5px" :fontSize "13px"
+                  :border "1px solid var(--lx-gray-05,#e5e7eb)"
+                  :background "var(--lx-gray-01,#fff)"
+                  :cursor "pointer" :outline "none"}]
+    [:div {:style {:padding "8px" :minWidth "240px" :userSelect "none"}}
+     ;; 月份导航
+     [:div {:style {:display "flex" :alignItems "center"
+                    :justifyContent "space-between" :marginBottom "6px"}}
+      [:button {:on-click #(let [[y m] @*month
+                                 [ny nm] (if (zero? m) [(dec y) 11] [y (dec m)])]
+                              (reset! *month [ny nm]))
+                :style {:background "none" :border "none" :cursor "pointer"
+                        :fontSize "18px" :padding "0 6px" :lineHeight "1.2"}} "‹"]
+      [:span {:style {:fontSize "13px" :fontWeight "600"}}
+       (str cy "年" (inc cm) "月")]
+      [:button {:on-click #(let [[y m] @*month
+                                 [ny nm] (if (= 11 m) [(inc y) 0] [y (inc m)])]
+                              (reset! *month [ny nm]))
+                :style {:background "none" :border "none" :cursor "pointer"
+                        :fontSize "18px" :padding "0 6px" :lineHeight "1.2"}} "›"]]
+     ;; 星期标题
+     [:div {:style {:display "grid" :gridTemplateColumns "repeat(7,1fr)" :marginBottom "2px"}}
+      (for [wd ["一" "二" "三" "四" "五" "六" "日"]]
+        [:div {:key wd :style {:textAlign "center" :fontSize "11px"
+                               :fontWeight "600" :opacity "0.4" :padding "2px 0"}} wd])]
+     ;; 日格
+     (for [week (partition 7 grid)
+           :let [wk (str (-> week first :ymd))]]
+       [:div {:key wk :style {:display "grid" :gridTemplateColumns "repeat(7,1fr)"}}
+        (for [{:keys [ymd current?]} week
+              :let [[dy dm dd] ymd
+                    [ty tm td] today
+                    is-today (and (= dy ty) (= dm tm) (= dd td))
+                    is-sel   (= ymd sel-ymd)]]
+          [:div {:key      (str ymd)
+                 :on-click #(when current?
+                              (on-day! (js/Date. dy dm dd)))
+                 :style {:textAlign "center" :fontSize "12px"
+                         :padding "4px 2px" :borderRadius "4px"
+                         :cursor (if current? "pointer" "default")
+                         :opacity (if current? 1 0.25)
+                         :fontWeight (if is-today "700" "400")
+                         :background (cond is-sel   "var(--lx-accent-09,#4f46e5)"
+                                          is-today "var(--lx-gray-04,#f1f5f9)"
+                                          :else    "transparent")
+                         :color (if is-sel "#fff" "inherit")}}
+           dd])])
+     ;; 删除按钮
+     (when del-btn?
+       [:div {:style {:textAlign "center" :marginTop "6px"}}
+        [:button {:on-click on-delete
+                  :style {:fontSize "12px" :padding "3px 10px" :borderRadius "5px"
+                          :border "none" :cursor "pointer"
+                          :background "var(--lx-gray-04,#f1f5f9)"
+                          :color "var(--lx-red-09,#dc2626)"}} "清除日期"]])
+     ;; 时间选择（datetime? 属性专用）
+     (when datetime?
+       (let [h (if cur-date (.getHours cur-date) 0)
+             m (if cur-date (.getMinutes cur-date) 0)]
+         [:div {:style {:display "flex" :alignItems "center" :gap "6px"
+                        :marginTop "10px" :padding "8px"
+                        :background "var(--lx-gray-02,#f9fafb)"
+                        :borderRadius "6px"
+                        :borderTop "1px solid var(--lx-gray-04,#e8eaed)"}}
+          [:span {:style {:fontSize "12px" :opacity "0.6" :whiteSpace "nowrap"}} "⏱ 时间："]
+          [:select {:value     h
+                    :on-change (fn [e] (on-time! (js/parseInt (.. e -target -value)) m))
+                    :style sel-sty}
+           (for [hh (range 24)]
+             [:option {:key hh :value hh}
+              (if (< hh 10) (str "0" hh) (str hh))])]
+          [:span {:style {:fontWeight "700" :fontSize "14px"}} "："]
+          [:select {:value     m
+                    :on-change (fn [e] (on-time! h (js/parseInt (.. e -target -value))))
+                    :style sel-sty}
+           (for [mm (range 60)]
+             [:option {:key mm :value mm}
+              (if (< mm 10) (str "0" mm) (str mm))])]
+          [:span {:style {:fontSize "12px" :opacity "0.5"}} "时"]]))
+     ;; 重复设置（保持原有功能）
      (repeat-setting block property)]))
 
 (rum/defc overdue
