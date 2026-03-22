@@ -4,6 +4,7 @@
   (:require [clojure.string :as string]
             [frontend.db :as db]
             [frontend.db.async :as db-async]
+            [frontend.handler.notification :as notification]
             [frontend.handler.route :as route-handler]
             [frontend.state :as state]
             [frontend.ui :as ui]
@@ -379,29 +380,45 @@
      [:div {:style {:fontSize "12px" :opacity "0.35" :textAlign "center"
                     :paddingTop "12px"}} "暂无"])])
 
+(defn- classify-kanban
+  "看板专用分类：仅依据显式 scheduled/deadline 属性。
+   :today     → scheduled 或 deadline 落在今天
+   :scheduled → 有 scheduled（非今天）
+   :deadline  → 有 deadline（非今天，包含逾期）
+   :no-date   → 两者均无"
+  [task today-ms today-end]
+  (let [s (:logseq.property/scheduled task)
+        d (:logseq.property/deadline task)]
+    (cond
+      (or (and s (>= s today-ms) (<= s today-end))
+          (and d (>= d today-ms) (<= d today-end))) :today
+      s                                              :scheduled
+      d                                              :deadline
+      :else                                          :no-date)))
+
 (rum/defc kanban-view
   [all-tasks]
   (let [today-ymd  (today-ymd)
+        today-ms   (ymd->day-ms today-ymd)
+        today-end  (+ today-ms 86399999)
         active     (filter task-active? all-tasks)
         done       (filter #(contains? #{:logseq.property/status.done
                                          :logseq.property/status.canceled}
                                        (task-status-ident %))
                            all-tasks)
-        week-end   (end-of-week-ms today-ymd)
-        groups     (group-by #(classify-task % today-ymd week-end) active)
-        overdue    (sort-by task-date-ms (get groups :overdue []))
-        today-t    (sort-by task-date-ms (get groups :today []))
-        this-week  (sort-by task-date-ms (get groups :this-week []))
-        later      (sort-by task-date-ms (get groups :later []))
+        groups     (group-by #(classify-kanban % today-ms today-end) active)
+        today-t    (sort-by #(or (:logseq.property/scheduled %)
+                                 (:logseq.property/deadline %)) (get groups :today []))
+        scheduled  (sort-by :logseq.property/scheduled (get groups :scheduled []))
+        deadline   (sort-by :logseq.property/deadline  (get groups :deadline []))
         no-date    (get groups :no-date [])]
     [:div.agenda-kanban {:style {:display "flex" :gap "10px" :height "100%"
                                  :overflowX "auto"}}
-     (kanban-column "逾期"   "#ef4444" overdue)
-     (kanban-column "今天"   "#f59e0b" today-t)
-     (kanban-column "本周"   "#6366f1" this-week)
-     (kanban-column "之后"   "#22c55e" later)
-     (kanban-column "待安排" "#94a3b8" no-date)
-     (kanban-column "已完成" "#10b981" done)]))
+     (kanban-column "今天"    "#f59e0b" today-t)
+     (kanban-column "Scheduled" "#6366f1" scheduled)
+     (kanban-column "Deadline"  "#ef4444" deadline)
+     (kanban-column "待安排"  "#94a3b8" no-date)
+     (kanban-column "已完成"  "#10b981" done)]))
 
 ;; ── 范围过滤辅助 ─────────────────────────────────────────────────────────────
 
@@ -415,14 +432,58 @@
        sort))
 
 (defn- filter-tasks-by-scope
-  "scope = :personal  → 无项目标签的任务
-   scope = string     → 有该项目标签的任务"
+  "scope = :personal  → 全部任务（所有项目汇总）
+   scope = string     → 只显示该项目标签的任务"
   [tasks scope]
   (if (= scope :personal)
-    (filter #(nil? (task-project-tags %)) tasks)
+    tasks
     (filter #(some (fn [tag] (= (:block/title tag) scope))
                    (:block/tags %))
             tasks)))
+
+(defn- notify-on-load!
+  "加载任务后检查 Scheduled/Deadline 并发出通知。
+   - Scheduled 今日开始：提示用户今天有计划任务
+   - Deadline 已逾期（deadline < 当前时刻）：警告"
+  [tasks]
+  (let [today-ms  (ymd->day-ms (today-ymd))
+        today-end (+ today-ms 86399999)
+        now-ms    (.getTime (js/Date.))
+        active    (filter task-active? tasks)
+        ;; 今天开始的 scheduled 任务
+        starting  (filter #(let [s (:logseq.property/scheduled %)]
+                              (and s (>= s today-ms) (<= s today-end)))
+                          active)
+        ;; deadline 已逾期（deadline < 现在）
+        overdue   (filter #(let [d (:logseq.property/deadline %)]
+                              (and d (< d now-ms)))
+                          active)]
+    (when (seq starting)
+      (notification/show!
+       [:div
+        [:div {:style {:font-weight "600" :margin-bottom "6px"}}
+         (str "📅 今日有 " (count starting) " 个计划任务开始")]
+        (for [t (take 3 starting)]
+          [:div {:key   (str (:block/uuid t))
+                 :style {:font-size "12px" :opacity "0.8" :margin-bottom "2px"}}
+           (str "· " (or (:block/title t) "(无标题)"))])
+        (when (> (count starting) 3)
+          [:div {:style {:font-size "11px" :opacity "0.5" :margin-top "2px"}}
+           (str "还有 " (- (count starting) 3) " 个…")])]
+       :info false nil nil nil))
+    (when (seq overdue)
+      (notification/show!
+       [:div
+        [:div {:style {:font-weight "600" :margin-bottom "6px"}}
+         (str "⏰ " (count overdue) " 个任务已超过 Deadline")]
+        (for [t (take 3 overdue)]
+          [:div {:key   (str (:block/uuid t))
+                 :style {:font-size "12px" :opacity "0.8" :margin-bottom "2px"}}
+           (str "· " (or (:block/title t) "(无标题)"))])
+        (when (> (count overdue) 3)
+          [:div {:style {:font-size "11px" :opacity "0.5" :margin-top "2px"}}
+           (str "还有 " (- (count overdue) 3) " 个…")])]
+       :warning false nil nil nil))))
 
 ;; ── 日任务面板（月视图侧边栏）────────────────────────────────────────────────
 
@@ -461,25 +522,6 @@
             :transition    "all 0.12s"}}
    label])
 
-(defn- scope-tab [label is-project? active? on-click]
-  [:button
-   {:on-click on-click
-    :style {:padding      "4px 12px"
-            :borderRadius "6px"
-            :border       (if active?
-                            "1.5px solid var(--lx-accent-07,#6366f1)"
-                            "1px solid var(--lx-gray-05,#e5e7eb)")
-            :background   (if active? "var(--lx-accent-03,#eef2ff)" "transparent")
-            :color        (if active?
-                            "var(--lx-accent-09,#4f46e5)"
-                            "var(--lx-gray-11,#374151)")
-            :fontSize     "13px"
-            :fontWeight   (if active? "600" "400")
-            :cursor       "pointer"
-            :whiteSpace   "nowrap"
-            :display      "flex" :alignItems "center" :gap "4px"}}
-   (when is-project? [:span {:style {:opacity "0.6" :fontSize "11px"}} "#"])
-   label])
 
 (defn- nav-btn [label on-click]
   [:button
@@ -519,7 +561,8 @@
        (reset! *sel   td)
        (p/let [tasks (some-> (state/get-current-repo)
                              (<load-tasks))]
-         (reset! *tasks (or tasks [])))
+         (reset! *tasks (or tasks []))
+         (notify-on-load! (or tasks [])))
        (p/catch (p/let [_ (p/delay 0)] nil)
                 (fn [err]
                   (reset! *err (str err)))))
@@ -607,15 +650,27 @@
                         :fontSize "13px" :cursor "pointer" :flexShrink "0"}}
        "今天"]
 
-      ;; ── 范围 tabs（个人 + 各项目）─────────────────────────────────────────
-      [:div {:style {:display "flex" :gap "4px" :overflowX "auto"
-                     :flex "1" :padding "0 4px"
+      ;; ── 范围下拉（个人 / 各项目）──────────────────────────────────────────
+      [:div {:style {:display "flex" :alignItems "center" :gap "6px"
                      :borderLeft "1px solid var(--lx-gray-05,#e5e7eb)"
-                     :marginLeft "4px"}}
-       (scope-tab "个人" false (= scope :personal) #(reset! *scope :personal))
-       (for [p projects]
-         [:span {:key p}
-          (scope-tab p true (= scope p) #(reset! *scope p))])]
+                     :paddingLeft "12px" :marginLeft "4px" :flex "1"}}
+       (ui/icon "folder" {:size 14 :class "opacity-40"})
+       [:select
+        {:value     (if (= scope :personal) "personal" (str scope))
+         :on-change (fn [e]
+                      (let [v (.. e -target -value)]
+                        (reset! *scope (if (= v "personal") :personal v))))
+         :style {:padding      "4px 8px"
+                 :borderRadius "6px"
+                 :border       "1px solid var(--lx-gray-05,#e5e7eb)"
+                 :background   "var(--lx-gray-02,#f9fafb)"
+                 :fontSize     "13px"
+                 :cursor       "pointer"
+                 :outline      "none"
+                 :maxWidth     "200px"}}
+        [:option {:value "personal"} "个人（全部）"]
+        (for [p projects]
+          [:option {:key p :value p} (str "# " p)])]]
 
       ;; view switcher
       [:div {:style {:display "flex" :gap "4px" :flexShrink "0"}}
@@ -627,7 +682,8 @@
       [:button {:on-click (fn []
                             (reset! *tasks nil)
                             (p/let [ts (some-> (state/get-current-repo) (<load-tasks))]
-                              (reset! *tasks (or ts []))))
+                              (reset! *tasks (or ts []))
+                              (notify-on-load! (or ts []))))
                 :title "刷新任务"
                 :style {:background "none" :border "none" :cursor "pointer"
                         :opacity "0.5" :padding "3px 6px" :flexShrink "0"}}
