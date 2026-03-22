@@ -718,10 +718,23 @@
            td      (today-ymd)
            [y m _] td
            *timer   (volatile! nil)
-           do-load! (fn []
+           ;; silent? = true 时只刷新任务列表，不触发弹窗（用于轮询/监听器）
+           do-load! (fn [& [silent?]]
                       (p/let [tasks (some-> (state/get-current-repo) (<load-tasks))]
+                        (js/console.group "agenda do-load!")
+                        (js/console.log "total tasks:" (count tasks))
+                        (doseq [t (or tasks [])]
+                          (let [s (:logseq.property/scheduled t)
+                                d (:logseq.property/deadline t)
+                                title (:block/title t)]
+                            (when (or s d)
+                              (js/console.log "task:" title
+                                             "scheduled:" s "(type:" (js/typeof s) ")"
+                                             "deadline:" d "(type:" (js/typeof d) ")"))))
+                        (js/console.groupEnd)
                         (reset! *tasks (or tasks []))
-                        (notify-on-load! (or tasks []))))
+                        (when-not silent?
+                          (notify-on-load! (or tasks [])))))
            ;; 监听的属性：新建任务/状态变更/日期变更 都会触发刷新
            watch-attrs #{:logseq.property/status
                          :logseq.property/scheduled
@@ -731,16 +744,16 @@
        (reset! *sel   td)
        ;; 注册全局刷新函数，供 task-card 状态修改后调用
        (reset! *global-reload! do-load!)
-       ;; 监听前端 DB 变化，自动刷新任务列表（防抖 400ms）
+       ;; 监听前端 DB 变化，自动刷新任务列表（防抖 400ms，静默模式不弹窗）
        ;; 使用 (:a %) 而非 (.-a %) 确保与 CLJS map 和 Datom 对象均兼容
        (when-let [conn (db/get-db (state/get-current-repo) false)]
          (d/listen! conn ::agenda-auto-refresh
                     (fn [{:keys [tx-data]}]
                       (when (some #(contains? watch-attrs (:a %)) tx-data)
                         (js/clearTimeout @*timer)
-                        (vreset! *timer (js/setTimeout do-load! 400))))))
-       ;; 保底：每 15s 轮询一次，确保监听器失效时任务也能自动刷新
-       (reset! *poll-interval-id (js/setInterval do-load! 15000))
+                        (vreset! *timer (js/setTimeout #(do-load! true) 400))))))
+       ;; 保底：每 30s 静默轮询，不触发通知弹窗
+       (reset! *poll-interval-id (js/setInterval #(do-load! true) 30000))
        (do-load!))
      state)
    :will-unmount
