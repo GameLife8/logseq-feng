@@ -361,8 +361,9 @@
                        (notification/show! "白板已保存" :success)
                        (route-handler/redirect! {:to :all-whiteboards}))]
     ;; No overflow:hidden on outer div — allows Excalidraw dropdown menus to show
+    ;; height uses --ls-headbar-height so the canvas fills exactly the below-header area
     [:div.whiteboard-page
-     {:style {:position "relative" :width "100%" :height "100vh"}}
+     {:style {:position "relative" :width "100%" :height "calc(100vh - var(--ls-headbar-height))"}}
 
      ;; canvas fills entire viewport; tags are rendered inside renderTopRightUI
      [:div {:style {:position "absolute" :inset 0 :overflow "hidden"}}
@@ -371,7 +372,13 @@
         :page-title      page-title
         :on-back         on-back
         :on-api-ready    (fn [api] (reset! *canvas-api api))
-        :on-block-click  (fn [bid] (whiteboard-handler/open-block-in-sidebar! bid))
+        ;; Pre-load block from DB worker (local replica may not have it yet),
+        ;; then open in sidebar once the entity is available.
+        :on-block-click  (fn [bid]
+                           (p/let [_ (db-async/<get-block (state/get-current-repo)
+                                                          (uuid bid)
+                                                          :children? false)]
+                             (whiteboard-handler/open-block-in-sidebar! bid)))
         :on-insert-block #(swap! *show-picker not)
         :on-rename       (fn [new-title]
                            (whiteboard-handler/<rename-whiteboard! page-uuid new-title))
