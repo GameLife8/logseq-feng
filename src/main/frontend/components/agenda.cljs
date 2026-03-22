@@ -119,16 +119,19 @@
 
 ;; ── 数据查询 ──────────────────────────────────────────────────────────────────
 
+(def ^:private task-pull-spec
+  '[* {:logseq.property/status [:db/ident :block/title]
+       :block/page [:db/id :block/title :block/uuid]}])
+
 (defn- <load-tasks
   "从 DB Worker 加载所有带状态的块，返回 promise<seq>"
   [repo]
-  (db-async/<q repo {}
-               '[:find [(pull ?block
-                              [*
-                               {:logseq.property/status [:db/ident :block/title]}
-                               {:block/page [:db/id :block/title :block/uuid]}]) ...]
+  (db-async/<q repo {:transact-db? false}
+               '[:find [(pull ?block ?pull-spec) ...]
+                 :in $ ?pull-spec
                  :where
-                 [?block :logseq.property/status _]]))
+                 [?block :logseq.property/status _]]
+               task-pull-spec))
 
 (defn- task-status-ident [task]
   (get-in task [:logseq.property/status :db/ident]))
