@@ -121,7 +121,8 @@
 
 (def ^:private task-pull-spec
   '[* {:logseq.property/status [:db/ident :block/title]
-       :block/page [:db/id :block/title :block/uuid :block/journal-day]}])
+       :block/tags              [:db/id :block/title]
+       :block/page              [:db/id :block/title :block/uuid :block/journal-day]}])
 
 (defn- <load-tasks
   "从 DB Worker 加载所有带状态的块，返回 promise<seq>"
@@ -199,6 +200,27 @@
         (<= task-day-ms week-end-ms)   :this-week
         :else                          :later))
     :no-date))
+
+;; ── 项目视图数据 ──────────────────────────────────────────────────────────────
+
+(defn- task-project-tags
+  "返回任务上所有以'项目'结尾的用户标签，
+   例如 #容器化项目 → [{:block/title '容器化项目' ...}]"
+  [task]
+  (->> (:block/tags task)
+       (filter #(string/ends-with? (or (:block/title %) "") "项目"))
+       seq))
+
+(defn- group-tasks-by-project
+  "tasks → {project-title [task...]}，无项目标签的归 nil 键"
+  [tasks]
+  (reduce (fn [acc task]
+            (if-let [ptags (task-project-tags task)]
+              (reduce (fn [a tag]
+                        (update a (:block/title tag) (fnil conj []) task))
+                      acc ptags)
+              (update acc nil (fnil conj []) task)))
+          {} tasks))
 
 ;; ── 任务卡片 ──────────────────────────────────────────────────────────────────
 
@@ -376,6 +398,48 @@
      (kanban-column "之后" "#22c55e" later)
      (kanban-column "待安排" "#94a3b8" no-date)]))
 
+;; ── 项目视图 ──────────────────────────────────────────────────────────────────
+
+(rum/defc project-view
+  "将活跃任务按 #xxxx项目 标签分组展示，无项目标签的归为「未分类」。"
+  [all-tasks]
+  (let [active   (filter task-active? all-tasks)
+        groups   (group-tasks-by-project active)
+        projects (sort (remove nil? (keys groups)))
+        no-proj  (get groups nil [])]
+    [:div.agenda-project-view
+     {:style {:height "100%" :overflowY "auto"}}
+     ;; 有项目标签的分组
+     (for [p projects
+           :let [p-tasks (get groups p [])]]
+       [:div {:key p :style {:marginBottom "24px"}}
+        [:div {:style {:display "flex" :alignItems "center" :gap "6px"
+                       :marginBottom "10px"
+                       :paddingBottom "6px"
+                       :borderBottom "1px solid var(--lx-gray-05,#e5e7eb)"}}
+         [:span {:style {:fontSize "15px" :fontWeight "700"
+                         :color "var(--lx-accent-09,#4f46e5)"}} "#"]
+         [:span {:style {:fontSize "15px" :fontWeight "700"}} p]
+         [:span {:style {:fontSize "12px" :opacity "0.4" :marginLeft "4px"}}
+          (str (count p-tasks) " 个任务")]]
+        (for [t p-tasks] (task-card t))])
+     ;; 无项目标签的任务
+     (when (seq no-proj)
+       [:div {:style {:marginBottom "24px"}}
+        [:div {:style {:display "flex" :alignItems "center" :gap "6px"
+                       :marginBottom "10px"
+                       :paddingBottom "6px"
+                       :borderBottom "1px solid var(--lx-gray-05,#e5e7eb)"}}
+         [:span {:style {:fontSize "15px" :fontWeight "700" :opacity "0.35"}} "未分类"]
+         [:span {:style {:fontSize "12px" :opacity "0.35"}}
+          (str (count no-proj) " 个任务")]]
+        (for [t no-proj] (task-card t))])
+     ;; 全空
+     (when (and (empty? projects) (empty? no-proj))
+       [:div {:style {:textAlign "center" :paddingTop "60px"
+                      :fontSize "14px" :opacity "0.35"}}
+        "暂无活跃任务"])]))
+
 ;; ── 日任务面板（月视图侧边栏）────────────────────────────────────────────────
 
 (rum/defc day-panel
@@ -536,9 +600,10 @@
 
       ;; view switcher
       [:div {:style {:display "flex" :gap "4px"}}
-       (toolbar-btn "月" (= view :month)  #(reset! *view :month))
-       (toolbar-btn "周" (= view :week)   #(reset! *view :week))
-       (toolbar-btn "看板" (= view :kanban) #(reset! *view :kanban))]
+       (toolbar-btn "月"   (= view :month)   #(reset! *view :month))
+       (toolbar-btn "周"   (= view :week)    #(reset! *view :week))
+       (toolbar-btn "看板" (= view :kanban)  #(reset! *view :kanban))
+       (toolbar-btn "项目" (= view :project) #(reset! *view :project))]
 
       ;; 刷新按钮
       [:button {:on-click (fn []
@@ -566,10 +631,11 @@
         ;; main content
         [:div {:style {:flex "1" :padding "12px 16px" :overflowY "auto"}}
          (case view
-           :month  (month-view tasks-by-day cy cm sel-ymd
+           :month   (month-view tasks-by-day cy cm sel-ymd
                                 (fn [ymd] (reset! *sel ymd)))
-           :week   (week-view tasks-by-day week-days)
-           :kanban (kanban-view (or tasks [])))]
+           :week    (week-view tasks-by-day week-days)
+           :kanban  (kanban-view (or tasks []))
+           :project (project-view (or tasks [])))]
 
         ;; 月视图右侧日任务面板
         (when (= view :month)

@@ -633,8 +633,28 @@
               {:title    "删除"
                :on-click (fn [^js e]
                            (.stopPropagation e)
-                           (when (.confirm js/window (str "确定删除白板「" wb-title "」？\n此操作不可撤销。"))
-                             (whiteboard-handler/<delete-whiteboard! wb-uuid)))
+                           (let [uid (keyword (str (random-uuid)))]
+                             (notification/show!
+                              [:div
+                               [:div {:style {:font-weight "600" :margin-bottom "6px"}}
+                                (str "删除白板「" wb-title "」？")]
+                               [:div {:style {:font-size "12px" :opacity "0.7" :margin-bottom "12px"}}
+                                "此操作不可撤销。"]
+                               [:div {:style {:display "flex" :gap "8px"}}
+                                [:button {:on-click (fn []
+                                                      (notification/clear! uid)
+                                                      (whiteboard-handler/<delete-whiteboard! wb-uuid))
+                                          :style {:padding "4px 12px" :border-radius "6px"
+                                                  :border "none" :background "#ef4444" :color "#fff"
+                                                  :font-size "12px" :cursor "pointer" :font-weight "600"}}
+                                 "确认删除"]
+                                [:button {:on-click #(notification/clear! uid)
+                                          :style {:padding "4px 12px" :border-radius "6px"
+                                                  :border "1px solid var(--lx-gray-06,#e5e7eb)"
+                                                  :background "var(--lx-gray-03,#f3f4f6)"
+                                                  :font-size "12px" :cursor "pointer"}}
+                                 "取消"]]]
+                              :warning false uid nil nil)))
                :style    {:background "none" :border "none" :cursor "pointer"
                           :padding "2px 4px" :border-radius "4px"
                           :font-size "12px" :color "#ef4444"

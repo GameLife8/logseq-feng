@@ -157,9 +157,6 @@
                                :whiteSpace "nowrap" :cursor "pointer"}}
             page-title))
 
-         ;; 🏷 标签 (Rum component rendered as a React element)
-         (when render-tags (render-tags))
-
          ;; + 插入块
          (js/React.createElement
           "button"
