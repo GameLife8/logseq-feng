@@ -145,10 +145,16 @@
 
 ;; ── 数据查询 ──────────────────────────────────────────────────────────────────
 
+;; 不使用 [*] 通配符——DataScript 在将 pull-spec 作为 :in 变量传入时
+;; 不会展开 * 通配符，导致 :logseq.property/scheduled 等标量属性返回 nil。
+;; 改为显式列出所有需要的属性。
 (def ^:private task-pull-spec
-  '[* {:logseq.property/status [:db/ident :block/title]
-       :block/tags              [:db/id :block/title]
-       :block/page              [:db/id :block/title :block/uuid :block/journal-day]}])
+  '[:db/id
+    :block/uuid :block/title :block/created-at :block/updated-at
+    :logseq.property/scheduled :logseq.property/deadline
+    {:logseq.property/status [:db/ident :block/title]
+     :block/tags              [:db/id :block/title]
+     :block/page              [:db/id :block/title :block/uuid :block/journal-day]}])
 
 (defn- <load-tasks
   "从 DB Worker 加载所有带状态的块，返回 promise<seq>。
@@ -721,19 +727,6 @@
            ;; silent? = true 时只刷新任务列表，不触发弹窗（用于轮询/监听器）
            do-load! (fn [& [silent?]]
                       (p/let [tasks (some-> (state/get-current-repo) (<load-tasks))]
-                        (js/console.group "agenda do-load!")
-                        (js/console.log "total tasks:" (count tasks))
-                        (doseq [t (or tasks [])]
-                          (let [s (:logseq.property/scheduled t)
-                                d (:logseq.property/deadline t)
-                                title (:block/title t)]
-                            (when (or s d)
-                              (js/console.log "task:" title
-                                             "scheduled:" s
-                                             "(number?:" (number? s) "map?:" (map? s) ")"
-                                             "deadline:" d
-                                             "(number?:" (number? d) "map?:" (map? d) ")"))))
-                        (js/console.groupEnd)
                         (reset! *tasks (or tasks []))
                         (when-not silent?
                           (notify-on-load! (or tasks [])))))
@@ -754,8 +747,7 @@
                       (when (some #(contains? watch-attrs (:a %)) tx-data)
                         (js/clearTimeout @*timer)
                         (vreset! *timer (js/setTimeout #(do-load! true) 400))))))
-       ;; 保底：每 30s 静默轮询，不触发通知弹窗
-       (reset! *poll-interval-id (js/setInterval #(do-load! true) 30000))
+       ;; 不使用轮询：scheduled/deadline 未提交时轮询也无效，等 DB 事件触发即可
        (do-load!))
      state)
    :will-unmount
