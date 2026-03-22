@@ -729,8 +729,10 @@
                                 title (:block/title t)]
                             (when (or s d)
                               (js/console.log "task:" title
-                                             "scheduled:" s "(type:" (js/typeof s) ")"
-                                             "deadline:" d "(type:" (js/typeof d) ")"))))
+                                             "scheduled:" s
+                                             "(number?:" (number? s) "map?:" (map? s) ")"
+                                             "deadline:" d
+                                             "(number?:" (number? d) "map?:" (map? d) ")"))))
                         (js/console.groupEnd)
                         (reset! *tasks (or tasks []))
                         (when-not silent?
