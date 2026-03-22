@@ -242,6 +242,14 @@
         :icon "calendar-time"
         :href (rfe/href :agenda)})
 
+      ;; Tag Manager – view and manage all tags
+      (sidebar-item
+       {:class "tag-manager-nav"
+        :active (and (not srs-open?) (= route-name :tag-manager))
+        :title "标签管理"
+        :icon "tags"
+        :href (rfe/href :tag-manager)})
+
       (for [nav checked-navs]
         (cond
           (= nav :flashcards)

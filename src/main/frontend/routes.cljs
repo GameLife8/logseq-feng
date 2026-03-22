@@ -1,6 +1,7 @@
 (ns frontend.routes
   "Defines routes for use with reitit router"
   (:require [frontend.components.agenda :as agenda]
+            [frontend.components.tag-manager :as tag-manager]
             [frontend.components.all-pages :as all-pages]
             [frontend.components.bug-report :as bug-report]
             [frontend.components.file :as file]
@@ -90,6 +91,10 @@
    ["/agenda"
     {:name :agenda
      :view (fn [_] (agenda/agenda-page))}]
+
+   ["/tag-manager"
+    {:name :tag-manager
+     :view (fn [_] (tag-manager/tag-manager-page))}]
 
    (when config/dev?
      ["/ui"
