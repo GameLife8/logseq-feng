@@ -271,11 +271,11 @@
 ;; ── 任务创建 ──────────────────────────────────────────────────────────────────
 
 (defn- <create-task!
-  "在指定日期的日记页新建任务块，设置状态和可选日期属性（精确到分钟）。
-   type     : :todo | :scheduled | :deadline
-   date-ms  : UTC 毫秒（nil = 今天）；scheduled/deadline 含时间直接存为属性值
-   任务所在日记页 = date-ms 对应日期，页不存在时先创建。"
-  [title type date-ms]
+  "在指定日期的日记页新建任务块，设置状态、可选日期属性（精确到分钟）和项目标签。
+   type              : :todo | :scheduled | :deadline
+   date-ms           : UTC 毫秒（nil = 今天）
+   selected-projects : 项目名字符串集合（nil = 无归属项目）"
+  [title type date-ms selected-projects]
   (when-not (string/blank? title)
     (p/let [page-name (if date-ms
                         (date/js-date->journal-title (js/Date. date-ms))
@@ -288,8 +288,10 @@
                        title {:page (:block/uuid target) :edit-block? false})]
           (when block
             (let [uuid (:block/uuid block)]
+              ;; 1. 设置状态（自动加 :logseq.class/Task 标签）
               (db-property-handler/batch-set-property-closed-value!
                [uuid] :logseq.property/status "Todo")
+              ;; 2. 设置日期属性
               (when (and date-ms (#{:scheduled :deadline} type))
                 (db-property-handler/batch-set-property!
                  [uuid]
@@ -297,6 +299,11 @@
                    :logseq.property/scheduled
                    :logseq.property/deadline)
                  date-ms {}))
+              ;; 3. 追加项目标签（cardinality-many，逐个 add，不覆盖 Task 类标签）
+              (doseq [pname selected-projects]
+                (when-let [entity (db/get-page pname)]
+                  (db-property-handler/batch-set-property!
+                   [uuid] :block/tags (:db/id entity) {:entity-id? true})))
               block))))))
 
 ;; ── 小型日历选择器 ─────────────────────────────────────────────────────────────
@@ -386,18 +393,22 @@
 ;; ── 新建任务弹窗 ───────────────────────────────────────────────────────────────
 
 (rum/defcs new-task-dialog
-  "新建任务弹窗：支持 待办 / 计划 / 截止 三种形式。
-   on-close: 关闭回调"
+  "新建任务弹窗：支持 待办 / 计划 / 截止 三种形式，可选项目归属。
+   on-close : 关闭回调
+   projects : 可选项目名字符串列表（来自当前任务的标签统计）"
   < rum/reactive
   (rum/local ""        ::nt-title)
   (rum/local :todo     ::nt-type)
   (rum/local nil       ::nt-date-ms)
   (rum/local false     ::nt-saving?)
-  [state on-close]
-  (let [*title   (::nt-title state)
-        *type    (::nt-type state)
-        *date-ms (::nt-date-ms state)
-        *saving? (::nt-saving? state)
+  (rum/local #{}       ::nt-projects)  ;; 已选项目名集合
+  [state on-close projects]
+  (let [*title    (::nt-title state)
+        *type     (::nt-type state)
+        *date-ms  (::nt-date-ms state)
+        *saving?  (::nt-saving? state)
+        *projects (::nt-projects state)
+        sel-proj  (rum/react *projects)
         title    (rum/react *title)
         type     (rum/react *type)
         date-ms  (rum/react *date-ms)
@@ -418,7 +429,7 @@
         do-save! (fn []
                    (when can-save
                      (reset! *saving? true)
-                     (p/let [_ (<create-task! title type date-ms)]
+                     (p/let [_ (<create-task! title type date-ms (seq sel-proj))]
                        (reset! *saving? false)
                        (on-close)
                        (js/setTimeout #(when-let [r! @*global-reload!] (r!)) 300))))
@@ -471,6 +482,29 @@
                                    "var(--lx-gray-10,#6b7280)")
                           :fontWeight (if (= t type) "600" "400")}}
          (str ico " " lbl)])]
+
+     ;; ── 项目归属（可多选）──────────────────────────────────────────────────────
+     (when (seq projects)
+       [:div {:style {:marginBottom "10px"}}
+        [:div {:style {:fontSize "11px" :fontWeight "600" :opacity "0.5" :marginBottom "5px"}}
+         "# 归属项目（可多选）"]
+        [:div {:style {:display "flex" :flexWrap "wrap" :gap "4px"}}
+         (for [p projects]
+           [:button {:key      p
+                     :on-click #(swap! *projects (fn [ps] (if (ps p) (disj ps p) (conj ps p))))
+                     :style {:padding "3px 9px" :borderRadius "20px" :fontSize "12px"
+                             :cursor "pointer"
+                             :border (if (sel-proj p)
+                                       "1.5px solid var(--lx-accent-07,#6366f1)"
+                                       "1px solid var(--lx-gray-05,#e5e7eb)")
+                             :background (if (sel-proj p)
+                                           "var(--lx-accent-03,#ede9fe)"
+                                           "transparent")
+                             :color (if (sel-proj p)
+                                      "var(--lx-accent-11,#4338ca)"
+                                      "var(--lx-gray-10,#6b7280)")
+                             :fontWeight (if (sel-proj p) "600" "400")}}
+            (str "# " p)])]])
 
      ;; ── 日期 + 时间选择器 ──────────────────────────────────────────────────────
      [:div {:style {:marginBottom "12px" :padding "10px"
@@ -536,7 +570,7 @@
 (rum/defcs new-task-btn
   < rum/reactive
   (rum/local false ::ntb-open?)
-  [state]
+  [state projects]
   (let [*open (::ntb-open? state)
         open? (rum/react *open)]
     [:div {:style {:position "relative" :flexShrink "0"}}
@@ -562,7 +596,7 @@
      (when open?
        [:div {:style {:position "absolute" :top "calc(100% + 6px)" :right "0"
                       :zIndex "499"}}
-        (new-task-dialog #(reset! *open false))])]))
+        (new-task-dialog #(reset! *open false) projects)])]))
 
 ;; ── 范围下拉（自定义按钮样式）──────────────────────────────────────────────────
 
@@ -575,7 +609,9 @@
   [state scope projects on-change]
   (let [*open (::ss-open? state)
         open? (rum/react *open)
-        label (if (= scope :personal) "个人（全部）" (str "# " scope))]
+        label (cond (= scope :personal) "个人"
+                    (= scope :all)      "全部"
+                    :else               (str "# " scope))]
     [:div {:style {:position "relative" :flexShrink "0"}}
      (when open?
        [:div {:on-click #(reset! *open false)
@@ -602,7 +638,7 @@
                       :borderRadius "8px" :padding "4px"
                       :boxShadow "0 6px 20px rgba(0,0,0,0.12)"
                       :minWidth "160px"}}
-        (for [[v lbl] (into [[:personal "个人（全部）"]]
+        (for [[v lbl] (into [[:personal "个人"] [:all "全部"]]
                             (map (fn [p] [p (str "# " p)]) projects))]
           [:div {:key      (str v)
                  :on-click (fn [e]
@@ -1055,7 +1091,7 @@
   "全屏日程页面：月历 / 周历 / 看板，范围可切换为个人或各项目。"
   < rum/reactive
   (rum/local :month      ::view)          ;; :month | :week | :kanban
-  (rum/local :personal   ::scope)         ;; :personal | "项目名"
+  (rum/local :all        ::scope)         ;; :personal | :all | "项目名"
   (rum/local nil         ::tasks)         ;; loaded tasks vec
   (rum/local nil         ::loading-err)
   (rum/local nil         ::selected-ymd)  ;; [y m d] for month day-panel
@@ -1201,7 +1237,7 @@
                      :borderLeft "1px solid var(--lx-gray-05,#e5e7eb)"
                      :paddingLeft "12px" :marginLeft "4px" :flex "1"}}
        (scope-select scope projects #(reset! *scope %))
-       (new-task-btn)]
+       (new-task-btn projects)]
 
       ;; view switcher
       [:div {:style {:display "flex" :gap "4px" :flexShrink "0"}}
