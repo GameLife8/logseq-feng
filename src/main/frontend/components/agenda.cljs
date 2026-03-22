@@ -10,7 +10,6 @@
             [frontend.handler.route :as route-handler]
             [frontend.state :as state]
             [frontend.ui :as ui]
-            [logseq.shui.ui :as shui]
             [promesa.core :as p]
             [rum.core :as rum]))
 
@@ -58,8 +57,6 @@
 
 ;; Module-level atom so task-card can trigger a reload without threading
 (defonce ^:private *global-reload! (atom nil))
-;; 保底轮询定时器 ID（用于 will-unmount 清除）
-(defonce ^:private *poll-interval-id (atom nil))
 
 ;; ── 日期工具 ──────────────────────────────────────────────────────────────────
 
@@ -136,12 +133,6 @@
               (.setDate di (+ (.getDate mon) i))
               (date->ymd di)))
           (range 7))))
-
-(defn- start-of-week-ms [ymd]
-  (ymd->day-ms (first (week-days ymd))))
-
-(defn- end-of-week-ms [ymd]
-  (+ (ymd->day-ms (last (week-days ymd))) 86399999))
 
 ;; ── 数据查询 ──────────────────────────────────────────────────────────────────
 
@@ -232,20 +223,6 @@
               acc))
           {}
           tasks))
-
-(defn- classify-task
-  "将任务分类到 :overdue / :today / :this-week / :later / :no-date"
-  [task today-ymd week-end-ms]
-  (if-let [ms (task-date-ms task)]
-    (let [task-ymd    (ms->ymd ms)
-          today-ms    (ymd->day-ms today-ymd)
-          task-day-ms (ymd->day-ms task-ymd)]
-      (cond
-        (same-day? task-ymd today-ymd) :today
-        (< task-day-ms today-ms)       :overdue
-        (<= task-day-ms week-end-ms)   :this-week
-        :else                          :later))
-    :no-date))
 
 ;; ── 项目视图数据 ──────────────────────────────────────────────────────────────
 
@@ -611,48 +588,43 @@
                    (:block/tags %))
             tasks)))
 
+(defn- notification-task-list
+  "构建通知弹窗的任务列表 DOM，最多显示 3 条，超出显示省略。"
+  [header tasks]
+  [:div
+   [:div {:style {:font-weight "600" :margin-bottom "6px"}} header]
+   (for [t (take 3 tasks)]
+     [:div {:key   (str (:block/uuid t))
+            :style {:font-size "12px" :opacity "0.8" :margin-bottom "2px"}}
+      (str "· " (or (:block/title t) "(无标题)"))])
+   (when (> (count tasks) 3)
+     [:div {:style {:font-size "11px" :opacity "0.5" :margin-top "2px"}}
+      (str "还有 " (- (count tasks) 3) " 个…")])])
+
 (defn- notify-on-load!
-  "加载任务后检查 Scheduled/Deadline 并发出通知。
-   - Scheduled 今日开始：提示用户今天有计划任务
-   - Deadline 已逾期（deadline < 当前时刻）：警告"
+  "加载任务后检查 Scheduled/Deadline 并发出通知。"
   [tasks]
   (let [today-ms  (ymd->day-ms (today-ymd))
         today-end (+ today-ms 86399999)
         now-ms    (.getTime (js/Date.))
         active    (filter task-active? tasks)
-        ;; 今天开始的 scheduled 任务
         starting  (filter #(let [s (:logseq.property/scheduled %)]
                               (and s (>= s today-ms) (<= s today-end)))
                           active)
-        ;; deadline 已逾期（deadline < 现在）
         overdue   (filter #(let [d (:logseq.property/deadline %)]
                               (and d (< d now-ms)))
                           active)]
     (when (seq starting)
       (notification/show!
-       [:div
-        [:div {:style {:font-weight "600" :margin-bottom "6px"}}
-         (str "📅 今日有 " (count starting) " 个计划任务开始")]
-        (for [t (take 3 starting)]
-          [:div {:key   (str (:block/uuid t))
-                 :style {:font-size "12px" :opacity "0.8" :margin-bottom "2px"}}
-           (str "· " (or (:block/title t) "(无标题)"))])
-        (when (> (count starting) 3)
-          [:div {:style {:font-size "11px" :opacity "0.5" :margin-top "2px"}}
-           (str "还有 " (- (count starting) 3) " 个…")])]
+       (notification-task-list
+        (str "📅 今日有 " (count starting) " 个计划任务开始")
+        starting)
        :info false nil nil nil))
     (when (seq overdue)
       (notification/show!
-       [:div
-        [:div {:style {:font-weight "600" :margin-bottom "6px"}}
-         (str "⏰ " (count overdue) " 个任务已超过 Deadline")]
-        (for [t (take 3 overdue)]
-          [:div {:key   (str (:block/uuid t))
-                 :style {:font-size "12px" :opacity "0.8" :margin-bottom "2px"}}
-           (str "· " (or (:block/title t) "(无标题)"))])
-        (when (> (count overdue) 3)
-          [:div {:style {:font-size "11px" :opacity "0.5" :margin-top "2px"}}
-           (str "还有 " (- (count overdue) 3) " 个…")])]
+       (notification-task-list
+        (str "⏰ " (count overdue) " 个任务已超过 Deadline")
+        overdue)
        :warning false nil nil nil))))
 
 ;; ── 日任务面板（月视图侧边栏）────────────────────────────────────────────────
@@ -730,20 +702,13 @@
            ;; silent? = true 时只刷新任务列表，不触发弹窗（用于轮询/监听器）
            do-load! (fn [& [silent?]]
                       (-> (p/let [tasks (some-> (state/get-current-repo) (<load-tasks))]
-                            (js/console.log "agenda do-load! tasks:" (count tasks))
-                            (doseq [t (or tasks [])]
-                              (let [s (:logseq.property/scheduled t)
-                                    d (:logseq.property/deadline t)]
-                                (when (or s d)
-                                  (js/console.log "  ✅" (:block/title t)
-                                                 "sched=" s "dead=" d))))
+                            (reset! *err nil)
                             (reset! *tasks (or tasks []))
                             (when-not silent?
                               (notify-on-load! (or tasks []))))
-                          (p/catch (fn [_e]
-                                     ;; DB Worker 尚未初始化（应用启动期间），
-                                     ;; 忽略此次失败，等待 d/listen! 触发再加载
-                                     nil))))
+                          (p/catch (fn [e]
+                                     ;; DB Worker 尚未初始化（应用启动期间），忽略
+                                     (reset! *err (.-message e))))))
            ;; 监听的属性：新建任务/状态变更/日期变更 都会触发刷新
            watch-attrs #{:logseq.property/status
                          :logseq.property/scheduled
@@ -760,13 +725,10 @@
            (p/then
             (fn [_]
               (when-let [conn (db/get-db (state/get-current-repo) false)]
-                (js/console.log "agenda: registering d/listen! on conn" (some? conn))
                 (d/listen! conn ::agenda-auto-refresh
                            (fn [{:keys [tx-data]}]
                              (let [matched (filter #(contains? watch-attrs (:a %)) tx-data)]
                                (when (seq matched)
-                                 (js/console.log "agenda listener fired, attrs:"
-                                                (clj->js (mapv :a matched)))
                                  (js/clearTimeout @*timer)
                                  (vreset! *timer (js/setTimeout #(do-load! true) 400)))))))
               (do-load!)))
@@ -776,9 +738,6 @@
    (fn [state]
      (when-let [conn (db/get-db (state/get-current-repo) false)]
        (d/unlisten! conn ::agenda-auto-refresh))
-     (when-let [pid @*poll-interval-id]
-       (js/clearInterval pid)
-       (reset! *poll-interval-id nil))
      state)}
   [state]
   (let [*view      (::view state)
@@ -795,7 +754,7 @@
         sel-ymd    (rum/react *sel)
         [cy cm]    (or (rum/react *cur-month) [(first (today-ymd)) (second (today-ymd))])
         week-ymd   (or (rum/react *cur-week) (today-ymd))
-        week-days  (week-days week-ymd)
+        week-ymds  (week-days week-ymd)
         ;; 从全量任务提取项目列表，用于渲染 scope tabs
         projects   (all-projects (or all-tasks []))
         ;; 按当前 scope 过滤
@@ -843,8 +802,8 @@
                                                     [y m (- d 7)])))))
          [:span {:style {:fontSize "14px" :fontWeight "600" :minWidth "120px"
                          :textAlign "center" :flexShrink "0"}}
-          (let [[y m d] (first week-days)
-                [_ m2 d2] (last week-days)]
+          (let [[y m d] (first week-ymds)
+                [_ m2 d2] (last week-ymds)]
             (str (inc m) "/" d " – " (inc m2) "/" d2))]
          (nav-btn "›" #(reset! *cur-week (first (week-days
                                                   (let [[y m d] @*cur-week]
@@ -918,7 +877,7 @@
          (case view
            :month  (month-view tasks-by-day cy cm sel-ymd
                                (fn [ymd] (reset! *sel ymd)))
-           :week   (week-view tasks-by-day week-days)
+           :week   (week-view tasks-by-day week-ymds)
            :kanban (kanban-view tasks))]
 
         ;; 月视图右侧日任务面板
