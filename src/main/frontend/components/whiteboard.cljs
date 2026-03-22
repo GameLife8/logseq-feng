@@ -361,9 +361,10 @@
                        (notification/show! "白板已保存" :success)
                        (route-handler/redirect! {:to :all-whiteboards}))]
     ;; No overflow:hidden on outer div — allows Excalidraw dropdown menus to show
-    ;; height uses --ls-headbar-height so the canvas fills exactly the below-header area
+    ;; height: 100% works because container.css ensures the full parent chain has height: 100%
+    ;; for margin-less pages (whiteboard / graph) with all padding stripped.
     [:div.whiteboard-page
-     {:style {:position "relative" :width "100%" :height "calc(100vh - var(--ls-headbar-height))"}}
+     {:style {:position "relative" :width "100%" :height "100%"}}
 
      ;; canvas fills entire viewport; tags are rendered inside renderTopRightUI
      [:div {:style {:position "absolute" :inset 0 :overflow "hidden"}}
