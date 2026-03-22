@@ -158,10 +158,10 @@
 
 (defn- <load-tasks
   "从 DB Worker 加载所有带状态的块，返回 promise<seq>。
-   使用 transact-db? false 确保每次都直接查询 DB Worker 获取最新数据，
-   避免缓存导致新建任务不显示的问题。"
+   使用默认 transact-db? true：首次查询 DB Worker 并缓存到本地 conn；
+   后续查询直接用本地 conn（管道会实时同步所有属性变更到本地 conn）。"
   [repo]
-  (db-async/<q repo {:transact-db? false}
+  (db-async/<q repo {}
                '[:find [(pull ?block ?pull-spec) ...]
                  :in $ ?pull-spec
                  :where
@@ -726,7 +726,15 @@
            *timer   (volatile! nil)
            ;; silent? = true 时只刷新任务列表，不触发弹窗（用于轮询/监听器）
            do-load! (fn [& [silent?]]
+                      (js/console.log "agenda do-load! start, transact-db? true")
                       (p/let [tasks (some-> (state/get-current-repo) (<load-tasks))]
+                        (js/console.log "agenda do-load! tasks:" (count tasks))
+                        (doseq [t (or tasks [])]
+                          (let [s (:logseq.property/scheduled t)
+                                d (:logseq.property/deadline t)]
+                            (when (or s d)
+                              (js/console.log "  ✅" (:block/title t)
+                                             "sched=" s "dead=" d))))
                         (reset! *tasks (or tasks []))
                         (when-not silent?
                           (notify-on-load! (or tasks [])))))
@@ -740,14 +748,15 @@
        ;; 注册全局刷新函数，供 task-card 状态修改后调用
        (reset! *global-reload! do-load!)
        ;; 监听前端 DB 变化，自动刷新任务列表（防抖 400ms，静默模式不弹窗）
-       ;; 使用 (:a %) 而非 (.-a %) 确保与 CLJS map 和 Datom 对象均兼容
        (when-let [conn (db/get-db (state/get-current-repo) false)]
          (d/listen! conn ::agenda-auto-refresh
                     (fn [{:keys [tx-data]}]
-                      (when (some #(contains? watch-attrs (:a %)) tx-data)
-                        (js/clearTimeout @*timer)
-                        (vreset! *timer (js/setTimeout #(do-load! true) 400))))))
-       ;; 不使用轮询：scheduled/deadline 未提交时轮询也无效，等 DB 事件触发即可
+                      (let [matched (filter #(contains? watch-attrs (:a %)) tx-data)]
+                        (js/console.log "agenda listener fired, matched attrs:"
+                                       (clj->js (map :a matched)))
+                        (when (seq matched)
+                          (js/clearTimeout @*timer)
+                          (vreset! *timer (js/setTimeout #(do-load! true) 400)))))))
        (do-load!))
      state)
    :will-unmount
