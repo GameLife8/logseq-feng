@@ -625,6 +625,17 @@
 (def ^:private date-source-label
   {:scheduled "📅" :deadline "⏰" :journal "📓" :created "🕐"})
 
+(defn- ms->date-str
+  "将 UTC 毫秒格式化为日期字符串；若非整点（小时:分钟 ≠ 0:0）则附加时间。"
+  [ms]
+  (let [d  (js/Date. ms)
+        h  (.getHours d)
+        mi (.getMinutes d)
+        ds (date/js-date->journal-title d)]
+    (if (= 0 h mi)
+      ds
+      (str ds " " (util/zero-pad h) ":" (util/zero-pad mi)))))
+
 (rum/defcs task-card
   "任务卡片：
    - 点击状态圆点/标签 → 展开状态选择器
@@ -691,8 +702,12 @@
                     :cursor "pointer"}}
       (or title "(无标题)")]
 
-     (when p-title
-       [:div {:style {:fontSize "11px" :opacity "0.5" :marginTop "2px"}} p-title])
+     ;; 日期行：scheduled/deadline 显示属性日期+时间，todo 显示日记页日期
+     [:div {:style {:fontSize "11px" :opacity "0.5" :marginTop "2px"}}
+      (case (:source dinfo)
+        :scheduled (str "📅 " (ms->date-str (:ms dinfo)))
+        :deadline  (str "⏰ " (ms->date-str (:ms dinfo)))
+        (or p-title ""))]
 
      ;; ── 状态选择下拉 ──────────────────────────────────────────────────────
      (when status?
@@ -1074,7 +1089,9 @@
        (reset! *week  td)
        (reset! *sel   td)
        ;; 注册全局刷新函数，供 task-card 状态修改后调用
-       (reset! *global-reload! do-load!)
+       ;; 全局刷新始终静默（状态修改、新建任务等触发），
+      ;; 只有页面初次进入时的 do-load! 才触发通知弹窗
+      (reset! *global-reload! #(do-load! true))
        ;; app-ready-promise 兑现后 DB Worker 及本地 conn 均已就绪：
        ;; 1. 注册 d/listen! 监听属性变更 → 触发静默刷新
        ;; 2. 执行初始加载
