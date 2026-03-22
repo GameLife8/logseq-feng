@@ -234,6 +234,14 @@
         :icon "layout-board"
         :href (rfe/href :all-whiteboards)})
 
+      ;; Agenda – task calendar and kanban
+      (sidebar-item
+       {:class "agenda-nav"
+        :active (and (not srs-open?) (= route-name :agenda))
+        :title "日程"
+        :icon "calendar-time"
+        :href (rfe/href :agenda)})
+
       (for [nav checked-navs]
         (cond
           (= nav :flashcards)

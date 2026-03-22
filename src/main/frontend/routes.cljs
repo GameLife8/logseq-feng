@@ -1,6 +1,7 @@
 (ns frontend.routes
   "Defines routes for use with reitit router"
-  (:require [frontend.components.all-pages :as all-pages]
+  (:require [frontend.components.agenda :as agenda]
+            [frontend.components.all-pages :as all-pages]
             [frontend.components.bug-report :as bug-report]
             [frontend.components.file :as file]
             [frontend.components.home :as home]
@@ -85,6 +86,10 @@
    ["/whiteboards"
     {:name :all-whiteboards
      :view (fn [_] (whiteboard/all-whiteboards))}]
+
+   ["/agenda"
+    {:name :agenda
+     :view (fn [_] (agenda/agenda-page))}]
 
    (when config/dev?
      ["/ui"

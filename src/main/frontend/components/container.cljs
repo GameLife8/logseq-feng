@@ -381,7 +381,7 @@
         ls-block-hl-colored? (state/sub :pdf/block-highlight-colored?)
         right-sidebar-blocks (state/sub-right-sidebar-blocks)
         route-name (get-in route-match [:data :name])
-        margin-less-pages? (boolean (#{:graph :whiteboard} route-name))
+        margin-less-pages? (boolean (#{:graph :whiteboard :agenda} route-name))
         db-restoring? (state/sub :db/restoring?)
         page? (= :page route-name)
         home? (= :home route-name)
