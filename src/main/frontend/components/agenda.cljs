@@ -726,18 +726,21 @@
            *timer   (volatile! nil)
            ;; silent? = true 时只刷新任务列表，不触发弹窗（用于轮询/监听器）
            do-load! (fn [& [silent?]]
-                      (js/console.log "agenda do-load! start, transact-db? true")
-                      (p/let [tasks (some-> (state/get-current-repo) (<load-tasks))]
-                        (js/console.log "agenda do-load! tasks:" (count tasks))
-                        (doseq [t (or tasks [])]
-                          (let [s (:logseq.property/scheduled t)
-                                d (:logseq.property/deadline t)]
-                            (when (or s d)
-                              (js/console.log "  ✅" (:block/title t)
-                                             "sched=" s "dead=" d))))
-                        (reset! *tasks (or tasks []))
-                        (when-not silent?
-                          (notify-on-load! (or tasks [])))))
+                      (-> (p/let [tasks (some-> (state/get-current-repo) (<load-tasks))]
+                            (js/console.log "agenda do-load! tasks:" (count tasks))
+                            (doseq [t (or tasks [])]
+                              (let [s (:logseq.property/scheduled t)
+                                    d (:logseq.property/deadline t)]
+                                (when (or s d)
+                                  (js/console.log "  ✅" (:block/title t)
+                                                 "sched=" s "dead=" d))))
+                            (reset! *tasks (or tasks []))
+                            (when-not silent?
+                              (notify-on-load! (or tasks []))))
+                          (p/catch (fn [_e]
+                                     ;; DB Worker 尚未初始化（应用启动期间），
+                                     ;; 忽略此次失败，等待 d/listen! 触发再加载
+                                     nil))))
            ;; 监听的属性：新建任务/状态变更/日期变更 都会触发刷新
            watch-attrs #{:logseq.property/status
                          :logseq.property/scheduled
@@ -747,17 +750,24 @@
        (reset! *sel   td)
        ;; 注册全局刷新函数，供 task-card 状态修改后调用
        (reset! *global-reload! do-load!)
-       ;; 监听前端 DB 变化，自动刷新任务列表（防抖 400ms，静默模式不弹窗）
-       (when-let [conn (db/get-db (state/get-current-repo) false)]
-         (d/listen! conn ::agenda-auto-refresh
-                    (fn [{:keys [tx-data]}]
-                      (let [matched (filter #(contains? watch-attrs (:a %)) tx-data)]
-                        (js/console.log "agenda listener fired, matched attrs:"
-                                       (clj->js (map :a matched)))
-                        (when (seq matched)
-                          (js/clearTimeout @*timer)
-                          (vreset! *timer (js/setTimeout #(do-load! true) 400)))))))
-       (do-load!))
+       ;; app-ready-promise 兑现后 DB Worker 及本地 conn 均已就绪：
+       ;; 1. 注册 d/listen! 监听属性变更 → 触发静默刷新
+       ;; 2. 执行初始加载
+       (-> state/app-ready-promise
+           (p/then
+            (fn [_]
+              (when-let [conn (db/get-db (state/get-current-repo) false)]
+                (js/console.log "agenda: registering d/listen! on conn" (some? conn))
+                (d/listen! conn ::agenda-auto-refresh
+                           (fn [{:keys [tx-data]}]
+                             (let [matched (filter #(contains? watch-attrs (:a %)) tx-data)]
+                               (when (seq matched)
+                                 (js/console.log "agenda listener fired, attrs:"
+                                                (clj->js (mapv :a matched)))
+                                 (js/clearTimeout @*timer)
+                                 (vreset! *timer (js/setTimeout #(do-load! true) 400)))))))
+              (do-load!)))
+           (p/catch (fn [_] nil))))
      state)
    :will-unmount
    (fn [state]
