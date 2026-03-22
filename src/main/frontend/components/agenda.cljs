@@ -3,9 +3,12 @@
    设计灵感来自 logseq-plugin-agenda (haydenull)，按 DB 版规范重写。"
   (:require [clojure.string :as string]
             [datascript.core :as d]
+            [frontend.date :as date]
             [frontend.db :as db]
             [frontend.db.async :as db-async]
+            [frontend.db.model :as db-model]
             [frontend.handler.db-based.property :as db-property-handler]
+            [frontend.handler.editor :as editor-handler]
             [frontend.handler.notification :as notification]
             [frontend.handler.route :as route-handler]
             [frontend.state :as state]
@@ -262,6 +265,309 @@
   (when db-id
     (state/sidebar-add-block!
      (state/get-current-repo) db-id :block)))
+
+;; ── 任务创建 ──────────────────────────────────────────────────────────────────
+
+(defn- <create-task!
+  "在今日日记页新建任务块，设置状态和可选日期属性。
+   type: :todo | :scheduled | :deadline
+   date-ms: UTC 毫秒时间戳（nil 时不设置日期）"
+  [title type date-ms]
+  (when-not (string/blank? title)
+    (let [today-page (db-model/get-journal-page (date/today))]
+      (when today-page
+        (p/let [block (editor-handler/api-insert-new-block!
+                       title
+                       {:page (:block/uuid today-page)
+                        :edit-block? false})]
+          (when block
+            (let [uuid (:block/uuid block)]
+              (db-property-handler/batch-set-property-closed-value!
+               [uuid] :logseq.property/status "Todo")
+              (when (and date-ms (#{:scheduled :deadline} type))
+                (db-property-handler/batch-set-property!
+                 [uuid]
+                 (if (= type :scheduled)
+                   :logseq.property/scheduled
+                   :logseq.property/deadline)
+                 date-ms
+                 {}))
+              block)))))))
+
+;; ── 小型日历选择器 ─────────────────────────────────────────────────────────────
+
+(rum/defcs mini-date-picker
+  "内联迷你日历，全中文展示。
+   on-select: (fn [utc-ms]) 选中日期的 UTC 毫秒时间戳
+   selected-ms: 当前已选的 UTC 毫秒（nil = 无选中）"
+  < rum/reactive
+  (rum/local nil ::dp-month)
+  [state on-select selected-ms]
+  (let [*month  (::dp-month state)
+        now     (js/Date.)
+        init-ym [(if selected-ms
+                   (.getFullYear (js/Date. selected-ms))
+                   (.getFullYear now))
+                 (if selected-ms
+                   (.getMonth (js/Date. selected-ms))
+                   (.getMonth now))]
+        _       (when (nil? @*month) (reset! *month init-ym))
+        [cy cm] (or @*month init-ym)
+        today   (today-ymd)
+        sel-ymd (when selected-ms (ms->ymd selected-ms))
+        grid    (month-grid-days cy cm)]
+    [:div {:style {:userSelect "none" :minWidth "220px"}}
+     ;; 月份导航
+     [:div {:style {:display "flex" :alignItems "center" :justifyContent "space-between"
+                    :marginBottom "8px"}}
+      [:button {:on-click (fn [e]
+                            (.stopPropagation e)
+                            (let [[y m] @*month
+                                  [ny nm] (if (zero? m) [(dec y) 11] [y (dec m)])]
+                              (reset! *month [ny nm])))
+                :style {:background "none" :border "none" :cursor "pointer"
+                        :fontSize "18px" :padding "0 6px" :lineHeight "1.2"
+                        :color "var(--lx-gray-11,#374151)"}} "‹"]
+      [:span {:style {:fontSize "13px" :fontWeight "600"}}
+       (str cy "年" (inc cm) "月")]
+      [:button {:on-click (fn [e]
+                            (.stopPropagation e)
+                            (let [[y m] @*month
+                                  [ny nm] (if (= 11 m) [(inc y) 0] [y (inc m)])]
+                              (reset! *month [ny nm])))
+                :style {:background "none" :border "none" :cursor "pointer"
+                        :fontSize "18px" :padding "0 6px" :lineHeight "1.2"
+                        :color "var(--lx-gray-11,#374151)"}} "›"]]
+     ;; 星期标题
+     [:div {:style {:display "grid" :gridTemplateColumns "repeat(7,1fr)"
+                    :marginBottom "4px"}}
+      (for [wd weekday-names]
+        [:div {:key wd
+               :style {:textAlign "center" :fontSize "11px" :fontWeight "600"
+                       :opacity "0.4" :padding "3px 0"}}
+         wd])]
+     ;; 日格
+     (for [week (partition 7 grid)
+           :let [wk (str (-> week first :ymd))]]
+       [:div {:key wk :style {:display "grid" :gridTemplateColumns "repeat(7,1fr)"}}
+        (for [{:keys [ymd current?]} week
+              :let [is-today    (same-day? ymd today)
+                    is-sel      (= ymd sel-ymd)
+                    [_ _ d]     ymd]]
+          [:div {:key      (str ymd)
+                 :on-click (fn [e]
+                              (.stopPropagation e)
+                              (when current? (on-select (.getTime (ymd->date ymd)))))
+                 :style {:textAlign "center" :fontSize "12px"
+                         :padding "4px 2px" :borderRadius "4px"
+                         :cursor (if current? "pointer" "default")
+                         :fontWeight (if is-today "700" "400")
+                         :opacity (if current? 1 0.25)
+                         :background (cond is-sel   "var(--lx-accent-09,#4f46e5)"
+                                          is-today "var(--lx-gray-04,#f1f5f9)"
+                                          :else    "transparent")
+                         :color (if is-sel "#fff" "inherit")}}
+           d])])]))
+
+;; ── 新建任务弹窗 ───────────────────────────────────────────────────────────────
+
+(rum/defcs new-task-dialog
+  "新建任务弹窗：支持 待办 / 计划 / 截止 三种形式。
+   on-close: 关闭回调"
+  < rum/reactive
+  (rum/local ""        ::nt-title)
+  (rum/local :todo     ::nt-type)
+  (rum/local nil       ::nt-date-ms)
+  (rum/local false     ::nt-saving?)
+  [state on-close]
+  (let [*title   (::nt-title state)
+        *type    (::nt-type state)
+        *date-ms (::nt-date-ms state)
+        *saving? (::nt-saving? state)
+        title    (rum/react *title)
+        type     (rum/react *type)
+        date-ms  (rum/react *date-ms)
+        saving?  (rum/react *saving?)
+        can-save (not (string/blank? title))
+        do-save! (fn []
+                   (when can-save
+                     (reset! *saving? true)
+                     (p/let [_ (<create-task! title type date-ms)]
+                       (reset! *saving? false)
+                       (on-close)
+                       (js/setTimeout #(when-let [r! @*global-reload!] (r!)) 300))))
+        btn-base {:padding "5px 14px" :borderRadius "6px" :fontSize "12px"
+                  :cursor "pointer" :fontWeight "500"}]
+    [:div {:on-click #(.stopPropagation %)
+           :style {:background "#fff"
+                   :border "1px solid var(--lx-gray-05,#e5e7eb)"
+                   :borderRadius "12px" :padding "16px"
+                   :boxShadow "0 8px 32px rgba(0,0,0,0.15)"
+                   :width "300px"}}
+     [:div {:style {:fontSize "14px" :fontWeight "700" :marginBottom "12px"
+                    :color "var(--lx-gray-12,#111)"}} "新建任务"]
+
+     ;; 标题输入
+     [:input {:value       title
+              :placeholder "任务标题…"
+              :auto-focus  true
+              :on-change   #(reset! *title (.. % -target -value))
+              :on-key-down (fn [e]
+                             (when (= "Enter" (.-key e))
+                               (.preventDefault e)
+                               (do-save!)))
+              :style {:width "100%" :fontSize "13px"
+                      :padding "8px 10px" :borderRadius "7px"
+                      :border "1px solid var(--lx-gray-05,#e5e7eb)"
+                      :outline "none" :boxSizing "border-box"
+                      :marginBottom "10px"
+                      :fontFamily "inherit"}}]
+
+     ;; 类型选择
+     [:div {:style {:display "flex" :gap "4px" :marginBottom "12px"}}
+      (for [[t lbl ico] [[:todo "待办" "☑"] [:scheduled "计划" "📅"] [:deadline "截止" "⏰"]]]
+        [:button {:key      (name t)
+                  :on-click #(do (reset! *type t)
+                                 (when (= t :todo) (reset! *date-ms nil)))
+                  :style {:flex "1" :padding "6px 4px" :borderRadius "6px"
+                          :fontSize "12px" :cursor "pointer"
+                          :border (if (= t type)
+                                    "1.5px solid var(--lx-accent-07,#6366f1)"
+                                    "1px solid var(--lx-gray-05,#e5e7eb)")
+                          :background (if (= t type)
+                                        "var(--lx-accent-03,#ede9fe)"
+                                        "var(--lx-gray-02,#f9fafb)")
+                          :color (if (= t type)
+                                   "var(--lx-accent-11,#4338ca)"
+                                   "var(--lx-gray-10,#6b7280)")
+                          :fontWeight (if (= t type) "600" "400")}}
+         (str ico " " lbl)])]
+
+     ;; 日期选择器（计划 / 截止）
+     (when (#{:scheduled :deadline} type)
+       [:div {:style {:marginBottom "12px" :padding "10px"
+                      :background "var(--lx-gray-02,#f9fafb)"
+                      :borderRadius "8px"
+                      :border "1px solid var(--lx-gray-04,#e8eaed)"}}
+        [:div {:style {:fontSize "11px" :fontWeight "600" :opacity "0.55"
+                       :marginBottom "8px"}}
+         (if (= type :scheduled) "📅 选择计划日期" "⏰ 选择截止日期")]
+        (rum/with-key
+          (mini-date-picker #(reset! *date-ms %) date-ms)
+          (str "dp-" (name type)))
+        (when date-ms
+          (let [[y m d] (ms->ymd date-ms)]
+            [:div {:style {:fontSize "11px" :marginTop "6px" :textAlign "center"
+                           :color "var(--lx-accent-09,#4f46e5)" :fontWeight "600"}}
+             (str "✓ " y "年" (inc m) "月" d "日")]))])
+
+     ;; 操作按钮
+     [:div {:style {:display "flex" :gap "6px" :justifyContent "flex-end"}}
+      [:button {:on-click on-close
+                :style (merge btn-base
+                               {:border "1px solid var(--lx-gray-05,#e5e7eb)"
+                                :background "var(--lx-gray-02,#f9fafb)"
+                                :color "var(--lx-gray-10,#6b7280)"})}
+       "取消"]
+      [:button {:on-click do-save!
+                :disabled (or saving? (not can-save))
+                :style (merge btn-base
+                               {:border "none"
+                                :background (if can-save
+                                              "var(--lx-accent-09,#4f46e5)"
+                                              "var(--lx-gray-05,#e5e7eb)")
+                                :color (if can-save "#fff" "var(--lx-gray-08,#9ca3af)")
+                                :cursor (if can-save "pointer" "not-allowed")})}
+       (if saving? "创建中…" "创建")]]]))
+
+;; ── 新建任务按钮（工具栏用）────────────────────────────────────────────────────
+
+(rum/defcs new-task-btn
+  < rum/reactive
+  (rum/local false ::ntb-open?)
+  [state]
+  (let [*open (::ntb-open? state)
+        open? (rum/react *open)]
+    [:div {:style {:position "relative" :flexShrink "0"}}
+     (when open?
+       [:div {:on-click #(reset! *open false)
+              :style {:position "fixed" :inset "0" :zIndex "498"}}])
+     [:button {:on-click (fn [e]
+                           (.stopPropagation e)
+                           (swap! *open not))
+               :style {:display "flex" :alignItems "center" :gap "5px"
+                       :padding "4px 11px" :borderRadius "6px"
+                       :border (if open?
+                                 "1.5px solid var(--lx-accent-07,#6366f1)"
+                                 "1px solid var(--lx-accent-07,#6366f1)")
+                       :background (if open?
+                                     "var(--lx-accent-09,#4f46e5)"
+                                     "var(--lx-accent-03,#ede9fe)")
+                       :color (if open? "#fff" "var(--lx-accent-11,#4338ca)")
+                       :fontSize "13px" :fontWeight "600" :cursor "pointer"
+                       :flexShrink "0"}}
+      [:span {:style {:fontSize "15px" :lineHeight "1"}} "＋"]
+      "新建"]
+     (when open?
+       [:div {:style {:position "absolute" :top "calc(100% + 6px)" :right "0"
+                      :zIndex "499"}}
+        (new-task-dialog #(reset! *open false))])]))
+
+;; ── 范围下拉（自定义按钮样式）──────────────────────────────────────────────────
+
+(rum/defcs scope-select
+  "自定义项目范围下拉，样式与工具栏按钮一致。
+   scope: :personal 或项目名字符串
+   on-change: (fn [new-scope]) 回调"
+  < rum/reactive
+  (rum/local false ::ss-open?)
+  [state scope projects on-change]
+  (let [*open (::ss-open? state)
+        open? (rum/react *open)
+        label (if (= scope :personal) "个人（全部）" (str "# " scope))]
+    [:div {:style {:position "relative" :flexShrink "0"}}
+     (when open?
+       [:div {:on-click #(reset! *open false)
+              :style {:position "fixed" :inset "0" :zIndex "398"}}])
+     [:button {:on-click (fn [e]
+                           (.stopPropagation e)
+                           (swap! *open not))
+               :style {:display "flex" :alignItems "center" :gap "5px"
+                       :padding "4px 10px" :borderRadius "6px"
+                       :border "1px solid var(--lx-gray-06,#e5e7eb)"
+                       :background (if open?
+                                     "var(--lx-gray-04,#f1f5f9)"
+                                     "var(--lx-gray-03,#f3f4f6)")
+                       :color "var(--lx-gray-11,#374151)"
+                       :fontSize "13px" :cursor "pointer"}}
+      (ui/icon "folder" {:size 13 :class "opacity-50"})
+      [:span label]
+      [:span {:style {:fontSize "9px" :opacity "0.45" :marginLeft "2px"}} "▾"]]
+     (when open?
+       [:div {:on-click #(.stopPropagation %)
+              :style {:position "absolute" :top "calc(100% + 4px)" :left "0"
+                      :zIndex "399" :background "#fff"
+                      :border "1px solid var(--lx-gray-05,#e5e7eb)"
+                      :borderRadius "8px" :padding "4px"
+                      :boxShadow "0 6px 20px rgba(0,0,0,0.12)"
+                      :minWidth "160px"}}
+        (for [[v lbl] (into [[:personal "个人（全部）"]]
+                            (map (fn [p] [p (str "# " p)]) projects))]
+          [:div {:key      (str v)
+                 :on-click (fn [e]
+                              (.stopPropagation e)
+                              (reset! *open false)
+                              (on-change v))
+                 :style {:display "flex" :alignItems "center" :gap "6px"
+                         :padding "6px 10px" :borderRadius "5px" :cursor "pointer"
+                         :fontSize "13px"
+                         :fontWeight (if (= v scope) "600" "400")
+                         :background (if (= v scope)
+                                       "var(--lx-gray-03,#f3f4f6)"
+                                       "transparent")}}
+           (when (= v scope)
+             [:span {:style {:fontSize "10px" :color "var(--lx-accent-09,#4f46e5)"}} "✓"])
+           lbl])])]))
 
 ;; ── 任务卡片 ──────────────────────────────────────────────────────────────────
 
@@ -822,27 +1128,12 @@
                         :fontSize "13px" :cursor "pointer" :flexShrink "0"}}
        "今天"]
 
-      ;; ── 范围下拉（个人 / 各项目）──────────────────────────────────────────
+      ;; ── 范围下拉 + 新建任务 ───────────────────────────────────────────────
       [:div {:style {:display "flex" :alignItems "center" :gap "6px"
                      :borderLeft "1px solid var(--lx-gray-05,#e5e7eb)"
                      :paddingLeft "12px" :marginLeft "4px" :flex "1"}}
-       (ui/icon "folder" {:size 14 :class "opacity-40"})
-       [:select
-        {:value     (if (= scope :personal) "personal" (str scope))
-         :on-change (fn [e]
-                      (let [v (.. e -target -value)]
-                        (reset! *scope (if (= v "personal") :personal v))))
-         :style {:padding      "4px 8px"
-                 :borderRadius "6px"
-                 :border       "1px solid var(--lx-gray-05,#e5e7eb)"
-                 :background   "var(--lx-gray-02,#f9fafb)"
-                 :fontSize     "13px"
-                 :cursor       "pointer"
-                 :outline      "none"
-                 :maxWidth     "200px"}}
-        [:option {:value "personal"} "个人（全部）"]
-        (for [p projects]
-          [:option {:key p :value p} (str "# " p)])]]
+       (scope-select scope projects #(reset! *scope %))
+       (new-task-btn)]
 
       ;; view switcher
       [:div {:style {:display "flex" :gap "4px" :flexShrink "0"}}
