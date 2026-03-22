@@ -4,6 +4,7 @@
   (:require [clojure.string :as string]
             [frontend.db :as db]
             [frontend.db.async :as db-async]
+            [frontend.handler.db-based.property :as db-property-handler]
             [frontend.handler.notification :as notification]
             [frontend.handler.route :as route-handler]
             [frontend.state :as state]
@@ -35,6 +36,27 @@
    :logseq.property/status.backlog   "#94a3b8"
    :logseq.property/status.in-review "#a855f7"
    :logseq.property/status.waiting   "#64748b"})
+
+;; Closed-value API names used by batch-set-property-closed-value!
+(def ^:private status-api-name
+  {:logseq.property/status.backlog   "Backlog"
+   :logseq.property/status.todo      "Todo"
+   :logseq.property/status.doing     "Doing"
+   :logseq.property/status.in-review "In Review"
+   :logseq.property/status.done      "Done"
+   :logseq.property/status.canceled  "Canceled"})
+
+;; All editable statuses in display order
+(def ^:private all-statuses
+  [[:logseq.property/status.backlog   "待办池"]
+   [:logseq.property/status.todo      "待办"]
+   [:logseq.property/status.doing     "进行中"]
+   [:logseq.property/status.in-review "审核中"]
+   [:logseq.property/status.done      "完成"]
+   [:logseq.property/status.canceled  "已取消"]])
+
+;; Module-level atom so task-card can trigger a reload without threading
+(defonce ^:private *global-reload! (atom nil))
 
 ;; ── 日期工具 ──────────────────────────────────────────────────────────────────
 
@@ -128,7 +150,7 @@
 (defn- <load-tasks
   "从 DB Worker 加载所有带状态的块，返回 promise<seq>"
   [repo]
-  (db-async/<q repo {:transact-db? false}
+  (db-async/<q repo {:transact-db? true}
                '[:find [(pull ?block ?pull-spec) ...]
                  :in $ ?pull-spec
                  :where
@@ -155,9 +177,9 @@
     (.getTime (js/Date. year month day))))
 
 (defn- task-date-info
-  "返回 {:ms 毫秒时间戳 :source :scheduled|:deadline|:journal}，
-   优先级：scheduled > deadline > journal-day（所在日记页）。
-   均无则返回 nil（真正未计划）。"
+  "返回 {:ms 毫秒时间戳 :source :scheduled|:deadline|:journal|:created}。
+   优先级：scheduled > deadline > journal-day > created-at。
+   所有任务都有 created-at，因此始终返回非 nil。"
   [task]
   (cond
     (:logseq.property/scheduled task)
@@ -170,7 +192,8 @@
     {:ms (journal-day->ms (get-in task [:block/page :block/journal-day]))
      :source :journal}
 
-    :else nil))
+    :else
+    {:ms (or (:block/created-at task) 0) :source :created}))
 
 (defn- task-date-ms
   "返回任务的有效日期毫秒，无日期返回 nil"
@@ -223,48 +246,158 @@
               (update acc nil (fnil conj []) task)))
           {} tasks))
 
+;; ── 状态 & 导航辅助 ───────────────────────────────────────────────────────────
+
+(defn- update-task-status!
+  "将任务状态写入 DB，然后触发全局刷新。"
+  [block-uuid new-ident]
+  (when-let [api-name (get status-api-name new-ident)]
+    (db-property-handler/batch-set-property-closed-value!
+     [block-uuid] :logseq.property/status api-name)
+    (when-let [reload! @*global-reload!]
+      (js/setTimeout reload! 300))))
+
+(defn- open-in-sidebar!
+  "在右侧边栏打开 block。"
+  [db-id]
+  (when db-id
+    (state/sidebar-add-block!
+     (state/get-current-repo) db-id :block)))
+
 ;; ── 任务卡片 ──────────────────────────────────────────────────────────────────
 
 (def ^:private date-source-label
-  {:scheduled "📅" :deadline "⏰" :journal "📓"})
+  {:scheduled "📅" :deadline "⏰" :journal "📓" :created "🕐"})
 
-(rum/defc task-card
-  [{:keys [block/title block/uuid block/page] :as task}]
-  (let [ident   (task-status-ident task)
+(rum/defcs task-card
+  "任务卡片：
+   - 点击状态圆点/标签 → 展开状态选择器
+   - 点击标题/卡片体  → 展开导航弹窗（侧边栏 or 跳转）"
+  < rum/reactive
+  (rum/local false ::nav-open?)
+  (rum/local false ::status-open?)
+  [state {:keys [block/title block/uuid block/page db/id] :as task}]
+  (let [*nav    (::nav-open? state)
+        *status (::status-open? state)
+        nav?    (rum/react *nav)
+        status? (rum/react *status)
+        ident   (task-status-ident task)
         color   (get status-color ident "#94a3b8")
         label   (get status-label ident "未知")
         p-title (:block/title page)
         dinfo   (task-date-info task)
-        src-ico (when dinfo (get date-source-label (:source dinfo)))]
+        src-tip (case (:source dinfo)
+                  :scheduled "计划日期" :deadline "截止日期"
+                  :journal "日记页日期" :created "创建时间" "")]
     [:div.agenda-task-card
      {:key   (str uuid)
-      :style {:background    "var(--lx-gray-01, #fff)"
-              :border        "1px solid var(--lx-gray-05, #e5e7eb)"
-              :borderRadius  "8px"
-              :padding       "8px 10px"
-              :marginBottom  "6px"
-              :cursor        "pointer"}
-      :on-click (fn []
-                  (when uuid
-                    (route-handler/redirect-to-page! (str uuid))))}
-     [:div {:style {:display "flex" :alignItems "center" :gap "6px" :marginBottom "3px"}}
-      [:span {:style {:width  "8px" :height "8px" :borderRadius "50%"
-                      :background color :flexShrink "0"}}]
-      [:span {:style {:fontSize "12px" :color color :opacity "0.85"}} label]
-      (when src-ico
-        [:span {:style {:fontSize "11px" :opacity "0.45" :marginLeft "auto"
-                        :title (case (:source dinfo)
-                                 :scheduled "来自计划日期"
-                                 :deadline  "来自截止日期"
-                                 :journal   "来自日记页日期"
-                                 "")}}
-         src-ico])]
-     [:div {:style {:fontSize "13px" :fontWeight "500"
+      :style {:background   "var(--lx-gray-01, #fff)"
+              :border       "1px solid var(--lx-gray-05, #e5e7eb)"
+              :borderRadius "8px"
+              :padding      "8px 10px"
+              :marginBottom "6px"
+              :position     "relative"}}
+
+     ;; ── 状态行 ────────────────────────────────────────────────────────────
+     [:div {:style {:display "flex" :alignItems "center" :gap "6px" :marginBottom "4px"}}
+
+      ;; 状态 pill（点击展开状态菜单）
+      [:div {:on-click (fn [e]
+                         (.stopPropagation e)
+                         (swap! *status not)
+                         (reset! *nav false))
+             :title "点击修改状态"
+             :style {:display "flex" :alignItems "center" :gap "5px"
+                     :cursor "pointer" :borderRadius "5px" :padding "1px 5px"
+                     :background (if status? "var(--lx-gray-04,#f1f5f9)" "transparent")
+                     :border (if status? "1px solid var(--lx-gray-05,#e5e7eb)" "1px solid transparent")}}
+       [:span {:style {:width "7px" :height "7px" :borderRadius "50%"
+                       :background color :flexShrink "0"}}]
+       [:span {:style {:fontSize "12px" :color color}} label]
+       [:span {:style {:fontSize "9px" :opacity "0.4"}} "▾"]]
+
+      ;; 日期来源图标
+      (when dinfo
+        [:span {:title src-tip
+                :style {:fontSize "11px" :opacity "0.4" :marginLeft "auto"
+                        :cursor "default"}}
+         (get date-source-label (:source dinfo))])]
+
+     ;; ── 标题（点击展开导航弹窗）─────────────────────────────────────────
+     [:div {:on-click (fn [e]
+                        (.stopPropagation e)
+                        (swap! *nav not)
+                        (reset! *status false))
+            :title "点击选择打开方式"
+            :style {:fontSize "13px" :fontWeight "500"
                     :overflow "hidden" :textOverflow "ellipsis"
-                    :whiteSpace "nowrap" :lineHeight "1.4"}}
+                    :whiteSpace "nowrap" :lineHeight "1.4"
+                    :cursor "pointer"}}
       (or title "(无标题)")]
+
      (when p-title
-       [:div {:style {:fontSize "11px" :opacity "0.5" :marginTop "2px"}} p-title])]))
+       [:div {:style {:fontSize "11px" :opacity "0.5" :marginTop "2px"}} p-title])
+
+     ;; ── 状态选择下拉 ──────────────────────────────────────────────────────
+     (when status?
+       [:div {:style {:position "absolute" :top "calc(100% + 2px)" :left "0"
+                      :zIndex "300" :background "#fff"
+                      :border "1px solid var(--lx-gray-05,#e5e7eb)"
+                      :borderRadius "8px" :padding "4px"
+                      :boxShadow "0 6px 20px rgba(0,0,0,0.12)"
+                      :minWidth "140px"}}
+        (for [[s-ident s-label] all-statuses
+              :let [active? (= s-ident ident)
+                    c       (get status-color s-ident "#94a3b8")]]
+          [:div {:key      (str s-ident)
+                 :on-click (fn [e]
+                              (.stopPropagation e)
+                              (reset! *status false)
+                              (update-task-status! uuid s-ident))
+                 :style {:display "flex" :alignItems "center" :gap "7px"
+                         :padding "5px 8px" :borderRadius "5px" :cursor "pointer"
+                         :fontWeight (if active? "600" "400")
+                         :background (if active? "var(--lx-gray-03,#f3f4f6)" "transparent")}}
+           [:span {:style {:width "7px" :height "7px" :borderRadius "50%"
+                           :background c :flexShrink "0"}}]
+           [:span {:style {:fontSize "12px"}} s-label]])])
+
+     ;; ── 导航弹窗 ─────────────────────────────────────────────────────────
+     (when nav?
+       [:div {:style {:position "absolute" :top "calc(100% + 2px)" :left "0" :right "0"
+                      :zIndex "300" :background "#fff"
+                      :border "1px solid var(--lx-gray-05,#e5e7eb)"
+                      :borderRadius "8px" :padding "8px"
+                      :boxShadow "0 6px 20px rgba(0,0,0,0.12)"}}
+        [:div {:style {:fontSize "11px" :opacity "0.45" :marginBottom "6px"
+                       :overflow "hidden" :textOverflow "ellipsis" :whiteSpace "nowrap"}}
+         (or title "(无标题)")]
+        [:div {:style {:display "flex" :flexDirection "column" :gap "4px"}}
+         [:button {:on-click (fn [e]
+                               (.stopPropagation e)
+                               (reset! *nav false)
+                               (open-in-sidebar! id))
+                   :style {:padding "6px 10px" :borderRadius "6px" :textAlign "left"
+                           :border "1px solid var(--lx-gray-05,#e5e7eb)"
+                           :background "var(--lx-gray-02,#f9fafb)"
+                           :fontSize "12px" :cursor "pointer" :width "100%"}}
+          "📌 在侧边栏打开"]
+         [:button {:on-click (fn [e]
+                               (.stopPropagation e)
+                               (reset! *nav false)
+                               (when uuid (route-handler/redirect-to-page! (str uuid))))
+                   :style {:padding "6px 10px" :borderRadius "6px" :textAlign "left"
+                           :border "1px solid var(--lx-gray-05,#e5e7eb)"
+                           :background "var(--lx-gray-02,#f9fafb)"
+                           :fontSize "12px" :cursor "pointer" :width "100%"}}
+          "→ 跳转到页面"]
+         [:button {:on-click (fn [e]
+                               (.stopPropagation e)
+                               (reset! *nav false))
+                   :style {:padding "4px 10px" :borderRadius "6px" :textAlign "left"
+                           :border "none" :background "transparent"
+                           :fontSize "11px" :cursor "pointer" :opacity "0.4" :width "100%"}}
+          "取消"]]])]))
 
 ;; ── 月历视图 ──────────────────────────────────────────────────────────────────
 
@@ -381,20 +514,31 @@
                     :paddingTop "12px"}} "暂无"])])
 
 (defn- classify-kanban
-  "看板专用分类：仅依据显式 scheduled/deadline 属性。
-   :today     → scheduled 或 deadline 落在今天
-   :scheduled → 有 scheduled（非今天）
-   :deadline  → 有 deadline（非今天，包含逾期）
-   :no-date   → 两者均无"
+  "看板分类逻辑（5 列）：
+   :today     → scheduled=今天 或 deadline=今天 或 (无显式日期 且 created=今天)
+   :scheduled → 有 scheduled（已开始或未来，持续显示直到完成）
+   :deadline  → 有 deadline 且 deadline > 今天结束（未到期）
+   :overdue   → deadline 已过期 或 (无显式日期 且 created < 今天)
+   done 单独过滤，不走本函数"
   [task today-ms today-end]
   (let [s (:logseq.property/scheduled task)
-        d (:logseq.property/deadline task)]
+        d (:logseq.property/deadline task)
+        c (:block/created-at task)]
     (cond
+      ;; 今天：显式日期=今天，或无显式日期但今天创建
       (or (and s (>= s today-ms) (<= s today-end))
-          (and d (>= d today-ms) (<= d today-end))) :today
-      s                                              :scheduled
-      d                                              :deadline
-      :else                                          :no-date)))
+          (and d (>= d today-ms) (<= d today-end))
+          (and (nil? s) (nil? d) c (>= c today-ms) (<= c today-end)))
+      :today
+
+      ;; 有 scheduled：不论过去还是未来，持续在"计划中"
+      s :scheduled
+
+      ;; 有 deadline 且未过期
+      (and d (> d today-end)) :deadline-future
+
+      ;; 逾期：deadline 已过 或 无显式日期且创建时间比今天早
+      :else :overdue)))
 
 (rum/defc kanban-view
   [all-tasks]
@@ -408,16 +552,20 @@
                            all-tasks)
         groups     (group-by #(classify-kanban % today-ms today-end) active)
         today-t    (sort-by #(or (:logseq.property/scheduled %)
-                                 (:logseq.property/deadline %)) (get groups :today []))
+                                 (:logseq.property/deadline %)
+                                 (:block/created-at %))
+                            (get groups :today []))
         scheduled  (sort-by :logseq.property/scheduled (get groups :scheduled []))
-        deadline   (sort-by :logseq.property/deadline  (get groups :deadline []))
-        no-date    (get groups :no-date [])]
+        deadline   (sort-by :logseq.property/deadline  (get groups :deadline-future []))
+        overdue    (sort-by #(or (:logseq.property/deadline %)
+                                 (:block/created-at %))
+                            (get groups :overdue []))]
     [:div.agenda-kanban {:style {:display "flex" :gap "10px" :height "100%"
                                  :overflowX "auto"}}
      (kanban-column "今天"   "#f59e0b" today-t)
      (kanban-column "计划中" "#6366f1" scheduled)
      (kanban-column "截止日" "#ef4444" deadline)
-     (kanban-column "待安排" "#94a3b8" no-date)
+     (kanban-column "逾期"   "#dc2626" overdue)
      (kanban-column "已完成" "#10b981" done)]))
 
 ;; ── 范围过滤辅助 ─────────────────────────────────────────────────────────────
@@ -555,14 +703,17 @@
            *week   (::cur-week-ymd state)
            *sel    (::selected-ymd state)
            td      (today-ymd)
-           [y m _] td]
+           [y m _] td
+           do-load! (fn []
+                      (p/let [tasks (some-> (state/get-current-repo) (<load-tasks))]
+                        (reset! *tasks (or tasks []))
+                        (notify-on-load! (or tasks []))))]
        (reset! *month [y m])
        (reset! *week  td)
        (reset! *sel   td)
-       (p/let [tasks (some-> (state/get-current-repo)
-                             (<load-tasks))]
-         (reset! *tasks (or tasks []))
-         (notify-on-load! (or tasks [])))
+       ;; 注册全局刷新函数，供 task-card 状态修改后调用
+       (reset! *global-reload! do-load!)
+       (do-load!)
        (p/catch (p/let [_ (p/delay 0)] nil)
                 (fn [err]
                   (reset! *err (str err)))))
@@ -681,9 +832,7 @@
       ;; 刷新按钮
       [:button {:on-click (fn []
                             (reset! *tasks nil)
-                            (p/let [ts (some-> (state/get-current-repo) (<load-tasks))]
-                              (reset! *tasks (or ts []))
-                              (notify-on-load! (or ts []))))
+                            (when-let [reload! @*global-reload!] (reload!)))
                 :title "刷新任务"
                 :style {:background "none" :border "none" :cursor "pointer"
                         :opacity "0.5" :padding "3px 6px" :flexShrink "0"}}
