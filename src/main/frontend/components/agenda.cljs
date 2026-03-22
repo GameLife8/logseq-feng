@@ -58,6 +58,8 @@
 
 ;; Module-level atom so task-card can trigger a reload without threading
 (defonce ^:private *global-reload! (atom nil))
+;; 保底轮询定时器 ID（用于 will-unmount 清除）
+(defonce ^:private *poll-interval-id (atom nil))
 
 ;; ── 日期工具 ──────────────────────────────────────────────────────────────────
 
@@ -179,24 +181,32 @@
         day   (js/parseInt (.substring s 6 8))]
     (.getTime (js/Date. year month day))))
 
+(defn- prop->ms
+  "将 scheduled/deadline 属性值转为毫秒：
+   - number?  → 直接使用（UTC ms）
+   - map? 含 :block/journal-day → 转换日记日期到本地零点 ms
+   - 否则 → nil（忽略）"
+  [v]
+  (cond
+    (number? v) v
+    (and (map? v) (:block/journal-day v)) (journal-day->ms (:block/journal-day v))
+    :else nil))
+
 (defn- task-date-info
   "返回 {:ms 毫秒时间戳 :source :scheduled|:deadline|:journal|:created}。
    优先级：scheduled > deadline > journal-day > created-at。
    所有任务都有 created-at，因此始终返回非 nil。"
   [task]
-  (cond
-    (:logseq.property/scheduled task)
-    {:ms (:logseq.property/scheduled task) :source :scheduled}
-
-    (:logseq.property/deadline task)
-    {:ms (:logseq.property/deadline task) :source :deadline}
-
-    (get-in task [:block/page :block/journal-day])
-    {:ms (journal-day->ms (get-in task [:block/page :block/journal-day]))
-     :source :journal}
-
-    :else
-    {:ms (or (:block/created-at task) 0) :source :created}))
+  (let [s-ms (prop->ms (:logseq.property/scheduled task))
+        d-ms (prop->ms (:logseq.property/deadline task))]
+    (cond
+      s-ms {:ms s-ms :source :scheduled}
+      d-ms {:ms d-ms :source :deadline}
+      (get-in task [:block/page :block/journal-day])
+      {:ms (journal-day->ms (get-in task [:block/page :block/journal-day]))
+       :source :journal}
+      :else
+      {:ms (or (:block/created-at task) 0) :source :created})))
 
 (defn- task-date-ms
   "返回任务的有效日期毫秒，无日期返回 nil"
@@ -707,7 +717,7 @@
            *sel    (::selected-ymd state)
            td      (today-ymd)
            [y m _] td
-           *timer  (volatile! nil)
+           *timer   (volatile! nil)
            do-load! (fn []
                       (p/let [tasks (some-> (state/get-current-repo) (<load-tasks))]
                         (reset! *tasks (or tasks []))
@@ -722,21 +732,24 @@
        ;; 注册全局刷新函数，供 task-card 状态修改后调用
        (reset! *global-reload! do-load!)
        ;; 监听前端 DB 变化，自动刷新任务列表（防抖 400ms）
+       ;; 使用 (:a %) 而非 (.-a %) 确保与 CLJS map 和 Datom 对象均兼容
        (when-let [conn (db/get-db (state/get-current-repo) false)]
          (d/listen! conn ::agenda-auto-refresh
                     (fn [{:keys [tx-data]}]
-                      (when (some #(contains? watch-attrs (.-a %)) tx-data)
+                      (when (some #(contains? watch-attrs (:a %)) tx-data)
                         (js/clearTimeout @*timer)
                         (vreset! *timer (js/setTimeout do-load! 400))))))
-       (do-load!)
-       (p/catch (p/let [_ (p/delay 0)] nil)
-                (fn [err]
-                  (reset! *err (str err)))))
+       ;; 保底：每 15s 轮询一次，确保监听器失效时任务也能自动刷新
+       (reset! *poll-interval-id (js/setInterval do-load! 15000))
+       (do-load!))
      state)
    :will-unmount
    (fn [state]
      (when-let [conn (db/get-db (state/get-current-repo) false)]
        (d/unlisten! conn ::agenda-auto-refresh))
+     (when-let [pid @*poll-interval-id]
+       (js/clearInterval pid)
+       (reset! *poll-interval-id nil))
      state)}
   [state]
   (let [*view      (::view state)
