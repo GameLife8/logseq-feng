@@ -383,6 +383,10 @@
   [all-tasks]
   (let [today-ymd  (today-ymd)
         active     (filter task-active? all-tasks)
+        done       (filter #(contains? #{:logseq.property/status.done
+                                         :logseq.property/status.canceled}
+                                       (task-status-ident %))
+                           all-tasks)
         week-end   (end-of-week-ms today-ymd)
         groups     (group-by #(classify-task % today-ymd week-end) active)
         overdue    (sort-by task-date-ms (get groups :overdue []))
@@ -392,53 +396,33 @@
         no-date    (get groups :no-date [])]
     [:div.agenda-kanban {:style {:display "flex" :gap "10px" :height "100%"
                                  :overflowX "auto"}}
-     (kanban-column "逾期" "#ef4444" overdue)
-     (kanban-column "今天" "#f59e0b" today-t)
-     (kanban-column "本周" "#6366f1" this-week)
-     (kanban-column "之后" "#22c55e" later)
-     (kanban-column "待安排" "#94a3b8" no-date)]))
+     (kanban-column "逾期"   "#ef4444" overdue)
+     (kanban-column "今天"   "#f59e0b" today-t)
+     (kanban-column "本周"   "#6366f1" this-week)
+     (kanban-column "之后"   "#22c55e" later)
+     (kanban-column "待安排" "#94a3b8" no-date)
+     (kanban-column "已完成" "#10b981" done)]))
 
-;; ── 项目视图 ──────────────────────────────────────────────────────────────────
+;; ── 范围过滤辅助 ─────────────────────────────────────────────────────────────
 
-(rum/defc project-view
-  "将活跃任务按 #xxxx项目 标签分组展示，无项目标签的归为「未分类」。"
-  [all-tasks]
-  (let [active   (filter task-active? all-tasks)
-        groups   (group-tasks-by-project active)
-        projects (sort (remove nil? (keys groups)))
-        no-proj  (get groups nil [])]
-    [:div.agenda-project-view
-     {:style {:height "100%" :overflowY "auto"}}
-     ;; 有项目标签的分组
-     (for [p projects
-           :let [p-tasks (get groups p [])]]
-       [:div {:key p :style {:marginBottom "24px"}}
-        [:div {:style {:display "flex" :alignItems "center" :gap "6px"
-                       :marginBottom "10px"
-                       :paddingBottom "6px"
-                       :borderBottom "1px solid var(--lx-gray-05,#e5e7eb)"}}
-         [:span {:style {:fontSize "15px" :fontWeight "700"
-                         :color "var(--lx-accent-09,#4f46e5)"}} "#"]
-         [:span {:style {:fontSize "15px" :fontWeight "700"}} p]
-         [:span {:style {:fontSize "12px" :opacity "0.4" :marginLeft "4px"}}
-          (str (count p-tasks) " 个任务")]]
-        (for [t p-tasks] (task-card t))])
-     ;; 无项目标签的任务
-     (when (seq no-proj)
-       [:div {:style {:marginBottom "24px"}}
-        [:div {:style {:display "flex" :alignItems "center" :gap "6px"
-                       :marginBottom "10px"
-                       :paddingBottom "6px"
-                       :borderBottom "1px solid var(--lx-gray-05,#e5e7eb)"}}
-         [:span {:style {:fontSize "15px" :fontWeight "700" :opacity "0.35"}} "未分类"]
-         [:span {:style {:fontSize "12px" :opacity "0.35"}}
-          (str (count no-proj) " 个任务")]]
-        (for [t no-proj] (task-card t))])
-     ;; 全空
-     (when (and (empty? projects) (empty? no-proj))
-       [:div {:style {:textAlign "center" :paddingTop "60px"
-                      :fontSize "14px" :opacity "0.35"}}
-        "暂无活跃任务"])]))
+(defn- all-projects
+  "从所有任务中提取去重、排序后的项目标签名列表（以'项目'结尾的标签）"
+  [tasks]
+  (->> tasks
+       (mapcat task-project-tags)
+       (map :block/title)
+       distinct
+       sort))
+
+(defn- filter-tasks-by-scope
+  "scope = :personal  → 无项目标签的任务
+   scope = string     → 有该项目标签的任务"
+  [tasks scope]
+  (if (= scope :personal)
+    (filter #(nil? (task-project-tags %)) tasks)
+    (filter #(some (fn [tag] (= (:block/title tag) scope))
+                   (:block/tags %))
+            tasks)))
 
 ;; ── 日任务面板（月视图侧边栏）────────────────────────────────────────────────
 
@@ -477,6 +461,26 @@
             :transition    "all 0.12s"}}
    label])
 
+(defn- scope-tab [label is-project? active? on-click]
+  [:button
+   {:on-click on-click
+    :style {:padding      "4px 12px"
+            :borderRadius "6px"
+            :border       (if active?
+                            "1.5px solid var(--lx-accent-07,#6366f1)"
+                            "1px solid var(--lx-gray-05,#e5e7eb)")
+            :background   (if active? "var(--lx-accent-03,#eef2ff)" "transparent")
+            :color        (if active?
+                            "var(--lx-accent-09,#4f46e5)"
+                            "var(--lx-gray-11,#374151)")
+            :fontSize     "13px"
+            :fontWeight   (if active? "600" "400")
+            :cursor       "pointer"
+            :whiteSpace   "nowrap"
+            :display      "flex" :alignItems "center" :gap "4px"}}
+   (when is-project? [:span {:style {:opacity "0.6" :fontSize "11px"}} "#"])
+   label])
+
 (defn- nav-btn [label on-click]
   [:button
    {:on-click on-click
@@ -492,9 +496,10 @@
 ;; ── 主页面 ────────────────────────────────────────────────────────────────────
 
 (rum/defcs agenda-page
-  "全屏日程页面：月历 / 周历 / 看板三视图，数据来自 Logseq DB。"
+  "全屏日程页面：月历 / 周历 / 看板，范围可切换为个人或各项目。"
   < rum/reactive
   (rum/local :month      ::view)          ;; :month | :week | :kanban
+  (rum/local :personal   ::scope)         ;; :personal | "项目名"
   (rum/local nil         ::tasks)         ;; loaded tasks vec
   (rum/local nil         ::loading-err)
   (rum/local nil         ::selected-ymd)  ;; [y m d] for month day-panel
@@ -521,19 +526,25 @@
      state)}
   [state]
   (let [*view      (::view state)
+        *scope     (::scope state)
         *tasks     (::tasks state)
         *err       (::loading-err state)
         *sel       (::selected-ymd state)
         *cur-month (::cur-month state)
         *cur-week  (::cur-week-ymd state)
         view       (rum/react *view)
-        tasks      (rum/react *tasks)
+        scope      (rum/react *scope)
+        all-tasks  (rum/react *tasks)
         err        (rum/react *err)
         sel-ymd    (rum/react *sel)
         [cy cm]    (or (rum/react *cur-month) [(first (today-ymd)) (second (today-ymd))])
         week-ymd   (or (rum/react *cur-week) (today-ymd))
         week-days  (week-days week-ymd)
-        tasks-by-day (group-tasks-by-day (or tasks []))]
+        ;; 从全量任务提取项目列表，用于渲染 scope tabs
+        projects   (all-projects (or all-tasks []))
+        ;; 按当前 scope 过滤
+        tasks      (filter-tasks-by-scope (or all-tasks []) scope)
+        tasks-by-day (group-tasks-by-day tasks)]
 
     [:div.agenda-page
      {:style {:display       "flex"
@@ -552,7 +563,7 @@
                :flexShrink     "0"}}
 
       ;; title
-      [:div {:style {:display "flex" :alignItems "center" :gap "6px" :marginRight "8px"}}
+      [:div {:style {:display "flex" :alignItems "center" :gap "6px" :marginRight "8px" :flexShrink "0"}}
        (ui/icon "calendar-time" {:size 18 :class "opacity-70"})
        [:h1 {:style {:fontSize "16px" :fontWeight "700" :margin 0}} "日程"]]
 
@@ -563,7 +574,7 @@
                                [ny nm] (if (zero? m) [(dec y) 11] [y (dec m)])]
                           (reset! *cur-month [ny nm])))
          [:span {:style {:fontSize "14px" :fontWeight "600" :minWidth "72px"
-                         :textAlign "center"}}
+                         :textAlign "center" :flexShrink "0"}}
           (str cy "年" (nth month-names cm))]
          (nav-btn "›" #(let [[y m] @*cur-month
                                [ny nm] (if (= 11 m) [(inc y) 0] [y (inc m)])]
@@ -575,7 +586,7 @@
                                                   (let [[y m d] @*cur-week]
                                                     [y m (- d 7)])))))
          [:span {:style {:fontSize "14px" :fontWeight "600" :minWidth "120px"
-                         :textAlign "center"}}
+                         :textAlign "center" :flexShrink "0"}}
           (let [[y m d] (first week-days)
                 [_ m2 d2] (last week-days)]
             (str (inc m) "/" d " – " (inc m2) "/" d2))]
@@ -593,17 +604,24 @@
                 :style {:padding "3px 10px" :borderRadius "6px"
                         :border "1px solid var(--lx-gray-06,#e5e7eb)"
                         :background "var(--lx-gray-03,#f3f4f6)"
-                        :fontSize "13px" :cursor "pointer"}}
+                        :fontSize "13px" :cursor "pointer" :flexShrink "0"}}
        "今天"]
 
-      [:div {:style {:flex "1"}}]
+      ;; ── 范围 tabs（个人 + 各项目）─────────────────────────────────────────
+      [:div {:style {:display "flex" :gap "4px" :overflowX "auto"
+                     :flex "1" :padding "0 4px"
+                     :borderLeft "1px solid var(--lx-gray-05,#e5e7eb)"
+                     :marginLeft "4px"}}
+       (scope-tab "个人" false (= scope :personal) #(reset! *scope :personal))
+       (for [p projects]
+         [:span {:key p}
+          (scope-tab p true (= scope p) #(reset! *scope p))])]
 
       ;; view switcher
-      [:div {:style {:display "flex" :gap "4px"}}
-       (toolbar-btn "月"   (= view :month)   #(reset! *view :month))
-       (toolbar-btn "周"   (= view :week)    #(reset! *view :week))
-       (toolbar-btn "看板" (= view :kanban)  #(reset! *view :kanban))
-       (toolbar-btn "项目" (= view :project) #(reset! *view :project))]
+      [:div {:style {:display "flex" :gap "4px" :flexShrink "0"}}
+       (toolbar-btn "月"   (= view :month)  #(reset! *view :month))
+       (toolbar-btn "周"   (= view :week)   #(reset! *view :week))
+       (toolbar-btn "看板" (= view :kanban) #(reset! *view :kanban))]
 
       ;; 刷新按钮
       [:button {:on-click (fn []
@@ -612,7 +630,7 @@
                               (reset! *tasks (or ts []))))
                 :title "刷新任务"
                 :style {:background "none" :border "none" :cursor "pointer"
-                        :opacity "0.5" :padding "3px 6px"}}
+                        :opacity "0.5" :padding "3px 6px" :flexShrink "0"}}
        (ui/icon "refresh" {:size 16})]]
 
      ;; ── 内容区域 ──────────────────────────────────────────────────────────────
@@ -631,11 +649,10 @@
         ;; main content
         [:div {:style {:flex "1" :padding "12px 16px" :overflowY "auto"}}
          (case view
-           :month   (month-view tasks-by-day cy cm sel-ymd
-                                (fn [ymd] (reset! *sel ymd)))
-           :week    (week-view tasks-by-day week-days)
-           :kanban  (kanban-view (or tasks []))
-           :project (project-view (or tasks [])))]
+           :month  (month-view tasks-by-day cy cm sel-ymd
+                               (fn [ymd] (reset! *sel ymd)))
+           :week   (week-view tasks-by-day week-days)
+           :kanban (kanban-view tasks))]
 
         ;; 月视图右侧日任务面板
         (when (= view :month)
