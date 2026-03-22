@@ -507,7 +507,7 @@
               (inc m) "/" d)]
         (if (seq tasks)
           (for [t tasks]
-            (task-card t))
+            (rum/with-key (task-card t) (str (:block/uuid t))))
           [:div {:style {:fontSize "12px" :opacity "0.35" :textAlign "center"
                          :paddingTop "12px"}} "暂无任务"])])]))
 
@@ -528,7 +528,7 @@
     [:span {:style {:fontSize "12px" :opacity "0.5" :marginLeft "auto"}}
      (count tasks)]]
    (if (seq tasks)
-     (for [t tasks] (task-card t))
+     (for [t tasks] (rum/with-key (task-card t) (str (:block/uuid t))))
      [:div {:style {:fontSize "12px" :opacity "0.35" :textAlign "center"
                     :paddingTop "12px"}} "暂无"])])
 
@@ -668,7 +668,7 @@
      [:div {:style {:fontSize "14px" :fontWeight "700" :marginBottom "12px"}}
       (str (inc m) "月" d "日")]
      (if (seq tasks)
-       (for [t tasks] (task-card t))
+       (for [t tasks] (rum/with-key (task-card t) (str (:block/uuid t))))
        [:div {:style {:fontSize "13px" :opacity "0.4" :textAlign "center"
                       :paddingTop "24px"}}
         "当日无任务"])]))
