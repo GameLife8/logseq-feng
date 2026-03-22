@@ -157,15 +157,18 @@
      :block/page              [:db/id :block/title :block/uuid :block/journal-day]}])
 
 (defn- <load-tasks
-  "从 DB Worker 加载所有带状态的块，返回 promise<seq>。
-   使用默认 transact-db? true：首次查询 DB Worker 并缓存到本地 conn；
-   后续查询直接用本地 conn（管道会实时同步所有属性变更到本地 conn）。"
+  "从 DB Worker 加载所有「任务类」块：
+   有状态 OR 有计划日期 OR 有截止日期 均纳入。
+   这样新建只设了 scheduled/deadline（尚未设状态）的任务也能被发现。"
   [repo]
   (db-async/<q repo {}
                '[:find [(pull ?block ?pull-spec) ...]
                  :in $ ?pull-spec
                  :where
-                 [?block :logseq.property/status _]]
+                 (or-join [?block]
+                   [?block :logseq.property/status _]
+                   [?block :logseq.property/scheduled _]
+                   [?block :logseq.property/deadline _])]
                task-pull-spec))
 
 (defn- task-status-ident [task]
@@ -302,7 +305,7 @@
         status? (rum/react *status)
         ident   (task-status-ident task)
         color   (get status-color ident "#94a3b8")
-        label   (get status-label ident "未知")
+        label   (get status-label ident "无状态")
         p-title (:block/title page)
         dinfo   (task-date-info task)
         src-tip (case (:source dinfo)
