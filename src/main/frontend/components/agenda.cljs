@@ -414,11 +414,11 @@
         no-date    (get groups :no-date [])]
     [:div.agenda-kanban {:style {:display "flex" :gap "10px" :height "100%"
                                  :overflowX "auto"}}
-     (kanban-column "今天"    "#f59e0b" today-t)
-     (kanban-column "Scheduled" "#6366f1" scheduled)
-     (kanban-column "Deadline"  "#ef4444" deadline)
-     (kanban-column "待安排"  "#94a3b8" no-date)
-     (kanban-column "已完成"  "#10b981" done)]))
+     (kanban-column "今天"   "#f59e0b" today-t)
+     (kanban-column "计划中" "#6366f1" scheduled)
+     (kanban-column "截止日" "#ef4444" deadline)
+     (kanban-column "待安排" "#94a3b8" no-date)
+     (kanban-column "已完成" "#10b981" done)]))
 
 ;; ── 范围过滤辅助 ─────────────────────────────────────────────────────────────
 
