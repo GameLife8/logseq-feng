@@ -121,7 +121,7 @@
 
 (def ^:private task-pull-spec
   '[* {:logseq.property/status [:db/ident :block/title]
-       :block/page [:db/id :block/title :block/uuid]}])
+       :block/page [:db/id :block/title :block/uuid :block/journal-day]}])
 
 (defn- <load-tasks
   "从 DB Worker 加载所有带状态的块，返回 promise<seq>"
@@ -143,11 +143,37 @@
     (not (contains? #{:logseq.property/status.done
                       :logseq.property/status.canceled} ident))))
 
-(defn- task-date-ms
-  "返回任务的计划日期（scheduled 优先，否则 deadline），单位毫秒"
+(defn- journal-day->ms
+  "将 YYYYMMDD 整数（如 20240322）转换为当天零点的本地毫秒时间戳"
+  [jd]
+  (let [s     (str jd)
+        year  (js/parseInt (.substring s 0 4))
+        month (dec (js/parseInt (.substring s 4 6)))
+        day   (js/parseInt (.substring s 6 8))]
+    (.getTime (js/Date. year month day))))
+
+(defn- task-date-info
+  "返回 {:ms 毫秒时间戳 :source :scheduled|:deadline|:journal}，
+   优先级：scheduled > deadline > journal-day（所在日记页）。
+   均无则返回 nil（真正未计划）。"
   [task]
-  (or (:logseq.property/scheduled task)
-      (:logseq.property/deadline task)))
+  (cond
+    (:logseq.property/scheduled task)
+    {:ms (:logseq.property/scheduled task) :source :scheduled}
+
+    (:logseq.property/deadline task)
+    {:ms (:logseq.property/deadline task) :source :deadline}
+
+    (get-in task [:block/page :block/journal-day])
+    {:ms (journal-day->ms (get-in task [:block/page :block/journal-day]))
+     :source :journal}
+
+    :else nil))
+
+(defn- task-date-ms
+  "返回任务的有效日期毫秒，无日期返回 nil"
+  [task]
+  (:ms (task-date-info task)))
 
 (defn- group-tasks-by-day
   "tasks → {[y m d] [tasks...]}"
@@ -176,12 +202,17 @@
 
 ;; ── 任务卡片 ──────────────────────────────────────────────────────────────────
 
+(def ^:private date-source-label
+  {:scheduled "📅" :deadline "⏰" :journal "📓"})
+
 (rum/defc task-card
   [{:keys [block/title block/uuid block/page] :as task}]
-  (let [ident  (task-status-ident task)
-        color  (get status-color ident "#94a3b8")
-        label  (get status-label ident "未知")
-        p-title (:block/title page)]
+  (let [ident   (task-status-ident task)
+        color   (get status-color ident "#94a3b8")
+        label   (get status-label ident "未知")
+        p-title (:block/title page)
+        dinfo   (task-date-info task)
+        src-ico (when dinfo (get date-source-label (:source dinfo)))]
     [:div.agenda-task-card
      {:key   (str uuid)
       :style {:background    "var(--lx-gray-01, #fff)"
@@ -196,7 +227,15 @@
      [:div {:style {:display "flex" :alignItems "center" :gap "6px" :marginBottom "3px"}}
       [:span {:style {:width  "8px" :height "8px" :borderRadius "50%"
                       :background color :flexShrink "0"}}]
-      [:span {:style {:fontSize "12px" :color color :opacity "0.85"}} label]]
+      [:span {:style {:fontSize "12px" :color color :opacity "0.85"}} label]
+      (when src-ico
+        [:span {:style {:fontSize "11px" :opacity "0.45" :marginLeft "auto"
+                        :title (case (:source dinfo)
+                                 :scheduled "来自计划日期"
+                                 :deadline  "来自截止日期"
+                                 :journal   "来自日记页日期"
+                                 "")}}
+         src-ico])]
      [:div {:style {:fontSize "13px" :fontWeight "500"
                     :overflow "hidden" :textOverflow "ellipsis"
                     :whiteSpace "nowrap" :lineHeight "1.4"}}
@@ -335,7 +374,7 @@
      (kanban-column "今天" "#f59e0b" today-t)
      (kanban-column "本周" "#6366f1" this-week)
      (kanban-column "之后" "#22c55e" later)
-     (kanban-column "未计划" "#94a3b8" no-date)]))
+     (kanban-column "待安排" "#94a3b8" no-date)]))
 
 ;; ── 日任务面板（月视图侧边栏）────────────────────────────────────────────────
 
