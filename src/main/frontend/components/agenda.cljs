@@ -563,7 +563,7 @@
                                               "var(--lx-gray-05,#e5e7eb)")
                                 :color (if can-save "#fff" "var(--lx-gray-08,#9ca3af)")
                                 :cursor (if can-save "pointer" "not-allowed")})}
-       (if saving? "创建中…" "创建")]]]])
+       (if saving? "创建中…" "创建")]]]))
 
 ;; ── 新建任务按钮（工具栏用）────────────────────────────────────────────────────
 
