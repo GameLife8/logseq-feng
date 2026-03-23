@@ -987,14 +987,16 @@
        sort))
 
 (defn- filter-tasks-by-scope
-  "scope = :personal  → 全部任务（所有项目汇总）
-   scope = string     → 只显示该项目标签的任务"
+  "scope = :all      → 全部任务（个人 + 所有项目）
+   scope = :personal → 仅无项目标签的个人任务
+   scope = string    → 只显示该项目标签的任务"
   [tasks scope]
-  (if (= scope :personal)
-    tasks
-    (filter #(some (fn [tag] (= (:block/title tag) scope))
-                   (:block/tags %))
-            tasks)))
+  (cond
+    (= scope :all)      tasks
+    (= scope :personal) (filter #(nil? (task-project-tags %)) tasks)
+    :else               (filter #(some (fn [tag] (= (:block/title tag) scope))
+                                       (:block/tags %))
+                                tasks)))
 
 (defn- notification-task-list
   "构建通知弹窗的任务列表 DOM，最多显示 3 条，超出显示省略。"

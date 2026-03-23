@@ -264,19 +264,20 @@
                                                       (db-property-handler/remove-block-property! (:db/id block)
                                                                                                   :logseq.property.repeat/temporal-property)))))]
        (if (#{:logseq.property/deadline :logseq.property/scheduled} (:db/ident property))
-         [:div "Repeat task"]
-         [:div "Repeat " (if (= :date (:logseq.property/type property)) "date" "datetime")])]]
+         [:div "重复任务"]
+         [:div (if (= :date (:logseq.property/type property)) "重复日期" "重复日期时间")])]]
+     ;; 重复周期：每 N 天/周/月/年
      [:div.flex.flex-row.gap-2.ls-repeat-task-frequency
-      [:div.flex.text-muted-foreground
-       "Every"]
+      [:div.flex.text-muted-foreground "每"]
 
-      ;; recur frequency
+      ;; 重复间隔数字
       [:div.w-10.mr-2
        (property-value block (db/entity :logseq.property.repeat/recur-frequency) opts)]
 
-      ;; recur unit
+      ;; 重复单位（天/周/月…）
       [:div.w-20
        (property-value block (db/entity :logseq.property.repeat/recur-unit) (assoc opts :property property))]]
+     ;; 完成条件：当某属性设为指定值时，任务视为完成并触发下次重置
      (let [properties (->>
                        (outliner-property/get-block-full-properties (db/get-db) (:db/id block))
                        (filter (fn [property]
@@ -290,9 +291,9 @@
            done-choice (or
                         (some (fn [choice] (when (true? (:logseq.property/choice-checkbox-state choice)) choice)) (:property/closed-values status-property))
                         (db/entity :logseq.property/status.done))]
-       [:div.flex.flex-col.gap-2
-        [:div.text-muted-foreground
-         "When"]
+       ;; 横排：当 [属性] 设为 [Done] 时重置
+       [:div.flex.flex-row.items-center.gap-2.flex-wrap
+        [:div.text-muted-foreground "完成时将"]
         (shui/select
          (cond->
           {:on-value-change (fn [v]
@@ -302,16 +303,15 @@
            property-id
            (assoc :default-value property-id))
          (shui/select-trigger
-          (shui/select-value {:placeholder "Select a property"}))
+          (shui/select-value {:placeholder "选择属性"}))
          (shui/select-content
           (map (fn [choice]
                  (shui/select-item {:key (str (:db/id choice))
                                     :value (:db/id choice)} (:block/title choice))) properties)))
-        [:div.flex.flex-row.gap-1
-         [:div.text-muted-foreground
-          "is:"]
-         (when done-choice
-           (db-property/property-value-content done-choice))]])]))
+        [:div.text-muted-foreground "设为"]
+        (when done-choice
+          (db-property/property-value-content done-choice))
+        [:div.text-muted-foreground "时重置"]])]))
 
 ;; ── 中文日历辅助 ──────────────────────────────────────────────────────────────
 
