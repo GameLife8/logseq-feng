@@ -304,7 +304,7 @@
                 (when-let [entity (db/get-page pname)]
                   (db-property-handler/batch-set-property!
                    [uuid] :block/tags (:db/id entity) {:entity-id? true})))
-              block))))))
+              block)))))))
 
 ;; ── 小型日历选择器 ─────────────────────────────────────────────────────────────
 
