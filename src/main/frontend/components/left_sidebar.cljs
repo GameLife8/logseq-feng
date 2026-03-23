@@ -132,6 +132,11 @@
   [:div.sidebar-graphs
    (repo/graphs-selector)])
 
+(def ^:private nav-labels
+  "导航项显示名称（无对应 i18n key 的项）。"
+  {:whiteboard "白板"
+   :mind-map   "思维导图"})
+
 (rum/defc sidebar-navigations-edit-content
   [{:keys [_id navs checked-navs set-checked-navs!]}]
   (let [[local-navs set-local-navs!] (rum/use-state checked-navs)]
@@ -150,8 +155,9 @@
                                     (if v
                                       (conj local-navs nav)
                                       (filterv #(not= nav %) local-navs)))))}
-       (tt (keyword "left-side-bar" name')
-           (keyword "right-side-bar" name'))))))
+       (or (get nav-labels nav)
+           (tt (keyword "left-side-bar" name')
+               (keyword "right-side-bar" name')))))))
 
 (rum/defc sidebar-content-group < rum/reactive
   [name {:keys [class count more header-props enter-show-more? collapsable?]} child]
@@ -175,9 +181,9 @@
 
 (rum/defc ^:large-vars/cleanup-todo sidebar-navigations
   [{:keys [default-home route-match route-name srs-open?]}]
-  (let [navs [:flashcards :all-pages :graph-view :tag/tasks :tag/assets]
+  (let [navs [:whiteboard :mind-map :flashcards :all-pages :graph-view :tag/tasks :tag/assets]
         [checked-navs set-checked-navs!] (rum/use-state (or (storage/get :ls-sidebar-navigations)
-                                                            [:flashcards :all-pages :graph-view]))]
+                                                            [:whiteboard :mind-map :flashcards :all-pages :graph-view]))]
 
     (hooks/use-effect!
      (fn []
@@ -226,29 +232,13 @@
               :icon "calendar"
               :shortcut :go/journals}))))
 
-      ;; Whiteboards – new nav item alongside journals and flashcards
-      (sidebar-item
-       {:class "whiteboards-nav"
-        :active (and (not srs-open?) (= route-name :all-whiteboards))
-        :title "Excalidraw"
-        :icon "layout-board"
-        :href (rfe/href :all-whiteboards)})
-
-      ;; Agenda – task calendar and kanban
+      ;; Agenda – task calendar and kanban（固定显示）
       (sidebar-item
        {:class "agenda-nav"
         :active (and (not srs-open?) (= route-name :agenda))
         :title "日程"
         :icon "calendar-time"
         :href (rfe/href :agenda)})
-
-      ;; Mind Map – simple-mind-map canvas gallery
-      (sidebar-item
-       {:class "mind-map-nav"
-        :active (and (not srs-open?) (#{:all-mind-maps :mind-map} route-name))
-        :title "思维导图"
-        :icon "brand-apple-arcade"
-        :href (rfe/href :all-mind-maps)})
 
       ;; Tag Manager – view and manage all tags
       (sidebar-item
@@ -260,6 +250,22 @@
 
       (for [nav checked-navs]
         (cond
+          (= nav :whiteboard)
+          (sidebar-item
+           {:class "whiteboards-nav"
+            :active (and (not srs-open?) (#{:all-whiteboards :whiteboard} route-name))
+            :title "白板"
+            :icon "layout-board"
+            :href (rfe/href :all-whiteboards)})
+
+          (= nav :mind-map)
+          (sidebar-item
+           {:class "mind-map-nav"
+            :active (and (not srs-open?) (#{:all-mind-maps :mind-map} route-name))
+            :title "思维导图"
+            :icon "brand-apple-arcade"
+            :href (rfe/href :all-mind-maps)})
+
           (= nav :flashcards)
           (when (state/enable-flashcards? (state/get-current-repo))
             (let [num (state/sub :srs/cards-due-count)]
