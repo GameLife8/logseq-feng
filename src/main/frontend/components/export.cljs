@@ -259,45 +259,31 @@
                          "margin:0 auto!important;padding:1.5rem!important;"
                          "border:none!important;border-radius:0!important;"
                          "box-shadow:none!important}"
-                         ;; ── 代码块：换行 + 样式保留 ────────────────────────
-                         ;; CodeMirror 6 滚动容器改为 visible，否则内容截断
+                         ;; ── 代码块：修复溢出截断 + 长行换行 ──────────────
+                         ;; CodeMirror 6 默认 overflow:auto，克隆到新窗口后内容被截断
                          ".cm-editor,.cm-scroller{overflow:visible!important}"
-                         ;; 长行强制换行
+                         ;; 长行强制换行（pre-wrap 保留缩进，break-all 防止单词超宽）
                          ".cm-content,.cm-line{"
                          "white-space:pre-wrap!important;"
                          "word-break:break-all!important;"
                          "overflow-wrap:break-word!important}"
-                         ;; 代码块背景/字色兜底（样式表可能加载失败）
-                         ".cm-editor{"
-                         "background:#f6f8fa!important;"
-                         "border:1px solid #e1e4e8!important;"
-                         "border-radius:6px!important;"
-                         "padding:8px!important;"
-                         "font-family:'Courier New',Consolas,monospace!important;"
-                         "font-size:13px!important;"
-                         "color:#24292e!important}"
-                         ;; 行内代码
-                         "code:not(.cm-content code){"
-                         "background:#f6f8fa!important;"
-                         "border:1px solid #e1e4e8!important;"
-                         "border-radius:3px!important;"
-                         "padding:0 4px!important;"
-                         "font-family:'Courier New',Consolas,monospace!important;"
-                         "font-size:0.9em!important;"
-                         "color:#e36209!important}"
+                         ;; 颜色/背景由 CSS 变量继承，不在此覆盖（已通过 html style 属性传入）
                          "@media print{"
                          ".block-control,.bullet-container,.open-block-ref-link,"
                          ".block-children-left-border,.ls-block-right-toolbar,"
                          ".cp__sidebar-help-btn{display:none!important}"
-                         ;; 打印时同样保证代码块不截断
                          ".cm-editor,.cm-scroller{overflow:visible!important}"
                          ".cm-content,.cm-line{"
                          "white-space:pre-wrap!important;"
                          "word-break:break-all!important}"
                          "}"
                          "</style>")
+        ;; 保留 html 元素上动态设置的 CSS 变量（--ls-* 等）
+        html-style  (.. html-el -style -cssText)
         full-html   (str "<!DOCTYPE html>"
-                         "<html class='" (.-className html-el) "'>"
+                         "<html class='" (.-className html-el) "'"
+                         (when (seq html-style) (str " style='" html-style "'"))
+                         ">"
                          "<head><meta charset='UTF-8'>"
                          head-html
                          print-css

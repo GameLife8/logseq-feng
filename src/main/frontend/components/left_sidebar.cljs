@@ -134,8 +134,9 @@
 
 (def ^:private nav-labels
   "导航项显示名称（无对应 i18n key 的项）。"
-  {:whiteboard "白板"
-   :mind-map   "思维导图"})
+  {:whiteboard  "白板"
+   :mind-map    "思维导图"
+   :tag-manager "标签管理"})
 
 (rum/defc sidebar-navigations-edit-content
   [{:keys [_id navs checked-navs set-checked-navs!]}]
@@ -181,9 +182,9 @@
 
 (rum/defc ^:large-vars/cleanup-todo sidebar-navigations
   [{:keys [default-home route-match route-name srs-open?]}]
-  (let [navs [:whiteboard :mind-map :flashcards :all-pages :graph-view :tag/tasks :tag/assets]
+  (let [navs [:whiteboard :mind-map :tag-manager :flashcards :all-pages :graph-view :tag/tasks :tag/assets]
         [checked-navs set-checked-navs!] (rum/use-state (or (storage/get :ls-sidebar-navigations)
-                                                            [:whiteboard :mind-map :flashcards :all-pages :graph-view]))]
+                                                            [:whiteboard :mind-map :tag-manager :flashcards :all-pages :graph-view]))]
 
     (hooks/use-effect!
      (fn []
@@ -240,14 +241,6 @@
         :icon "calendar-time"
         :href (rfe/href :agenda)})
 
-      ;; Tag Manager – view and manage all tags
-      (sidebar-item
-       {:class "tag-manager-nav"
-        :active (and (not srs-open?) (= route-name :tag-manager))
-        :title "标签管理"
-        :icon "tags"
-        :href (rfe/href :tag-manager)})
-
       (for [nav checked-navs]
         (cond
           (= nav :whiteboard)
@@ -265,6 +258,14 @@
             :title "思维导图"
             :icon "brand-apple-arcade"
             :href (rfe/href :all-mind-maps)})
+
+          (= nav :tag-manager)
+          (sidebar-item
+           {:class "tag-manager-nav"
+            :active (and (not srs-open?) (= route-name :tag-manager))
+            :title "标签管理"
+            :icon "tags"
+            :href (rfe/href :tag-manager)})
 
           (= nav :flashcards)
           (when (state/enable-flashcards? (state/get-current-repo))
