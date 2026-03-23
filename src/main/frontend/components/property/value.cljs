@@ -264,7 +264,7 @@
                                                       (db-property-handler/remove-block-property! (:db/id block)
                                                                                                   :logseq.property.repeat/temporal-property)))))]
        (if (#{:logseq.property/deadline :logseq.property/scheduled} (:db/ident property))
-         [:div "重复任务"]
+         [:div {:style {:fontSize "11px" :opacity "0.65"}} "重复任务"]
          [:div (if (= :date (:logseq.property/type property)) "重复日期" "重复日期时间")])]]
      ;; 重复周期：每 N 天/周/月/年
      [:div.flex.flex-row.gap-2.ls-repeat-task-frequency
@@ -395,7 +395,8 @@
                   :border "1px solid var(--lx-gray-05,#e5e7eb)"
                   :background "var(--lx-gray-01,#fff)"
                   :cursor "pointer" :outline "none"}]
-    [:div {:style {:padding "8px" :minWidth "240px" :userSelect "none"}}
+    [:div {:style {:display "flex" :flexDirection "row" :alignItems "flex-start"}}
+     [:div {:style {:padding "8px" :minWidth "240px" :userSelect "none"}}
      ;; 月份导航
      [:div {:style {:display "flex" :alignItems "center"
                     :justifyContent "space-between" :marginBottom "6px"}}
@@ -470,7 +471,7 @@
              [:option {:key mm :value mm}
               (if (< mm 10) (str "0" mm) (str mm))])]
           [:span {:style {:fontSize "12px" :opacity "0.5"}} "时"]]))
-     ;; 重复设置（保持原有功能）
+     ]  ;; 日历区域结束
      (repeat-setting block property)]))
 
 (rum/defc overdue

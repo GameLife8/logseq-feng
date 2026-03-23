@@ -218,6 +218,54 @@
   (->> (block-handler/get-top-level-blocks (map #(db/entity [:block/uuid %]) selection-ids))
        (map :block/uuid)))
 
+(defn- export-as-pdf!
+  "将选中内容导出为 PDF。
+   策略：参考 kef-doc 插件，克隆当前文档 <head>（含所有样式表），
+   与 blocks 的 HTML 内容组合成完整页面，在新窗口中打开并触发打印对话框。"
+  [top-level-uuids]
+  (let [html-body  (export-html/export-blocks-as-html
+                     (state/get-current-repo) top-level-uuids
+                     {:remove-options #{} :other-options {}})
+        ;; 克隆 <head> 并修正相对样式表 URL（参考 kef-doc prepareDoc）
+        head-clone (.cloneNode (.-head js/document) true)
+        _          (doseq [^js node (array-seq (.-children head-clone))]
+                     (when (= (.-rel node) "stylesheet")
+                       (let [attr-href (.. node -attributes -href -value)]
+                         (cond
+                           (.startsWith attr-href ".")
+                           (set! (.. node -attributes -href -value) (.-href node))
+                           (.startsWith attr-href "assets://")
+                           (set! (.. node -attributes -href -value)
+                                 (.replace attr-href "assets://" "file://"))))))
+        head-html  (.-innerHTML head-clone)
+        full-html  (str "<!DOCTYPE html><html>"
+                        "<head><meta charset='UTF-8'>"
+                        head-html
+                        "<style>"
+                        ;; 打印时隐藏 Logseq UI 交互元素
+                        "@media print{"
+                        ".block-control,.bullet-container,.open-block-ref-link,"
+                        ".block-children-left-border{display:none!important}"
+                        "#app-container,#main-container,#main-content-container"
+                        "{margin:0!important;padding:0.5rem!important;"
+                        "border:none!important;box-shadow:none!important;"
+                        "border-radius:0!important}}"
+                        "body{padding:20px;max-width:900px;margin:0 auto}"
+                        "</style>"
+                        "</head><body>"
+                        "<div id='app-container'><div id='main-container'>"
+                        "<div id='main-content-container'>"
+                        html-body
+                        "</div></div></div>"
+                        ;; 新窗口加载完成后自动弹出打印对话框
+                        "<script>window.onload=function(){window.print();}</script>"
+                        "</body></html>")
+        blob (js/Blob. #js [full-html] #js {:type "text/html"})
+        url  (js/URL.createObjectURL blob)]
+    (js/window.open url "_blank")
+    ;; 1 分钟后释放 Blob URL
+    (js/setTimeout #(js/URL.revokeObjectURL url) 60000)))
+
 (rum/defcs ^:large-vars/cleanup-todo
   export-blocks < rum/static
   (rum/local false ::copied?)
@@ -227,7 +275,7 @@
   (rum/local nil ::content)
   {:will-mount (fn [state]
                  (let [top-level-uuids (get-top-level-uuids (first (:rum/args state)))]
-                   (reset! *export-block-type :text)
+                   (reset! *export-block-type :html)
                    (if (= @*export-block-type :png)
                      (do (reset! (::content state) nil)
                          (get-image-blob top-level-uuids
@@ -250,10 +298,11 @@
      {:class "-m-5"}
      [:div.p-6
       [:div.flex.pb-3
-       (ui/button "Text"
+       (ui/button "PDF"
                   :class "mr-4 w-20"
-                  :on-click #(do (reset! *export-block-type :text)
-                                 (reset! *content (export-helper top-level-uuids))))
+                  :on-click #(do (reset! *export-block-type :pdf)
+                                 (reset! *content nil)
+                                 (export-as-pdf! top-level-uuids)))
        (ui/button "OPML"
                   :class "mr-4 w-20"
                   :on-click #(do (reset! *export-block-type :opml)
@@ -277,11 +326,17 @@
                                    (if (:export-edn-error result)
                                      (notification/show! (:export-edn-error result) :error)
                                      (reset! *content pull-data)))))]
-      (if (= :png tp)
+      (cond
+        (= :png tp)
         [:div.flex.items-center.justify-center.relative
          (when (not @*content) [:div.absolute (ui/loading "")])
          [:img {:alt "export preview" :id "export-preview" :class "my-4" :style {:visibility (when (not @*content) "hidden")}}]]
 
+        (= :pdf tp)
+        [:div.flex.items-center.justify-center.h-24.opacity-60.text-sm
+         "已在新窗口生成打印预览，请在打印对话框中选择「保存为 PDF」"]
+
+        :else
         [:textarea.overflow-y-auto.h-96 {:value @*content :read-only true}])
 
       (if (= :png tp)
@@ -396,7 +451,7 @@
              (for [n (cons "all" (range 1 10))]
                [:option {:key n :value n} n])]]]))
 
-      (when @*content
+      (when (and @*content (not= :pdf tp))
         [:div.mt-4.flex.flex-row.gap-2
          (ui/button (if @*copied? (t :export-copied-to-clipboard) (t :export-copy-to-clipboard))
                     :class "mr-4"
