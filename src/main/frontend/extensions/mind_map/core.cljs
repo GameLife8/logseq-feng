@@ -262,7 +262,7 @@
         zoom-pct     (rum/react (::zoom-pct state))
         cur-layout   (rum/react (::cur-layout state))
         show-layout? (rum/react (::show-layout? state))
-        cmd!         (fn [c] (when-let [i @*instance] (.execCommand i c)))]
+        cmd!         (fn [c] (when-let [i @*instance] (.execCommand ^js i c)))]
 
     [:div.mind-map-wrapper
      {:style {:width "100%" :height "100%" :display "flex" :flexDirection "column"
@@ -283,7 +283,7 @@
       (tb-btn "← 返回" "保存并返回"
               (fn []
                 (when-let [i @*instance]
-                  (save-to-ls! map-id (.getData i)))
+                  (save-to-ls! map-id (.getData ^js i)))
                 (when on-back (on-back))))
       [:span
        {:style {:padding      "4px 8px"
@@ -325,9 +325,9 @@
       ;; 缩放控制
       (tb-btn "−" "缩小"
               #(when-let [i @*instance]
-                 (let [v (.-view i)
-                       s (.-scale v)]
-                   (.setScale v (max 0.15 (* s 0.85))))))
+                 (let [v (.-view ^js i)
+                       s (.-scale ^js v)]
+                   (.setScale ^js v (max 0.15 (* s 0.85))))))
       [:span
        {:style {:fontSize "12px"
                 :minWidth "42px"
@@ -336,11 +336,11 @@
        (str zoom-pct "%")]
       (tb-btn "+" "放大"
               #(when-let [i @*instance]
-                 (let [v (.-view i)
-                       s (.-scale v)]
-                   (.setScale v (min 5 (* s 1.18))))))
+                 (let [v (.-view ^js i)
+                       s (.-scale ^js v)]
+                   (.setScale ^js v (min 5 (* s 1.18))))))
       (tb-btn "⊡ 适应" "适应画布"
-              #(when-let [i @*instance] (.fit (.-view i))))
+              #(when-let [i @*instance] (.fit ^js (.-view ^js i))))
 
       (tb-sep)
 
@@ -366,7 +366,7 @@
              {:key      k
               :on-click (fn []
                           (when-let [i @*instance]
-                            (.setLayout i k))
+                            (.setLayout ^js i k))
                           (reset! (::cur-layout state) k)
                           (reset! (::show-layout? state) false))
               :style    (merge {:padding  "6px 14px"
