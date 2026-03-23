@@ -198,6 +198,7 @@
   (rum/local false ::show-layout?)
   (rum/local false ::show-export?)
   (rum/local false ::readonly?)
+  (rum/local false ::unsaved?)
   {:did-mount
    (fn [state]
      (let [args         (-> state :rum/args first)
@@ -292,7 +293,8 @@
                timer      (js/setInterval
                            (fn []
                              (when-let [inst @(::instance state)]
-                               (save-to-ls! map-id (.getData ^js inst))))
+                               (save-to-ls! map-id (.getData ^js inst))
+                               (reset! (::unsaved? state) false)))
                            3000)
                ;; ResizeObserver: resize mind map when container changes size
                ro         (js/ResizeObserver.
@@ -317,6 +319,9 @@
                 (fn [s]
                   (reset! (::zoom-pct state)
                           (js/Math.round (* s 100)))))
+           ;; data_change: mark unsaved whenever content changes
+           (.on instance "data_change"
+                (fn [] (reset! (::unsaved? state) true)))
            (.observe ro container)
            (reset! (::instance state) instance)
            (reset! (::timer-id state) timer)
@@ -337,6 +342,7 @@
            (save-to-ls! map-id data)
            (when on-save-data
              (on-save-data map-id (js/JSON.stringify data)))
+           (reset! (::unsaved? state) false)
            (.destroy ^js instance))))
      state)}
   [state {:keys [map-id map-title on-back _on-load-data _on-save-data]}]
@@ -351,6 +357,7 @@
         show-layout? (rum/react (::show-layout? state))
         show-export? (rum/react (::show-export? state))
         readonly?    (rum/react (::readonly? state))
+        unsaved?     (rum/react (::unsaved? state))
         cmd!         (fn [c] (when-let [i @*instance] (.execCommand ^js i c)))]
 
     [:div.mind-map-wrapper
@@ -395,7 +402,13 @@
                 :textOverflow "ellipsis"
                 :whiteSpace   "nowrap"
                 :color        "var(--lx-gray-11,#374151)"}}
-       (or map-title "思维导图")]
+       (or map-title "思维导图")
+       (when unsaved?
+         [:span {:style {:color      "#f59e0b"
+                         :marginLeft "4px"
+                         :fontSize   "10px"
+                         :title      "有未保存的更改（3 秒后自动保存）"}}
+          "●"])]
 
       (tb-sep)
 
@@ -503,11 +516,12 @@
               :active? readonly?)]
 
      ;; ── canvas ──────────────────────────────────────────────────────────────
+     ;; on-key-down stopPropagation: prevent Logseq from stealing Tab/Enter/Delete/
+     ;; Ctrl+Z/Y etc. while the mind map canvas is focused (mirrors OB hotkey overrides)
      [:div
-      {:ref   (fn [el] (reset! *container el))
-       :style {:flex     "1"
-               :width    "100%"
-               :overflow "hidden"}}]
+      {:ref         (fn [el] (reset! *container el))
+       :style       {:flex "1" :width "100%" :overflow "hidden"}
+       :on-key-down (fn [e] (.stopPropagation e))}]
 
      ;; ── status bar ──────────────────────────────────────────────────────────
      [:div
@@ -529,6 +543,8 @@
          [:span {:key "undo"} "Ctrl+Z/Y: 撤销/重做"]
          [:span {:key "dbl"} "双击空白: 回到根节点"]))
       [:div {:style {:flex "1"}}]
+      (when unsaved?
+        [:span {:style {:color "#f59e0b"}} "未保存"])
       [:span (str zoom-pct "%")]]]))
 
 ;; Export for shadow.lazy loadable
