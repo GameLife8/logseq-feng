@@ -1,6 +1,7 @@
 (ns frontend.routes
   "Defines routes for use with reitit router"
   (:require [frontend.components.agenda :as agenda]
+            [frontend.components.mind-map :as mind-map]
             [frontend.components.tag-manager :as tag-manager]
             [frontend.components.all-pages :as all-pages]
             [frontend.components.bug-report :as bug-report]
@@ -91,6 +92,10 @@
    ["/agenda"
     {:name :agenda
      :view (fn [_] (agenda/agenda-page))}]
+
+   ["/mind-map"
+    {:name :mind-map
+     :view (fn [_] (mind-map/mind-map-page))}]
 
    ["/tag-manager"
     {:name :tag-manager

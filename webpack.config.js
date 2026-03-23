@@ -97,6 +97,43 @@ var ExcalidrawConfig = {
   },
 };
 
+// simple-mind-map bundled separately, exposed as window.SimpleMindMap
+var SimpleMindMapConfig = {
+  name: "mind-map",
+  mode: "production",
+  entry: "./src/main/js/mind-map-entry.js",
+  externals: {
+    'react': 'React',
+    'react-dom': 'ReactDOM',
+  },
+  module: {
+    rules: [
+      {
+        test: /\.m?js/,
+        resolve: { fullySpecified: false },
+      },
+      {
+        test: /\.css$/,
+        type: 'asset/source',
+      },
+      {
+        test: /\.(woff|woff2|ttf|eot|otf|svg|png)$/,
+        type: 'asset/inline',
+      },
+    ]
+  },
+  output: {
+    path: path.resolve(__dirname, 'static/js'),
+    filename: 'mind-map-bundle.js',
+    library: {
+      name: 'SimpleMindMap',
+      type: 'window',
+    },
+    publicPath: '/static/js/',
+    clean: false,
+  },
+};
+
 module.exports = [
-  AppConfig, MobileConfig, ExcalidrawConfig,
+  AppConfig, MobileConfig, ExcalidrawConfig, SimpleMindMapConfig,
 ];

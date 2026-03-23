@@ -20,7 +20,9 @@
                                   "react-dom" {:target :global
                                                :global "ReactDOM"}
                                   "@excalidraw/excalidraw" {:target :global
-                                                            :global "ExcalidrawLib"}}}
+                                                            :global "ExcalidrawLib"}
+                                  "simple-mind-map" {:target :global
+                                                     :global "SimpleMindMap"}}}
         :modules       {:main
                         {:init-fn frontend.core/init}
                         :code-editor
@@ -28,7 +30,10 @@
                          :depends-on #{:main}}
                         :excalidraw
                         {:entries    [frontend.extensions.excalidraw.core]
-                         :depends-on #{:main}}}
+                         :depends-on #{:main}}
+                        :mind-map
+                        {:entries    [frontend.extensions.mind-map.core]
+                         :depends-on #{:main}}}}
 
         :output-dir       "./static/js"
         :asset-path       "/static/js"
