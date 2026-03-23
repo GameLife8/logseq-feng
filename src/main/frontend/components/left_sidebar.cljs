@@ -242,13 +242,13 @@
         :icon "calendar-time"
         :href (rfe/href :agenda)})
 
-      ;; Mind Map – simple-mind-map canvas
+      ;; Mind Map – simple-mind-map canvas gallery
       (sidebar-item
        {:class "mind-map-nav"
-        :active (and (not srs-open?) (= route-name :mind-map))
+        :active (and (not srs-open?) (#{:all-mind-maps :mind-map} route-name))
         :title "思维导图"
         :icon "brand-apple-arcade"
-        :href (rfe/href :mind-map)})
+        :href (rfe/href :all-mind-maps)})
 
       ;; Tag Manager – view and manage all tags
       (sidebar-item

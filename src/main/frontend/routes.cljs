@@ -93,9 +93,13 @@
     {:name :agenda
      :view (fn [_] (agenda/agenda-page))}]
 
-   ["/mind-map"
+   ["/mind-map/:name"
     {:name :mind-map
-     :view (fn [_] (mind-map/mind-map-page))}]
+     :view mind-map/mind-map-page}]
+
+   ["/mind-maps"
+    {:name :all-mind-maps
+     :view (fn [_] (mind-map/all-mind-maps))}]
 
    ["/tag-manager"
     {:name :tag-manager
