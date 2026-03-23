@@ -259,23 +259,45 @@
                          "margin:0 auto!important;padding:1.5rem!important;"
                          "border:none!important;border-radius:0!important;"
                          "box-shadow:none!important}"
-                         ;; ── 代码块：修复溢出截断 + 长行换行 ──────────────
-                         ;; CodeMirror 6 默认 overflow:auto，克隆到新窗口后内容被截断
-                         ".cm-editor,.cm-scroller{overflow:visible!important}"
-                         ;; 长行强制换行（pre-wrap 保留缩进，break-all 防止单词超宽）
-                         ".cm-content,.cm-line{"
+                         ;; ── 代码块：静态化样式（不依赖 CSS 变量）────────
+                         ;; CodeMirror 5（.CodeMirror）和 6（.cm-editor）容器
+                         ".CodeMirror,.cm-editor{"
+                         "background:#f8f9fa!important;"
+                         "border:1px solid #dee2e6!important;"
+                         "border-radius:6px!important;"
+                         "padding:0!important;"
+                         "overflow:visible!important;"
+                         "font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace!important;"
+                         "font-size:13px!important;line-height:1.5!important}"
+                         ".CodeMirror-scroll,.cm-scroller{"
+                         "overflow:visible!important;"
+                         "padding:10px 14px!important}"
+                         ;; 代码行
+                         ".CodeMirror-line,.cm-line{"
                          "white-space:pre-wrap!important;"
                          "word-break:break-all!important;"
-                         "overflow-wrap:break-word!important}"
-                         ;; 颜色/背景由 CSS 变量继承，不在此覆盖（已通过 html style 属性传入）
+                         "overflow-wrap:break-word!important;"
+                         "color:#24292e!important}"
+                         ;; 行号列（如有）
+                         ".CodeMirror-gutter,.CodeMirror-gutter-elt{"
+                         "background:#f8f9fa!important;"
+                         "color:#6e7781!important;"
+                         "border-right:1px solid #dee2e6!important}"
+                         ;; 语法高亮色（覆盖可能失效的 CSS 变量引用）
+                         ".cm-content,.CodeMirror-code{color:#24292e!important}"
+                         ;; 行内 code（非编辑器）
+                         "code:not(.cm-line){background:#f0f1f3!important;"
+                         "border:1px solid #dee2e6!important;"
+                         "border-radius:3px!important;padding:1px 5px!important;"
+                         "font-family:monospace!important;font-size:0.9em!important}"
                          "@media print{"
                          ".block-control,.bullet-container,.open-block-ref-link,"
                          ".block-children-left-border,.ls-block-right-toolbar,"
                          ".cp__sidebar-help-btn{display:none!important}"
-                         ".cm-editor,.cm-scroller{overflow:visible!important}"
-                         ".cm-content,.cm-line{"
-                         "white-space:pre-wrap!important;"
-                         "word-break:break-all!important}"
+                         ".CodeMirror,.cm-editor{background:#f8f9fa!important;"
+                         "overflow:visible!important;break-inside:avoid!important}"
+                         ".CodeMirror-scroll,.cm-scroller{overflow:visible!important}"
+                         ".CodeMirror-line,.cm-line{white-space:pre-wrap!important;word-break:break-all!important}"
                          "}"
                          "</style>")
         ;; 保留 html 元素上动态设置的 CSS 变量（--ls-* 等）
