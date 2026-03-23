@@ -34,11 +34,72 @@
 ;; ── MindMap constructor ───────────────────────────────────────────────────────
 
 (defn- get-mind-map-ctor []
-  ;; window.SimpleMindMap is the default export (a class) exposed by webpack
   (let [lib js/SimpleMindMap]
     (if (fn? lib)
       lib
       (when lib (.-default lib)))))
+
+;; ── Toolbar helpers ───────────────────────────────────────────────────────────
+
+(def ^:private toolbar-btn-style
+  {:display      "flex"
+   :alignItems   "center"
+   :justifyContent "center"
+   :minWidth     "30px"
+   :height       "30px"
+   :padding      "0 8px"
+   :background   "transparent"
+   :border       "1px solid transparent"
+   :borderRadius "5px"
+   :cursor       "pointer"
+   :fontSize     "13px"
+   :color        "var(--lx-gray-11,#374151)"
+   :transition   "background 0.1s, border-color 0.1s"
+   :userSelect   "none"
+   :whiteSpace   "nowrap"})
+
+(def ^:private toolbar-btn-hover
+  {:background   "var(--lx-gray-04,#e5e7eb)"
+   :borderColor  "var(--lx-gray-06,#d1d5db)"})
+
+(def ^:private toolbar-btn-disabled
+  {:opacity "0.35"
+   :cursor  "not-allowed"
+   :pointerEvents "none"})
+
+(def ^:private toolbar-sep-style
+  {:width     "1px"
+   :height    "22px"
+   :background "var(--lx-gray-05,#e5e7eb)"
+   :margin    "0 4px"
+   :flexShrink "0"})
+
+(defn- tb-btn
+  "Toolbar icon button with tooltip. Calls (handler) on click when not disabled."
+  [label title handler & {:keys [disabled? active?]}]
+  [:button
+   {:title     title
+    :disabled  (boolean disabled?)
+    :on-click  (when-not disabled? handler)
+    :style     (merge toolbar-btn-style
+                      (when disabled? toolbar-btn-disabled)
+                      (when active? {:background  "var(--lx-gray-05,#e5e7eb)"
+                                     :borderColor "var(--lx-gray-07,#9ca3af)"}))}
+   label])
+
+(defn- tb-sep []
+  [:div {:style toolbar-sep-style}])
+
+;; ── Layouts ───────────────────────────────────────────────────────────────────
+
+(def ^:private layouts
+  [["logicalStructure"    "逻辑结构"]
+   ["mindMap"             "思维导图"]
+   ["catalogOrganization" "目录组织"]
+   ["organizationStructure" "组织结构"]
+   ["timeline"            "时间线"]
+   ["verticalTimeline"    "垂直时间线"]
+   ["fishbone"            "鱼骨图"]])
 
 ;; ── Main component ────────────────────────────────────────────────────────────
 
@@ -51,10 +112,17 @@
      :on-back      – fn() navigate back
      :on-load-data – fn(map-id) → JSON-string | nil
      :on-save-data – fn(map-id, json-string)"
-  < rum/static
+  < rum/reactive
   (rum/local nil   ::instance)
   (rum/local nil   ::container-ref)
   (rum/local nil   ::timer-id)
+  ;; reactive toolbar state
+  (rum/local false ::node-active?)
+  (rum/local false ::can-undo?)
+  (rum/local false ::can-redo?)
+  (rum/local 100   ::zoom-pct)
+  (rum/local "logicalStructure" ::cur-layout)
+  (rum/local false ::show-layout?)
   {:did-mount
    (fn [state]
      (let [args         (-> state :rum/args first)
@@ -63,15 +131,13 @@
            container    @(::container-ref state)
            MindMapCtor  (get-mind-map-ctor)]
        (when (and container MindMapCtor)
-         (let [saved-json  (or (when on-load-data (on-load-data map-id))
-                               nil)
+         (let [saved-json  (or (when on-load-data (on-load-data map-id)) nil)
                init-data   (or (when saved-json
                                  (try (js/JSON.parse saved-json)
                                       (catch :default _ nil)))
                                (load-from-ls map-id)
                                default-data)
                dark?       (= "dark" (state/sub :ui/theme))
-               ;; themeConfig 完整覆盖默认 #549688 绿色主题，适配明/暗两种模式
                theme-cfg   (if dark?
                               #js {:backgroundColor "#1a1b26"
                                    :lineColor       "#4b5563"
@@ -130,36 +196,45 @@
                                  :data        init-data
                                  :theme       "default"
                                  :themeConfig theme-cfg
-                                 ;; 视图
                                  :fit         true
                                  :fitPadding  60
-                                 ;; 缩放：滚轮缩放（更符合思维导图直觉）
                                  :mousewheelAction            "zoom"
                                  :mousewheelZoomActionReverse false
                                  :scaleRatio                  0.15
                                  :minZoomRatio                15
                                  :maxZoomRatio                500
-                                 ;; 编辑体验
                                  :readonly                            false
                                  :enableAutoEnterTextEditWhenKeydown  true
                                  :selectTextOnEnterEditText           true
                                  :enableDblclickBackToRootNode        true
                                  :textAutoWrapWidth                   280
-                                 ;; 新节点默认文字
                                  :defaultInsertSecondLevelNodeText          "子节点"
                                  :defaultInsertBelowSecondLevelNodeText     "子节点"
-                                 ;; 历史记录防抖 150ms
                                  :addHistoryTime  150
-                                 ;; hover 边框颜色跟随主题
                                  :hoverRectColor  (if dark?
                                                     "rgba(99,102,241,0.7)"
                                                     "rgba(30,41,59,0.2)")})
                timer       (js/setInterval
                             (fn []
                               (when-let [inst @(::instance state)]
-                                (let [data (.getData inst)]
-                                  (save-to-ls! map-id data))))
+                                (save-to-ls! map-id (.getData inst))))
                             3000)]
+           ;; ── wire reactive events ────────────────────────────────────────
+           ;; back_forward: (activeIndex, totalLength)
+           (.on instance "back_forward"
+                (fn [idx len]
+                  (reset! (::can-undo? state) (> idx 0))
+                  (reset! (::can-redo? state) (< idx (dec len)))))
+           ;; node_active: (node, activeNodeList)
+           (.on instance "node_active"
+                (fn [_node active-list]
+                  (reset! (::node-active? state)
+                          (pos? (.-length active-list)))))
+           ;; scale: current scale float (1.0 = 100%)
+           (.on instance "scale"
+                (fn [s]
+                  (reset! (::zoom-pct state)
+                          (js/Math.round (* s 100)))))
            (reset! (::instance state) instance)
            (reset! (::timer-id state) timer))))
      state)
@@ -179,76 +254,155 @@
            (.destroy instance))))
      state)}
   [state {:keys [map-id map-title on-back _on-load-data _on-save-data]}]
-  (let [*container (::container-ref state)
-        *instance  (::instance state)]
+  (let [*container   (::container-ref state)
+        *instance    (::instance state)
+        node-active? (rum/react (::node-active? state))
+        can-undo?    (rum/react (::can-undo? state))
+        can-redo?    (rum/react (::can-redo? state))
+        zoom-pct     (rum/react (::zoom-pct state))
+        cur-layout   (rum/react (::cur-layout state))
+        show-layout? (rum/react (::show-layout? state))
+        cmd!         (fn [c] (when-let [i @*instance] (.execCommand i c)))]
+
     [:div.mind-map-wrapper
-     {:style {:width "100%" :height "100%" :display "flex" :flexDirection "column"}}
+     {:style {:width "100%" :height "100%" :display "flex" :flexDirection "column"
+              :position "relative"}}
 
      ;; ── toolbar ─────────────────────────────────────────────────────────────
      [:div.mind-map-toolbar
-      {:style {:display        "flex"
-               :alignItems     "center"
-               :gap            "8px"
-               :padding        "6px 12px"
-               :borderBottom   "1px solid var(--lx-gray-05,#e5e7eb)"
-               :background     "var(--lx-gray-02,#f9fafb)"
-               :flexShrink     "0"}}
+      {:style {:display      "flex"
+               :alignItems   "center"
+               :gap          "2px"
+               :padding      "4px 10px"
+               :borderBottom "1px solid var(--lx-gray-05,#e5e7eb)"
+               :background   "var(--ls-secondary-background-color,#f9fafb)"
+               :flexShrink   "0"
+               :flexWrap     "wrap"}}
 
-      ;; ← 返回
-      [:button
-       {:title   "保存并返回"
-        :on-click (fn []
-                    (when-let [inst @*instance]
-                      (let [data (.getData inst)]
-                        (save-to-ls! map-id data)))
-                    (when on-back (on-back)))
-        :style   {:padding      "4px 10px"
-                  :background   "var(--lx-gray-03,#f3f4f6)"
-                  :color        "var(--lx-gray-12,#111)"
-                  :border       "1px solid var(--lx-gray-06,#e5e7eb)"
-                  :borderRadius "6px"
-                  :cursor       "pointer"
-                  :fontSize     "13px"}}
-       "← 返回"]
-
-      ;; title chip
+      ;; ← 返回 + 标题
+      (tb-btn "← 返回" "保存并返回"
+              (fn []
+                (when-let [i @*instance]
+                  (save-to-ls! map-id (.getData i)))
+                (when on-back (on-back))))
       [:span
-       {:style {:padding      "4px 10px"
-                :background   "var(--lx-gray-02,#f9fafb)"
-                :border       "1px solid var(--lx-gray-05,#e5e7eb)"
-                :borderRadius "6px"
+       {:style {:padding      "4px 8px"
                 :fontSize     "13px"
                 :fontWeight   "600"
-                :maxWidth     "200px"
+                :maxWidth     "180px"
                 :overflow     "hidden"
                 :textOverflow "ellipsis"
-                :whiteSpace   "nowrap"}}
+                :whiteSpace   "nowrap"
+                :color        "var(--lx-gray-11,#374151)"}}
        (or map-title "思维导图")]
 
-      [:div {:style {:flex "1"}}]
+      (tb-sep)
 
-      ;; 重置视图
-      [:button
-       {:title    "重置视图到中心"
-        :on-click (fn []
-                    (when-let [inst @(::instance state)]
-                      (.fit (.-view inst))))
-        :style    {:padding      "4px 10px"
-                   :background   "var(--lx-gray-03,#f3f4f6)"
-                   :color        "var(--lx-gray-12,#111)"
-                   :border       "1px solid var(--lx-gray-06,#e5e7eb)"
+      ;; 撤销 / 重做
+      (tb-btn "↩ 撤销" "撤销 (Ctrl+Z)"   #(cmd! "BACK")    :disabled? (not can-undo?))
+      (tb-btn "↪ 重做" "重做 (Ctrl+Y)"   #(cmd! "FORWARD") :disabled? (not can-redo?))
+
+      (tb-sep)
+
+      ;; 节点操作
+      (tb-btn "⊕ 同级节点" "插入同级节点 (Enter)"
+              #(cmd! "INSERT_NODE") :disabled? (not node-active?))
+      (tb-btn "⊕ 子节点"   "插入子节点 (Tab)"
+              #(cmd! "INSERT_CHILD_NODE"))
+      (tb-btn "⊖ 删除"     "删除节点 (Delete)"
+              #(cmd! "REMOVE_NODE") :disabled? (not node-active?))
+
+      (tb-sep)
+
+      ;; 上移 / 下移
+      (tb-btn "↑ 上移" "上移节点"
+              #(cmd! "UP_NODE") :disabled? (not node-active?))
+      (tb-btn "↓ 下移" "下移节点"
+              #(cmd! "DOWN_NODE") :disabled? (not node-active?))
+
+      (tb-sep)
+
+      ;; 缩放控制
+      (tb-btn "−" "缩小"
+              #(when-let [i @*instance]
+                 (let [v (.-view i)
+                       s (.-scale v)]
+                   (.setScale v (max 0.15 (* s 0.85))))))
+      [:span
+       {:style {:fontSize "12px"
+                :minWidth "42px"
+                :textAlign "center"
+                :color "var(--lx-gray-10,#6b7280)"}}
+       (str zoom-pct "%")]
+      (tb-btn "+" "放大"
+              #(when-let [i @*instance]
+                 (let [v (.-view i)
+                       s (.-scale v)]
+                   (.setScale v (min 5 (* s 1.18))))))
+      (tb-btn "⊡ 适应" "适应画布"
+              #(when-let [i @*instance] (.fit (.-view i))))
+
+      (tb-sep)
+
+      ;; 布局选择
+      [:div {:style {:position "relative"}}
+       (tb-btn (str "布局: " (or (second (first (filter #(= cur-layout (first %)) layouts))) "逻辑结构") " ▾")
+               "切换布局"
+               #(swap! (::show-layout? state) not))
+       (when show-layout?
+         [:div
+          {:style {:position   "absolute"
+                   :top        "34px"
+                   :left       "0"
+                   :background "var(--ls-primary-background-color,#fff)"
+                   :border     "1px solid var(--lx-gray-05,#e5e7eb)"
                    :borderRadius "6px"
-                   :cursor       "pointer"
-                   :fontSize     "13px"}}
-       "⊡ 适应"]]
+                   :boxShadow  "0 4px 12px rgba(0,0,0,0.12)"
+                   :zIndex     "100"
+                   :minWidth   "130px"
+                   :padding    "4px 0"}}
+          (for [[k label] layouts]
+            [:div
+             {:key      k
+              :on-click (fn []
+                          (when-let [i @*instance]
+                            (.setLayout i k))
+                          (reset! (::cur-layout state) k)
+                          (reset! (::show-layout? state) false))
+              :style    (merge {:padding  "6px 14px"
+                                :fontSize "13px"
+                                :cursor   "pointer"
+                                :color    "var(--lx-gray-11,#374151)"}
+                               (when (= k cur-layout)
+                                 {:fontWeight "600"
+                                  :color "var(--ls-link-text-color,#4f46e5)"}))}
+             label])])]]
 
      ;; ── canvas ──────────────────────────────────────────────────────────────
      [:div
       {:ref   (fn [el] (reset! *container el))
        :style {:flex     "1"
                :width    "100%"
-               :overflow "hidden"
-               :background "var(--ls-primary-background-color,#fff)"}}]]))
+               :overflow "hidden"}}]
+
+     ;; ── status bar ──────────────────────────────────────────────────────────
+     [:div
+      {:style {:display      "flex"
+               :alignItems   "center"
+               :gap          "12px"
+               :padding      "3px 12px"
+               :borderTop    "1px solid var(--lx-gray-04,#f3f4f6)"
+               :background   "var(--ls-secondary-background-color,#f9fafb)"
+               :flexShrink   "0"
+               :fontSize     "11px"
+               :color        "var(--lx-gray-09,#9ca3af)"}}
+      [:span "Enter: 同级节点"]
+      [:span "Tab: 子节点"]
+      [:span "Delete: 删除"]
+      [:span "Ctrl+Z/Y: 撤销/重做"]
+      [:span "双击空白: 回到根节点"]
+      [:div {:style {:flex "1"}}]
+      [:span (str zoom-pct "%")]]]))
 
 ;; Export for shadow.lazy loadable
 (def ^:export editor mind-map-editor)
