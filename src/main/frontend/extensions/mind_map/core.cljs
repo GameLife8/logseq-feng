@@ -122,7 +122,7 @@
     :style    (merge toolbar-btn-style
                      (when disabled? toolbar-btn-disabled)
                      (when active? {:background  "var(--lx-gray-05,#e5e7eb)"
-                                    :borderColor "var(--lx-gray-07,#9ca3af)"}))}
+                                    :border     "1px solid var(--lx-gray-07,#9ca3af)"}))}
    label])
 
 (defn- tb-sep []
