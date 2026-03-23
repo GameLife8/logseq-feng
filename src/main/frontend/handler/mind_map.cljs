@@ -61,10 +61,10 @@
           nil)
       (p/let [page (common-page-handler/<create! title {:redirect? false})]
         (when page
-          ;; 写入空 JSON 标记该页面为思维导图（使其被 get-all-mind-maps 查询到）
+          ;; 写入默认 JSON 标记该页面为思维导图（使其被 get-all-mind-maps 查询到）
           (db/transact! (state/get-current-repo)
                         [{:db/id             (:db/id page)
-                          :block/mind-map-data "{}"
+                          :block/mind-map-data (str "{\"data\":{\"text\":\"" title "\"},\"children\":[]}")
                           :block/updated-at   (.now js/Date)}]
                         {:outliner-op :save-block})
           (route-handler/redirect!

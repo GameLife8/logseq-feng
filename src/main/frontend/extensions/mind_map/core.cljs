@@ -209,7 +209,9 @@
        (when (and container MindMapCtor)
          (let [saved-json (or (when on-load-data (on-load-data map-id)) nil)
                init-data  (or (when saved-json
-                                (try (js/JSON.parse saved-json)
+                                (try (let [p (js/JSON.parse saved-json)]
+                                       ;; 必须有 data.text 才是合法的导图结构
+                                       (when (and p (.-data p) (.-text (.-data p))) p))
                                      (catch :default _ nil)))
                               (load-from-ls map-id)
                               default-data)
