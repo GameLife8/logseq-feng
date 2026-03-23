@@ -3,8 +3,10 @@
 
    架构：
      frontend.extensions.mind-map.core – simple-mind-map 画布封装（懒加载模块）
+     frontend.handler.mind-map         – DB 读写（主模块）
      frontend.components.mind-map      – 页面 UI（主模块）"
-  (:require [frontend.handler.route :as route-handler]
+  (:require [frontend.handler.mind-map :as mind-map-handler]
+            [frontend.handler.route :as route-handler]
             [frontend.state :as state]
             [rum.core :as rum]
             [shadow.lazy :as lazy]))
@@ -42,21 +44,22 @@
         repo    (state/get-current-repo)
         map-id  (str "default-" repo)]
     [:div.mind-map-page
-     {:style {:width   "100%"
-              :height  "100%"
-              :display "flex"
+     {:style {:width         "100%"
+              :height        "100%"
+              :display       "flex"
               :flexDirection "column"}}
 
      (if-not loaded?
-       ;; 加载中
-       [:div {:style {:display "flex" :alignItems "center" :justifyContent "center"
-                      :flex "1" :color "var(--ls-secondary-text-color,#666)"}}
+       [:div {:style {:display        "flex"
+                      :alignItems     "center"
+                      :justifyContent "center"
+                      :flex           "1"
+                      :color          "var(--ls-secondary-text-color,#666)"}}
         "加载思维导图中…"]
 
-       ;; 已加载
        (@lazy-mind-map
         {:map-id       map-id
          :map-title    "思维导图"
          :on-back      (fn [] (route-handler/redirect-to-home!))
-         :on-load-data (fn [_mid] nil)   ;; TODO: persist to Logseq DB
-         :on-save-data (fn [_mid _json] nil)}))]))
+         :on-load-data mind-map-handler/load-mind-map-from-db
+         :on-save-data mind-map-handler/save-mind-map-to-db!}))]))
