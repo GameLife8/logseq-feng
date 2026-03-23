@@ -70,13 +70,90 @@
                                       (catch :default _ nil)))
                                (load-from-ls map-id)
                                default-data)
-               theme       (if (= "dark" (state/sub :ui/theme)) "dark" "light")
+               dark?       (= "dark" (state/sub :ui/theme))
+               ;; themeConfig 完整覆盖默认 #549688 绿色主题，适配明/暗两种模式
+               theme-cfg   (if dark?
+                              #js {:backgroundColor "#1a1b26"
+                                   :lineColor       "#4b5563"
+                                   :lineWidth       2
+                                   :lineStyle       "curve"
+                                   :lineRadius      8
+                                   :root   #js {:fillColor    "#4f46e5"
+                                                :color        "#f8fafc"
+                                                :fontSize     16
+                                                :fontWeight   "bold"
+                                                :borderRadius 8
+                                                :paddingX     20
+                                                :paddingY     10}
+                                   :second #js {:fillColor    "#1e1b4b"
+                                                :borderColor  "#4f46e5"
+                                                :color        "#c7d2fe"
+                                                :fontSize     14
+                                                :borderRadius 6
+                                                :marginX      90
+                                                :marginY      28}
+                                   :node   #js {:fillColor    "transparent"
+                                                :borderColor  "#374151"
+                                                :color        "#9ca3af"
+                                                :fontSize     13
+                                                :borderRadius 4
+                                                :marginX      60
+                                                :marginY      18}}
+                              #js {:backgroundColor "#f8fafc"
+                                   :lineColor       "#94a3b8"
+                                   :lineWidth       2
+                                   :lineStyle       "curve"
+                                   :lineRadius      8
+                                   :root   #js {:fillColor    "#1e293b"
+                                                :color        "#f8fafc"
+                                                :fontSize     16
+                                                :fontWeight   "bold"
+                                                :borderRadius 8
+                                                :paddingX     20
+                                                :paddingY     10}
+                                   :second #js {:fillColor    "#f1f5f9"
+                                                :borderColor  "#94a3b8"
+                                                :color        "#1e293b"
+                                                :fontSize     14
+                                                :borderRadius 6
+                                                :marginX      90
+                                                :marginY      28}
+                                   :node   #js {:fillColor    "transparent"
+                                                :borderColor  "#e2e8f0"
+                                                :color        "#475569"
+                                                :fontSize     13
+                                                :borderRadius 4
+                                                :marginX      60
+                                                :marginY      18}})
                instance    (MindMapCtor.
-                            #js {:el       container
-                                 :data     init-data
-                                 :theme    theme
-                                 :fit      true
-                                 :readonly false})
+                            #js {:el          container
+                                 :data        init-data
+                                 :theme       "default"
+                                 :themeConfig theme-cfg
+                                 ;; 视图
+                                 :fit         true
+                                 :fitPadding  60
+                                 ;; 缩放：滚轮缩放（更符合思维导图直觉）
+                                 :mousewheelAction            "zoom"
+                                 :mousewheelZoomActionReverse false
+                                 :scaleRatio                  0.15
+                                 :minZoomRatio                15
+                                 :maxZoomRatio                500
+                                 ;; 编辑体验
+                                 :readonly                            false
+                                 :enableAutoEnterTextEditWhenKeydown  true
+                                 :selectTextOnEnterEditText           true
+                                 :enableDblclickBackToRootNode        true
+                                 :textAutoWrapWidth                   280
+                                 ;; 新节点默认文字
+                                 :defaultInsertSecondLevelNodeText          "子节点"
+                                 :defaultInsertBelowSecondLevelNodeText     "子节点"
+                                 ;; 历史记录防抖 150ms
+                                 :addHistoryTime  150
+                                 ;; hover 边框颜色跟随主题
+                                 :hoverRectColor  (if dark?
+                                                    "rgba(99,102,241,0.7)"
+                                                    "rgba(30,41,59,0.2)")})
                timer       (js/setInterval
                             (fn []
                               (when-let [inst @(::instance state)]
