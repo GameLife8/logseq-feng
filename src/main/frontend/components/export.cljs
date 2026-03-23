@@ -241,16 +241,29 @@
         main-html   (if main-el (.-outerHTML (.cloneNode main-el true)) "")
         ;; 修正可能的图片 assets URL（克隆后直接操作 outerHTML 字符串即可）
         main-html   (.replaceAll main-html "assets://" "file://")
-        ;; 打印专用样式：隐藏交互 UI，还原容器边距
+        ;; 打印专用样式：重置布局 CSS 变量（无侧边栏时宽度计算会塌陷），隐藏交互 UI
+        ;; 关键：覆盖 --ls-left/right-sidebar-width，让 #main-content-container 正常撑开
         print-css   (str "<style>"
-                         "@media print{"
-                         "#main-content-container{margin:0!important;padding:1rem!important;"
-                         "border:none!important;border-radius:0!important;box-shadow:none!important}"
-                         ".block-control,.bullet-container,.open-block-ref-link,"
-                         ".block-children-left-border,.ls-block-right-toolbar{display:none!important}"
+                         ":root{"
+                         "--ls-left-sidebar-width:0px!important;"
+                         "--ls-right-sidebar-width:0px!important;"
+                         "--ls-page-max-width:860px!important;"
                          "}"
-                         "body{margin:0;padding:0;background:#fff}"
-                         "#app-container,#main-container{margin:0;padding:0}"
+                         "html,body{writing-mode:horizontal-tb!important;"
+                         "margin:0;padding:0;background:#fff}"
+                         "#app-container{display:block!important}"
+                         "#main-container{display:block!important;"
+                         "width:100%!important;max-width:100%!important}"
+                         "#main-content-container{display:block!important;"
+                         "width:100%!important;max-width:860px!important;"
+                         "margin:0 auto!important;padding:1.5rem!important;"
+                         "border:none!important;border-radius:0!important;"
+                         "box-shadow:none!important}"
+                         "@media print{"
+                         ".block-control,.bullet-container,.open-block-ref-link,"
+                         ".block-children-left-border,.ls-block-right-toolbar,"
+                         ".cp__sidebar-help-btn{display:none!important}"
+                         "}"
                          "</style>")
         full-html   (str "<!DOCTYPE html>"
                          "<html class='" (.-className html-el) "'>"
