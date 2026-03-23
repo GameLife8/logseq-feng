@@ -7,7 +7,10 @@
  *   (new MindMap #js {:el container-el :data root-data})
  */
 
-// Re-export default so webpack library wrapper sets:
-//   window.SimpleMindMap = { default: MindMap }
-// ClojureScript resolves it via (.-default js/SimpleMindMap).
-export { default } from 'simple-mind-map';
+import MindMap from 'simple-mind-map';
+import Export from 'simple-mind-map/src/plugins/Export.js';
+
+// Register Export plugin (required for PNG/SVG export)
+MindMap.usePlugin(Export);
+
+export default MindMap;

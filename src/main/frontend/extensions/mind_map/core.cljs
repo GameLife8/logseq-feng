@@ -189,6 +189,9 @@
   (rum/local nil   ::timer-id)
   (rum/local nil   ::resize-observer)
   (rum/local nil   ::file-input-ref)
+  (rum/local nil   ::key-handler)
+  (rum/local nil   ::focusin-handler)
+  (rum/local nil   ::focusout-handler)
   ;; reactive toolbar state
   (rum/local false ::node-active?)
   (rum/local false ::can-undo?)
@@ -327,7 +330,47 @@
            (.observe ro container)
            (reset! (::instance state) instance)
            (reset! (::timer-id state) timer)
-           (reset! (::resize-observer state) ro))))
+           (reset! (::resize-observer state) ro)
+           ;; ── native keyboard interception (capture phase) ────────────────
+           ;; Logseq's KeyboardShortcutHandler owns Tab/Enter/Delete/Ctrl+Z/Y
+           ;; at the document-bubble level. We intercept in container-capture
+           ;; (fires before document-bubble) so SimpleMindMap gets these keys.
+           (let [key-handler
+                 (fn [^js e]
+                   (let [target       (.-target e)
+                         text-input?  (or (= "INPUT"    (.-tagName target))
+                                          (= "TEXTAREA" (.-tagName target))
+                                          (.-isContentEditable target))]
+                     (when-not (or (.-isComposing e) text-input?)
+                       (let [key  (.-key e)
+                             ctrl (or (.-ctrlKey e) (.-metaKey e))]
+                         (when-let [cmd
+                                    (cond
+                                      (= key "Tab")                        "INSERT_CHILD_NODE"
+                                      (= key "Enter")                      "INSERT_NODE"
+                                      (contains? #{"Delete" "Backspace"} key) "REMOVE_NODE"
+                                      (and ctrl (= key "z"))               "BACK"
+                                      (and ctrl
+                                           (or (= key "y")
+                                               (and (.-shiftKey e) (= key "Z")))) "FORWARD"
+                                      :else nil)]
+                           (.preventDefault e)
+                           (.stopPropagation e)
+                           (when-let [i @(::instance state)]
+                             (.execCommand ^js i cmd)))))))
+                 focusin-handler
+                 (fn [_e] (state/set-block-component-editing-mode! true))
+                 focusout-handler
+                 (fn [^js e]
+                   (when-not (and (.-relatedTarget e)
+                                  (.contains container (.-relatedTarget e)))
+                     (state/set-block-component-editing-mode! false)))]
+             (.addEventListener container "keydown"  key-handler      true)
+             (.addEventListener container "focusin"  focusin-handler  false)
+             (.addEventListener container "focusout" focusout-handler false)
+             (reset! (::key-handler state)      key-handler)
+             (reset! (::focusin-handler state)  focusin-handler)
+             (reset! (::focusout-handler state) focusout-handler)))))
      state)
    :will-unmount
    (fn [state]
@@ -336,9 +379,18 @@
            on-save-data (:on-save-data args)
            timer        @(::timer-id state)
            ro           @(::resize-observer state)
-           instance     @(::instance state)]
+           instance     @(::instance state)
+           container    @(::container-ref state)
+           key-handler  @(::key-handler state)
+           fi-handler   @(::focusin-handler state)
+           fo-handler   @(::focusout-handler state)]
        (when timer (js/clearInterval timer))
        (when ro (.disconnect ^js ro))
+       (when (and container key-handler)
+         (.removeEventListener container "keydown"  key-handler      true)
+         (.removeEventListener container "focusin"  fi-handler       false)
+         (.removeEventListener container "focusout" fo-handler       false))
+       (state/set-block-component-editing-mode! false)
        (when instance
          (let [data (.getData ^js instance)]
            (save-to-ls! map-id data)
@@ -424,7 +476,7 @@
       (tb-btn "⊕ 同级" "插入同级节点 (Enter)"
               #(cmd! "INSERT_NODE") :disabled? (or readonly? (not node-active?)))
       (tb-btn "⊕ 子节点" "插入子节点 (Tab)"
-              #(cmd! "INSERT_CHILD_NODE") :disabled? readonly?)
+              #(cmd! "INSERT_CHILD_NODE") :disabled? (or readonly? (not node-active?)))
       (tb-btn "⊖ 删除" "删除节点 (Delete)"
               #(cmd! "REMOVE_NODE") :disabled? (or readonly? (not node-active?)))
 
@@ -518,12 +570,9 @@
               :active? readonly?)]
 
      ;; ── canvas ──────────────────────────────────────────────────────────────
-     ;; on-key-down stopPropagation: prevent Logseq from stealing Tab/Enter/Delete/
-     ;; Ctrl+Z/Y etc. while the mind map canvas is focused (mirrors OB hotkey overrides)
      [:div
-      {:ref         (fn [el] (reset! *container el))
-       :style       {:flex "1" :width "100%" :overflow "hidden"}
-       :on-key-down (fn [e] (.stopPropagation e))}]
+      {:ref   (fn [el] (reset! *container el))
+       :style {:flex "1" :width "100%" :overflow "hidden"}}]
 
      ;; ── status bar ──────────────────────────────────────────────────────────
      [:div
