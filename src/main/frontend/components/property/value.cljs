@@ -251,6 +251,7 @@
   (let [opts {:exit-edit? false}
         block (db/sub-block (:db/id block))]
     [:div.p-4.hidden.sm:flex.flex-col.gap-4.w-64
+     {:style {:fontSize "11px"}}
      [:div.mb-4
       [:div.flex.flex-row.items-center.gap-1
        [:div.w-4
@@ -264,8 +265,8 @@
                                                       (db-property-handler/remove-block-property! (:db/id block)
                                                                                                   :logseq.property.repeat/temporal-property)))))]
        (if (#{:logseq.property/deadline :logseq.property/scheduled} (:db/ident property))
-         [:div {:style {:fontSize "11px" :opacity "0.65"}} "重复任务"]
-         [:div (if (= :date (:logseq.property/type property)) "重复日期" "重复日期时间")])]]
+         [:div {:style {:opacity "0.65"}} "重复任务"]
+         [:div {:style {:opacity "0.65"}} (if (= :date (:logseq.property/type property)) "重复日期" "重复日期时间")])]]
      ;; 重复周期：每 N 天/周/月/年
      [:div.flex.flex-row.gap-2.ls-repeat-task-frequency
       [:div.flex.text-muted-foreground "每"]

@@ -219,51 +219,53 @@
        (map :block/uuid)))
 
 (defn- export-as-pdf!
-  "将选中内容导出为 PDF。
-   策略：参考 kef-doc 插件，克隆当前文档 <head>（含所有样式表），
-   与 blocks 的 HTML 内容组合成完整页面，在新窗口中打开并触发打印对话框。"
-  [top-level-uuids]
-  (let [html-body  (export-html/export-blocks-as-html
-                     (state/get-current-repo) top-level-uuids
-                     {:remove-options #{} :other-options {}})
-        ;; 克隆 <head> 并修正相对样式表 URL（参考 kef-doc prepareDoc）
-        head-clone (.cloneNode (.-head js/document) true)
-        _          (doseq [^js node (array-seq (.-children head-clone))]
-                     (when (= (.-rel node) "stylesheet")
-                       (let [attr-href (.. node -attributes -href -value)]
-                         (cond
-                           (.startsWith attr-href ".")
-                           (set! (.. node -attributes -href -value) (.-href node))
-                           (.startsWith attr-href "assets://")
-                           (set! (.. node -attributes -href -value)
-                                 (.replace attr-href "assets://" "file://"))))))
-        head-html  (.-innerHTML head-clone)
-        full-html  (str "<!DOCTYPE html><html>"
-                        "<head><meta charset='UTF-8'>"
-                        head-html
-                        "<style>"
-                        ;; 打印时隐藏 Logseq UI 交互元素
-                        "@media print{"
-                        ".block-control,.bullet-container,.open-block-ref-link,"
-                        ".block-children-left-border{display:none!important}"
-                        "#app-container,#main-container,#main-content-container"
-                        "{margin:0!important;padding:0.5rem!important;"
-                        "border:none!important;box-shadow:none!important;"
-                        "border-radius:0!important}}"
-                        "body{padding:20px;max-width:900px;margin:0 auto}"
-                        "</style>"
-                        "</head><body>"
-                        "<div id='app-container'><div id='main-container'>"
-                        "<div id='main-content-container'>"
-                        html-body
-                        "</div></div></div>"
-                        ;; 新窗口加载完成后自动弹出打印对话框
-                        "<script>window.onload=function(){window.print();}</script>"
-                        "</body></html>")
-        blob (js/Blob. #js [full-html] #js {:type "text/html"})
-        url  (js/URL.createObjectURL blob)]
+  "克隆当前页面实际渲染的 DOM（含 Logseq 样式），在新窗口触发打印对话框保存为 PDF。
+   参考 kef-doc 插件的 prepareDoc() 方案，直接使用 #main-content-container 而非
+   stripped-down 的 HTML export，以保留完整的块结构与样式。"
+  [_top-level-uuids]
+  (let [doc         js/document
+        html-el     (.-documentElement doc)
+        ;; 克隆 <head>，修正相对/特殊协议的样式表 URL
+        head-clone  (.cloneNode (.-head doc) true)
+        _           (doseq [^js node (array-seq (.-children head-clone))]
+                      (when (= (.-rel node) "stylesheet")
+                        (when-let [^js attr (.. node -attributes -href)]
+                          (let [v (.-value attr)]
+                            (cond
+                              (.startsWith v ".") (set! (.-value attr) (.-href node))
+                              (.startsWith v "assets://")
+                              (set! (.-value attr) (.replace v "assets://" "file://")))))))
+        head-html   (.-innerHTML head-clone)
+        ;; 克隆主内容区域（保留完整 Logseq DOM 结构和渲染内容）
+        main-el     (.getElementById doc "main-content-container")
+        main-html   (if main-el (.-outerHTML (.cloneNode main-el true)) "")
+        ;; 修正可能的图片 assets URL（克隆后直接操作 outerHTML 字符串即可）
+        main-html   (.replaceAll main-html "assets://" "file://")
+        ;; 打印专用样式：隐藏交互 UI，还原容器边距
+        print-css   (str "<style>"
+                         "@media print{"
+                         "#main-content-container{margin:0!important;padding:1rem!important;"
+                         "border:none!important;border-radius:0!important;box-shadow:none!important}"
+                         ".block-control,.bullet-container,.open-block-ref-link,"
+                         ".block-children-left-border,.ls-block-right-toolbar{display:none!important}"
+                         "}"
+                         "body{margin:0;padding:0;background:#fff}"
+                         "#app-container,#main-container{margin:0;padding:0}"
+                         "</style>")
+        full-html   (str "<!DOCTYPE html>"
+                         "<html class='" (.-className html-el) "'>"
+                         "<head><meta charset='UTF-8'>"
+                         head-html
+                         print-css
+                         "</head><body>"
+                         "<div id='app-container'><div id='main-container'>"
+                         main-html
+                         "</div></div>"
+                         "<script>window.onload=function(){window.print();}</script>"
+                         "</body></html>")
+        blob        (js/Blob. #js [full-html] #js {:type "text/html"})
+        url         (js/URL.createObjectURL blob)]
     (js/window.open url "_blank")
-    ;; 1 分钟后释放 Blob URL
     (js/setTimeout #(js/URL.revokeObjectURL url) 60000)))
 
 (rum/defcs ^:large-vars/cleanup-todo
@@ -275,7 +277,7 @@
   (rum/local nil ::content)
   {:will-mount (fn [state]
                  (let [top-level-uuids (get-top-level-uuids (first (:rum/args state)))]
-                   (reset! *export-block-type :html)
+                   (reset! *export-block-type :opml)
                    (if (= @*export-block-type :png)
                      (do (reset! (::content state) nil)
                          (get-image-blob top-level-uuids
@@ -307,10 +309,7 @@
                   :class "mr-4 w-20"
                   :on-click #(do (reset! *export-block-type :opml)
                                  (reset! *content (export-helper top-level-uuids))))
-       (ui/button "HTML"
-                  :class "mr-4 w-20"
-                  :on-click #(do (reset! *export-block-type :html)
-                                 (reset! *content (export-helper top-level-uuids))))
+       ;; HTML 导出已移除（内容过于简陋）
        ;; TODO: Remove if this is no longer used after whiteboard removal
        (when-not (seq? top-level-uuids)
          (ui/button "PNG"
@@ -378,7 +377,7 @@
                                        (reset! *text-remove-options (state/get-export-block-text-remove-options))
                                        (reset! *content (export-helper top-level-uuids)))})
             [:div {:style {:visibility (if (#{:text :html :opml} tp) "visible" "hidden")}}
-             "[[text]] -> text"]
+             "[[页面]] → 纯文本"]
 
             (ui/checkbox {:class "mr-2 ml-4"
                           :style {:visibility (if (#{:text :html :opml} tp) "visible" "hidden")}
@@ -389,7 +388,7 @@
                                        (reset! *content (export-helper top-level-uuids)))})
 
             [:div {:style {:visibility (if (#{:text :html :opml} tp) "visible" "hidden")}}
-             "remove emphasis"]
+             "去除格式标记"]
 
             (ui/checkbox {:class "mr-2 ml-4"
                           :style {:visibility (if (#{:text :html :opml} tp) "visible" "hidden")}
@@ -400,7 +399,7 @@
                                        (reset! *content (export-helper top-level-uuids)))})
 
             [:div {:style {:visibility (if (#{:text :html :opml} tp) "visible" "hidden")}}
-             "remove #tags"]]
+             "去除 #标签"]]
 
            [:div.flex.items-center
             (ui/checkbox {:class "mr-2"
@@ -434,11 +433,11 @@
                                        (reset! *text-other-options (state/get-export-block-text-other-options))
                                        (reset! *content (export-helper top-level-uuids)))})
             [:div {:style {:visibility (if (#{:text :html :opml} tp) "visible" "hidden")}}
-             "open blocks only (skip collapsed children)"]]
+             "仅导出展开的块"]]
 
            [:div.flex.items-center
             [:label.mr-2 {:style {:visibility (if (#{:text :html :opml} tp) "visible" "hidden")}}
-             "level <="]
+             "层级 <="]
             [:select.block.my-2.text-lg.rounded.border.px-2.py-0
              {:style {:visibility (if (#{:text :html :opml} tp) "visible" "hidden")}
               :value (or (:keep-only-level<=N @*text-other-options) :all)
