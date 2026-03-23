@@ -33,7 +33,7 @@
                          :depends-on #{:main}}
                         :mind-map
                         {:entries    [frontend.extensions.mind-map.core]
-                         :depends-on #{:main}}}}
+                         :depends-on #{:main}}}
 
         :output-dir       "./static/js"
         :asset-path       "/static/js"
