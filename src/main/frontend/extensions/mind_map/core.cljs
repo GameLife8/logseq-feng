@@ -155,7 +155,7 @@
        {:title    "重置视图到中心"
         :on-click (fn []
                     (when-let [inst @(::instance state)]
-                      (.fit inst)))
+                      (.fit (.-view inst))))
         :style    {:padding      "4px 10px"
                    :background   "var(--lx-gray-03,#f3f4f6)"
                    :color        "var(--lx-gray-12,#111)"
