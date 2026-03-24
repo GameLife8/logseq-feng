@@ -800,9 +800,9 @@
                  (reset! *busy? true)
                  (when-let [p (on-search v)]
                    (.then p (fn [res]
-                              (reset! *results (or res []))
+                              (reset! *res (or res []))
                               (reset! *busy? false)))))
-               (do (reset! *results [])
+               (do (reset! *res [])
                    (reset! *busy? false)))))
          :style {:width "100%" :fontSize "13px" :padding "6px 10px"
                  :border "1px solid var(--lx-gray-06,#d1d5db)"
