@@ -317,6 +317,12 @@
            ;; ── wire reactive events ────────────────────────────────────────
            (js/console.log "[MindMap] instance created:" instance
                            "el:" (.-el ^js instance))
+           ;; Fix: Logseq's common.css has `@layer base { svg { pointer-events: none } }`
+           ;; which blocks all clicks on SimpleMindMap's SVG nodes.
+           ;; Inline style overrides any CSS layer rule.
+           (let [svg (.querySelector container "svg")]
+             (when svg
+               (set! (.. svg -style -pointerEvents) "auto")))
            (.on instance "back_forward"
                 (fn [idx len]
                   (reset! (::can-undo? state) (> idx 0))
