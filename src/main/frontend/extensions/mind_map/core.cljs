@@ -352,6 +352,76 @@
     (when outline-data
       (outline-node-row outline-data 0 *instance))]])
 
+;; ── Association line style panel ─────────────────────────────────────────────
+
+(def ^:private assoc-style-props
+  ["associativeLineColor" "associativeLineWidth" "associativeLineDasharray"
+   "associativeLineActiveColor" "associativeLineActiveWidth"
+   "associativeLineTextFontFamily" "associativeLineTextColor" "associativeLineTextFontSize"])
+
+(defn- set-assoc-style! [^js instance prop value]
+  (when-let [al (.-associativeLine ^js instance)]
+    (when-let [active (.-activeLine al)]
+      (let [[_ _ _ node toNode] active
+            to-uid    (.getData ^js toNode "uid")
+            cur-assoc (or (.getData ^js node "associativeLineStyle") #js {})
+            cur-line  (or (aget cur-assoc to-uid) #js {})
+            new-line  (doto (js/Object.assign #js {} cur-line) (aset prop value))
+            new-assoc (doto (js/Object.assign #js {} cur-assoc) (aset to-uid new-line))]
+        (.execCommand ^js instance "SET_NODE_DATA" node #js {:associativeLineStyle new-assoc})
+        (.updateActiveLineStyle ^js al)))))
+
+(defn- assoc-line-style-panel [assoc-styles set-assoc! close-fn]
+  (let [s assoc-styles
+        st (fn [k v] (set-assoc! (name k) v))]
+    [:div.mind-map-style-panel
+     {:style {:width "268px" :flexShrink "0"
+              :borderLeft "1px solid var(--lx-gray-05,#e5e7eb)"
+              :background "var(--ls-secondary-background-color,#f9fafb)"
+              :overflowY "auto" :overflowX "hidden"
+              :padding "0 12px 20px 12px"}}
+     [:div {:style {:display "flex" :justifyContent "space-between" :alignItems "center"
+                    :padding "8px 0 6px 0"
+                    :borderBottom "1px solid var(--lx-gray-05,#e5e7eb)"
+                    :marginBottom "2px"}}
+      [:span {:style {:fontSize "13px" :fontWeight "600" :color "var(--lx-gray-12,#111827)"}}
+       "关联线样式"]
+      [:button {:on-click close-fn
+                :style {:background "transparent" :border "none" :cursor "pointer"
+                        :fontSize "18px" :lineHeight "1"
+                        :color "var(--lx-gray-08,#9ca3af)" :padding "0"}}
+       "×"]]
+     ;; ── 连线 ──────────────────────────────────────────────────────────────
+     (sp-title "连线")
+     (sp-row
+      (sp-label "颜色")
+      (sp-color (:associativeLineColor s) #(st :associativeLineColor %))
+      (sp-label "样式")
+      (sp-select (or (get s :associativeLineDasharray) "6,4")
+                 dash-options #(st :associativeLineDasharray %) :width "68px"))
+     (sp-row
+      (sp-label "宽度")
+      (sp-select (str (or (get s :associativeLineWidth) 2))
+                 width-options #(st :associativeLineWidth (js/parseInt %)) :width "58px"))
+     ;; ── 激活状态 ──────────────────────────────────────────────────────────
+     (sp-title "激活状态")
+     (sp-row
+      (sp-label "颜色")
+      (sp-color (:associativeLineActiveColor s) #(st :associativeLineActiveColor %))
+      (sp-label "宽度")
+      (sp-select (str (or (get s :associativeLineActiveWidth) 2))
+                 width-options #(st :associativeLineActiveWidth (js/parseInt %)) :width "58px"))
+     ;; ── 文字样式 ──────────────────────────────────────────────────────────
+     (sp-title "文字样式")
+     (sp-row
+      (sp-select (get s :associativeLineTextFontFamily "微软雅黑, Microsoft YaHei")
+                 font-families #(st :associativeLineTextFontFamily %) :width "120px")
+      (sp-select (str (or (get s :associativeLineTextFontSize) 14))
+                 font-sizes #(st :associativeLineTextFontSize (js/parseInt %)) :width "58px"))
+     (sp-row
+      (sp-label "颜色")
+      (sp-color (:associativeLineTextColor s) #(st :associativeLineTextColor %)))]))
+
 ;; ── Node style panel ──────────────────────────────────────────────────────────
 
 (defn- rgb->hex [s]
@@ -474,8 +544,10 @@
 (def ^:private marker-dirs
   [["end" "尾部"] ["start" "头部"]])
 
-(defn- node-style-panel [node-styles set-style! close-fn]
-  (let [s node-styles
+(defn- node-style-panel [node-styles set-style! close-fn
+                          node-note set-note!
+                          linked-ref set-linked-ref! open-ref!]
+  (let [s  node-styles
         st (fn [k v] (set-style! (name k) v))]
     [:div.mind-map-style-panel
      {:style {:width       "268px"
@@ -587,7 +659,65 @@
       (sp-select (get s :lineMarkerDir "end")
                  marker-dirs #(do (st :showLineMarker true)
                                   (st :lineMarkerDir %))
-                 :width "58px"))]))
+                 :width "58px"))
+
+     ;; ── 备注 ──────────────────────────────────────────────────────────────
+     (sp-title "备注")
+     [:textarea
+      {:value       (or node-note "")
+       :placeholder "在此输入节点备注…"
+       :on-change   #(set-note! (.. % -target -value))
+       :style       {:width         "100%"
+                     :minHeight     "72px"
+                     :fontSize      "12px"
+                     :lineHeight    "1.5"
+                     :padding       "6px 8px"
+                     :border        "1px solid var(--lx-gray-06,#d1d5db)"
+                     :borderRadius  "6px"
+                     :background    "var(--ls-primary-background-color,#fff)"
+                     :color         "var(--lx-gray-11,#374151)"
+                     :resize        "vertical"
+                     :outline       "none"
+                     :fontFamily    "inherit"
+                     :boxSizing     "border-box"}}]
+
+     ;; ── 链接块 ────────────────────────────────────────────────────────────
+     (sp-title "链接块")
+     [:div {:style {:display "flex" :gap "4px" :alignItems "center"}}
+      [:input
+       {:value       (or linked-ref "")
+        :placeholder "页面名称或 ((block-uuid))"
+        :on-change   #(set-linked-ref! (.. % -target -value))
+        :on-key-down (fn [^js e]
+                       (when (= "Enter" (.-key e))
+                         (when (seq (.-value (.-target e)))
+                           (set-linked-ref! (.-value (.-target e)))
+                           (open-ref! (.-value (.-target e))))))
+        :style       {:flex          "1"
+                      :fontSize      "12px"
+                      :padding       "4px 8px"
+                      :border        "1px solid var(--lx-gray-06,#d1d5db)"
+                      :borderRadius  "6px"
+                      :background    "var(--ls-primary-background-color,#fff)"
+                      :color         "var(--lx-gray-11,#374151)"
+                      :outline       "none"
+                      :minWidth      "0"}}]
+      (when (seq linked-ref)
+        [:button
+         {:title    "在侧边栏打开"
+          :on-click #(open-ref! linked-ref)
+          :style    {:flexShrink  "0"
+                     :padding     "4px 8px"
+                     :fontSize    "13px"
+                     :border      "1px solid var(--lx-gray-06,#d1d5db)"
+                     :borderRadius "6px"
+                     :background  "var(--ls-primary-background-color,#fff)"
+                     :color       "var(--lx-gray-11,#374151)"
+                     :cursor      "pointer"}}
+         "↗"])]
+     [:div {:style {:fontSize "11px" :color "var(--lx-gray-07,#9ca3af)"
+                    :marginTop "4px"}}
+      "输入页面名称或块 UUID，按 Enter 或 ↗ 在侧边栏打开"]]))
 
 ;; ── Main component ────────────────────────────────────────────────────────────
 
@@ -629,6 +759,12 @@
   ;; outline panel
   (rum/local false ::show-outline?)
   (rum/local nil   ::outline-data)
+  ;; association line style panel (auto-shown when a line is selected)
+  (rum/local false ::show-assoc-panel?)
+  (rum/local {}    ::assoc-line-styles)
+  ;; per-node note and linked ref (read from node data on node_active)
+  (rum/local nil   ::node-note)
+  (rum/local nil   ::node-linked-ref)
   {:did-mount
    (fn [state]
      (let [args         (-> state :rum/args first)
@@ -747,25 +883,31 @@
                   (let [active? (pos? (.-length active-list))]
                     (reset! (::node-active? state)  active?)
                     (reset! (::node-is-root? state) (boolean (and node (.-isRoot node))))
-                    (when (and active? node)
-                      (reset! (::node-styles state)
-                              {:fontFamily     (.getStyle ^js node "fontFamily")
-                               :fontSize       (.getStyle ^js node "fontSize")
-                               :textAlign      (.getStyle ^js node "textAlign")
-                               :color          (.getStyle ^js node "color")
-                               :fontWeight     (.getStyle ^js node "fontWeight")
-                               :fontStyle      (.getStyle ^js node "fontStyle")
-                               :textDecoration (.getStyle ^js node "textDecoration")
-                               :borderColor    (.getStyle ^js node "borderColor")
-                               :borderWidth    (.getStyle ^js node "borderWidth")
-                               :borderDasharray (.getStyle ^js node "borderDasharray")
-                               :borderRadius   (.getStyle ^js node "borderRadius")
-                               :fillColor      (.getStyle ^js node "fillColor")
-                               :shape          (.getStyle ^js node "shape")
-                               :lineColor      (.getStyle ^js node "lineColor")
-                               :lineWidth      (.getStyle ^js node "lineWidth")
-                               :lineDasharray  (.getStyle ^js node "lineDasharray")
-                               :lineMarkerDir  (.getStyle ^js node "lineMarkerDir")})))))
+                    (if (and active? node)
+                      (do
+                        (reset! (::node-styles state)
+                                {:fontFamily     (.getStyle ^js node "fontFamily")
+                                 :fontSize       (.getStyle ^js node "fontSize")
+                                 :textAlign      (.getStyle ^js node "textAlign")
+                                 :color          (.getStyle ^js node "color")
+                                 :fontWeight     (.getStyle ^js node "fontWeight")
+                                 :fontStyle      (.getStyle ^js node "fontStyle")
+                                 :textDecoration (.getStyle ^js node "textDecoration")
+                                 :borderColor    (.getStyle ^js node "borderColor")
+                                 :borderWidth    (.getStyle ^js node "borderWidth")
+                                 :borderDasharray (.getStyle ^js node "borderDasharray")
+                                 :borderRadius   (.getStyle ^js node "borderRadius")
+                                 :fillColor      (.getStyle ^js node "fillColor")
+                                 :shape          (.getStyle ^js node "shape")
+                                 :lineColor      (.getStyle ^js node "lineColor")
+                                 :lineWidth      (.getStyle ^js node "lineWidth")
+                                 :lineDasharray  (.getStyle ^js node "lineDasharray")
+                                 :lineMarkerDir  (.getStyle ^js node "lineMarkerDir")})
+                        (reset! (::node-note state)       (or (.getData ^js node "note") ""))
+                        (reset! (::node-linked-ref state) (or (.getData ^js node "linkedRef") "")))
+                      (do
+                        (reset! (::node-note state)       nil)
+                        (reset! (::node-linked-ref state) nil))))))
            (.on instance "scale"
                 (fn [s]
                   (reset! (::zoom-pct state)
@@ -776,6 +918,25 @@
                   (when @(::show-outline? state)
                     (reset! (::outline-data state)
                             (.getData ^js instance)))))
+           ;; ── association line events ──────────────────────────────────────
+           (.on instance "associative_line_click"
+                (fn [_ _ ^js node ^js toNode]
+                  (when (and node toNode)
+                    (let [assoc-style (or (.getData ^js node "associativeLineStyle") #js {})
+                          to-uid      (.getData ^js toNode "uid")
+                          line-style  (or (aget assoc-style to-uid) #js {})]
+                      (reset! (::assoc-line-styles state)
+                              (into {}
+                                    (map (fn [p]
+                                           [(keyword p)
+                                            (or (aget line-style p)
+                                                (.getStyle ^js node p))])
+                                         assoc-style-props)))
+                      (reset! (::show-assoc-panel? state) true)))))
+           (.on instance "associative_line_deactivate"
+                (fn []
+                  (reset! (::show-assoc-panel? state) false)
+                  (reset! (::assoc-line-styles state) {})))
            (.observe ro container)
            (reset! (::instance state) instance)
            (reset! (::timer-id state) timer)
@@ -880,13 +1041,31 @@
         node-styles    (rum/react (::node-styles state))
         show-outline?  (rum/react (::show-outline? state))
         outline-data   (rum/react (::outline-data state))
+        show-assoc?    (rum/react (::show-assoc-panel? state))
+        assoc-styles   (rum/react (::assoc-line-styles state))
+        node-note      (rum/react (::node-note state))
+        node-linked-ref (rum/react (::node-linked-ref state))
+        on-open-ref    (:on-open-ref (-> state :rum/args first))
         cmd!           (fn [c] (when-let [i @*instance] (.execCommand ^js i c)))
         set-style!     (fn [prop value]
                          (when-let [i @*instance]
                            (let [node (aget (.. ^js i -renderer -activeNodeList) 0)]
                              (when node
                                (.execCommand ^js i "SET_NODE_STYLE" node prop value)
-                               (swap! (::node-styles state) assoc (keyword prop) value)))))]
+                               (swap! (::node-styles state) assoc (keyword prop) value)))))
+        set-note!      (fn [text]
+                         (reset! (::node-note state) text)
+                         (when-let [i @*instance]
+                           (when-let [node (aget (.. ^js i -renderer -activeNodeList) 0)]
+                             (.execCommand ^js i "SET_NODE_DATA" node #js {:note text}))))
+        set-linked-ref! (fn [ref]
+                          (reset! (::node-linked-ref state) ref)
+                          (when-let [i @*instance]
+                            (when-let [node (aget (.. ^js i -renderer -activeNodeList) 0)]
+                              (.execCommand ^js i "SET_NODE_DATA" node #js {:linkedRef ref}))))
+        open-linked-ref! (fn [ref]
+                           (when (and (seq ref) on-open-ref)
+                             (on-open-ref ref)))]
 
     [:div.mind-map-wrapper
      {:style {:width "100%" :height "100%" :display "flex" :flexDirection "column"
@@ -1081,18 +1260,24 @@
       [:div
        {:ref   (fn [el] (reset! *container el))
         :style {:flex "1" :min-width "0" :overflow "hidden"}}]
+      ;; association line style panel — auto-shown when a line is selected
+      (when show-assoc?
+        (assoc-line-style-panel
+         assoc-styles
+         #(set-assoc-style! @*instance %1 %2)
+         #(reset! (::show-assoc-panel? state) false)))
       ;; outline panel (right sidebar)
-      (when show-outline?
+      (when (and show-outline? (not show-assoc?))
         (outline-panel
          outline-data
          *instance
          #(reset! (::show-outline? state) false)))
       ;; style panel (right sidebar)
-      (when show-style?
+      (when (and show-style? (not show-assoc?))
         (node-style-panel
-         node-styles
-         set-style!
-         #(reset! (::show-style-panel? state) false)))]
+         node-styles set-style! #(reset! (::show-style-panel? state) false)
+         node-note set-note!
+         (or node-linked-ref "") set-linked-ref! open-linked-ref!))]
 
      ;; ── context menu ────────────────────────────────────────────────────────
      (ctx-menu-panel ctx-menu node-active? node-is-root?

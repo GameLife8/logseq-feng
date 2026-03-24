@@ -5,7 +5,8 @@
      frontend.extensions.mind-map.core – simple-mind-map 画布封装（懒加载模块）
      frontend.handler.mind-map         – DB 读写（多文档支持）
      frontend.components.mind-map      – 画廊 UI + 路由入口"
-  (:require [frontend.db :as db]
+  (:require [clojure.string :as str]
+            [frontend.db :as db]
             [frontend.handler.mind-map :as mind-map-handler]
             [frontend.handler.notification :as notification]
             [frontend.handler.route :as route-handler]
@@ -74,7 +75,30 @@
          :map-title    map-title
          :on-back      (fn [] (route-handler/redirect! {:to :all-mind-maps}))
          :on-load-data mind-map-handler/load-mind-map-from-db
-         :on-save-data mind-map-handler/save-mind-map-to-db!})])))
+         :on-save-data mind-map-handler/save-mind-map-to-db!
+         :on-open-ref  (fn [ref-str]
+                         (let [repo (state/get-current-repo)]
+                           (cond
+                             ;; Block UUID ref: ((xxxxxxxx-xxxx-…))
+                             (re-matches #"\(\([0-9a-f\-]{36}\)\)" ref-str)
+                             (let [uuid-str (subs ref-str 2 (- (count ref-str) 2))
+                                   block    (db/entity [:block/uuid (uuid uuid-str)])]
+                               (when block
+                                 (state/sidebar-add-block! repo (:db/id block) :block)))
+
+                             ;; Page ref: [[page name]]
+                             (and (str/starts-with? ref-str "[[")
+                                  (str/ends-with?   ref-str "]]"))
+                             (let [page-name (subs ref-str 2 (- (count ref-str) 2))
+                                   page      (db/entity [:block/name (util/page-name-sanity-lc page-name)])]
+                               (when page
+                                 (state/sidebar-add-block! repo (:db/id page) :page)))
+
+                             ;; Plain page name
+                             :else
+                             (let [page (db/entity [:block/name (util/page-name-sanity-lc ref-str)])]
+                               (when page
+                                 (state/sidebar-add-block! repo (:db/id page) :page))))))})])))
 
 ;; ── 思维导图画廊页 ────────────────────────────────────────────────────────────
 
