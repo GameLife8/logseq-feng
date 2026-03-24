@@ -9,8 +9,10 @@
 
 import MindMap from 'simple-mind-map';
 import Export from 'simple-mind-map/src/plugins/Export.js';
+import AssociativeLine from 'simple-mind-map/src/plugins/AssociativeLine.js';
 
-// Register Export plugin (required for PNG/SVG export)
+// Register plugins
 MindMap.usePlugin(Export);
+MindMap.usePlugin(AssociativeLine);
 
 export default MindMap;

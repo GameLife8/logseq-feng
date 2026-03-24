@@ -161,6 +161,104 @@
                               :color      "var(--ls-link-text-color,#4f46e5)"}))}
          label])])])
 
+;; ── Context menu helpers ──────────────────────────────────────────────────────
+
+(defn- ctx-item [label shortcut handler & {:keys [danger? disabled?]}]
+  [:div
+   {:on-click       (when-not disabled?
+                      (fn [^js e] (.stopPropagation e) (handler)))
+    :on-mouse-enter (when-not disabled?
+                      (fn [^js e]
+                        (set! (.. e -currentTarget -style -background)
+                              "var(--lx-gray-03,#f3f4f6)")))
+    :on-mouse-leave (when-not disabled?
+                      (fn [^js e]
+                        (set! (.. e -currentTarget -style -background)
+                              "transparent")))
+    :style {:display        "flex"
+            :justifyContent "space-between"
+            :alignItems     "center"
+            :padding        "6px 14px"
+            :gap            "16px"
+            :fontSize       "13px"
+            :cursor         (if disabled? "default" "pointer")
+            :color          (cond
+                              disabled? "var(--lx-gray-07,#d1d5db)"
+                              danger?   "var(--rx-red-09,#dc2626)"
+                              :else     "var(--lx-gray-11,#374151)")}}
+   [:span label]
+   (when (seq shortcut)
+     [:span {:style {:fontSize "11px" :color "var(--lx-gray-08,#9ca3af)"}}
+      shortcut])])
+
+(defn- ctx-sep []
+  [:div {:style {:height "1px" :background "var(--lx-gray-04,#f3f4f6)" :margin "3px 0"}}])
+
+(defn- ctx-menu-panel
+  [menu node-active? is-root? close! cmd! instance-atom]
+  (when menu
+    (let [{:keys [x y]} menu
+          na!          (fn [f] (fn [] (close!) (f)))
+          assoc-avail? (boolean (when-let [i @instance-atom]
+                                  (.-associativeLine ^js i)))
+          px           (min x (- (.-innerWidth js/window) 232 8))
+          py           (min y (- (.-innerHeight js/window) 480 8))]
+      [:div
+       {:style           {:position "fixed" :inset "0" :zIndex "500"}
+        :on-click        (fn [^js e] (.stopPropagation e) (close!))
+        :on-context-menu (fn [^js e] (.preventDefault e) (.stopPropagation e) (close!))}
+       [:div
+        {:style    {:position     "fixed"
+                    :left         (str px "px")
+                    :top          (str py "px")
+                    :background   "var(--ls-primary-background-color,#fff)"
+                    :border       "1px solid var(--lx-gray-05,#e5e7eb)"
+                    :borderRadius "8px"
+                    :boxShadow    "0 4px 16px rgba(0,0,0,0.15)"
+                    :zIndex       "501"
+                    :minWidth     "220px"
+                    :padding      "4px 0"
+                    :userSelect   "none"}
+         :on-click (fn [^js e] (.stopPropagation e))}
+        (ctx-item "插入同级节点" "Enter"  (na! #(cmd! "INSERT_NODE"))
+                  :disabled? (or (not node-active?) is-root?))
+        (ctx-item "插入子节点"   "Tab"    (na! #(cmd! "INSERT_CHILD_NODE"))
+                  :disabled? (not node-active?))
+        (ctx-item "插入父节点"   ""       (na! #(cmd! "INSERT_PARENT_NODE"))
+                  :disabled? (or (not node-active?) is-root?))
+        (ctx-item "插入概要"     "Ctrl+G" (na! #(cmd! "ADD_GENERALIZATION"))
+                  :disabled? (not node-active?))
+        (ctx-sep)
+        (ctx-item "上移节点"     ""       (na! #(cmd! "UP_NODE"))
+                  :disabled? (or (not node-active?) is-root?))
+        (ctx-item "下移节点"     ""       (na! #(cmd! "DOWN_NODE"))
+                  :disabled? (or (not node-active?) is-root?))
+        (ctx-item "展开所有节点" ""       (na! #(cmd! "EXPAND_ALL")))
+        (ctx-item "折叠所有节点" ""       (na! #(cmd! "UNEXPAND_ALL")))
+        (ctx-sep)
+        (ctx-item "删除节点"       "Delete"         (na! #(cmd! "REMOVE_NODE"))
+                  :danger? true :disabled? (or (not node-active?) is-root?))
+        (ctx-item "仅删除当前节点" "Shift+Backspace" (na! #(cmd! "REMOVE_CURRENT_NODE"))
+                  :danger? true :disabled? (or (not node-active?) is-root?))
+        (ctx-sep)
+        (ctx-item "复制节点" "Ctrl+C"
+                  (na! #(when-let [i @instance-atom]
+                          (.copy ^js (.-renderer ^js i)))))
+        (ctx-item "剪切节点" "Ctrl+X"   (na! #(cmd! "CUT_NODE"))
+                  :disabled? (or (not node-active?) is-root?))
+        (ctx-item "粘贴节点" "Ctrl+V"   (na! #(cmd! "PASTE_NODE"))
+                  :disabled? (not node-active?))
+        (ctx-sep)
+        (ctx-item "去除自定义样式" "" (na! #(cmd! "REMOVE_CUSTOM_STYLES"))
+                  :disabled? (not node-active?))
+        (when (and node-active? assoc-avail?)
+          (ctx-sep))
+        (when (and node-active? assoc-avail?)
+          (ctx-item "添加关联线" ""
+                    (na! #(when-let [i @instance-atom]
+                            (.createLineFromActiveNode
+                             ^js (.-associativeLine ^js i))))))]])))
+
 ;; ── Layouts ───────────────────────────────────────────────────────────────────
 
 (def ^:private layouts
@@ -194,6 +292,7 @@
   (rum/local nil   ::focusout-handler)
   ;; reactive toolbar state
   (rum/local false ::node-active?)
+  (rum/local false ::node-is-root?)
   (rum/local false ::can-undo?)
   (rum/local false ::can-redo?)
   (rum/local 100   ::zoom-pct)
@@ -202,6 +301,9 @@
   (rum/local false ::show-export?)
   (rum/local false ::readonly?)
   (rum/local false ::unsaved?)
+  ;; context menu
+  (rum/local nil   ::ctx-menu)
+  (rum/local nil   ::ctx-handler)
   {:did-mount
    (fn [state]
      (let [args         (-> state :rum/args first)
@@ -316,9 +418,11 @@
                   (reset! (::can-undo? state) (> idx 0))
                   (reset! (::can-redo? state) (< idx (dec len)))))
            (.on instance "node_active"
-                (fn [_node active-list]
+                (fn [node active-list]
                   (reset! (::node-active? state)
-                          (pos? (.-length active-list)))))
+                          (pos? (.-length active-list)))
+                  (reset! (::node-is-root? state)
+                          (boolean (and node (.-isRoot node))))))
            (.on instance "scale"
                 (fn [s]
                   (reset! (::zoom-pct state)
@@ -346,11 +450,13 @@
                                     (cond
                                       (= key "Tab")                        "INSERT_CHILD_NODE"
                                       (= key "Enter")                      "INSERT_NODE"
+                                      (and (.-shiftKey e) (= key "Backspace")) "REMOVE_CURRENT_NODE"
                                       (contains? #{"Delete" "Backspace"} key) "REMOVE_NODE"
                                       (and ctrl (= key "z"))               "BACK"
                                       (and ctrl
                                            (or (= key "y")
                                                (and (.-shiftKey e) (= key "Z")))) "FORWARD"
+                                      (and ctrl (= key "g"))               "ADD_GENERALIZATION"
                                       :else nil)]
                            (.preventDefault e)
                            (.stopPropagation e)
@@ -368,7 +474,16 @@
              (.addEventListener container "focusout" focusout-handler false)
              (reset! (::key-handler state)      key-handler)
              (reset! (::focusin-handler state)  focusin-handler)
-             (reset! (::focusout-handler state) focusout-handler)))))
+             (reset! (::focusout-handler state) focusout-handler))
+           ;; ── right-click context menu ─────────────────────────────────────
+           (let [ctx-handler
+                 (fn [^js e]
+                   (.preventDefault e)
+                   (.stopPropagation e)
+                   (reset! (::ctx-menu state)
+                           {:x (.-clientX e) :y (.-clientY e)}))]
+             (.addEventListener container "contextmenu" ctx-handler false)
+             (reset! (::ctx-handler state) ctx-handler)))))
      state)
    :will-unmount
    (fn [state]
@@ -387,7 +502,9 @@
        (when (and container key-handler)
          (.removeEventListener container "keydown"  key-handler      true)
          (.removeEventListener container "focusin"  fi-handler       false)
-         (.removeEventListener container "focusout" fo-handler       false))
+         (.removeEventListener container "focusout" fo-handler       false)
+         (when-let [ctx-h @(::ctx-handler state)]
+           (.removeEventListener container "contextmenu" ctx-h false)))
        (state/set-block-component-editing-mode! false)
        (when instance
          (let [data (.getData ^js instance)]
@@ -398,19 +515,21 @@
            (.destroy ^js instance))))
      state)}
   [state {:keys [map-id map-title on-back _on-load-data _on-save-data]}]
-  (let [*container   (::container-ref state)
-        *instance    (::instance state)
-        *file-input  (::file-input-ref state)
-        node-active? (rum/react (::node-active? state))
-        can-undo?    (rum/react (::can-undo? state))
-        can-redo?    (rum/react (::can-redo? state))
-        zoom-pct     (rum/react (::zoom-pct state))
-        cur-layout   (rum/react (::cur-layout state))
-        show-layout? (rum/react (::show-layout? state))
-        show-export? (rum/react (::show-export? state))
-        readonly?    (rum/react (::readonly? state))
-        unsaved?     (rum/react (::unsaved? state))
-        cmd!         (fn [c] (when-let [i @*instance] (.execCommand ^js i c)))]
+  (let [*container    (::container-ref state)
+        *instance     (::instance state)
+        *file-input   (::file-input-ref state)
+        node-active?  (rum/react (::node-active? state))
+        node-is-root? (rum/react (::node-is-root? state))
+        can-undo?     (rum/react (::can-undo? state))
+        can-redo?     (rum/react (::can-redo? state))
+        zoom-pct      (rum/react (::zoom-pct state))
+        cur-layout    (rum/react (::cur-layout state))
+        show-layout?  (rum/react (::show-layout? state))
+        show-export?  (rum/react (::show-export? state))
+        readonly?     (rum/react (::readonly? state))
+        unsaved?      (rum/react (::unsaved? state))
+        ctx-menu      (rum/react (::ctx-menu state))
+        cmd!          (fn [c] (when-let [i @*instance] (.execCommand ^js i c)))]
 
     [:div.mind-map-wrapper
      {:style {:width "100%" :height "100%" :display "flex" :flexDirection "column"
@@ -557,6 +676,17 @@
 
       (tb-sep)
 
+      ;; 关联线（仅 AssociativeLine 插件加载后显示）
+      (when (and @*instance (.-associativeLine ^js @*instance))
+        (tb-sep))
+      (when (and @*instance (.-associativeLine ^js @*instance))
+        (tb-btn "↔ 关联线" "添加关联线：选中源节点后点击目标节点"
+                #(when-let [i @*instance]
+                   (.createLineFromActiveNode ^js (.-associativeLine ^js i)))
+                :disabled? (not node-active?)))
+
+      (tb-sep)
+
       ;; 只读模式切换
       (tb-btn (if readonly? "✎ 编辑" "👁 只读")
               (if readonly? "切换到编辑模式" "切换到只读模式")
@@ -573,6 +703,11 @@
       {:ref   (fn [el] (reset! *container el))
        :style {:flex "1" :width "100%" :overflow "hidden"}}]
 
+     ;; ── context menu ────────────────────────────────────────────────────────
+     (ctx-menu-panel ctx-menu node-active? node-is-root?
+                     #(reset! (::ctx-menu state) nil)
+                     cmd! *instance)
+
      ;; ── status bar ──────────────────────────────────────────────────────────
      [:div
       {:style {:display    "flex"
@@ -587,11 +722,13 @@
       (if readonly?
         [:span {:style {:color "#f59e0b" :fontWeight "600"}} "只读模式"]
         (list
-         [:span {:key "enter"} "Enter: 同级节点"]
+         [:span {:key "enter"} "Enter: 同级"]
          [:span {:key "tab"} "Tab: 子节点"]
          [:span {:key "del"} "Delete: 删除"]
+         [:span {:key "sdel"} "Shift+⌫: 仅删当前"]
          [:span {:key "undo"} "Ctrl+Z/Y: 撤销/重做"]
-         [:span {:key "dbl"} "双击空白: 回到根节点"]))
+         [:span {:key "ctrlg"} "Ctrl+G: 概要"]
+         [:span {:key "rclick"} "右键: 更多操作"]))
       [:div {:style {:flex "1"}}]
       (when unsaved?
         [:span {:style {:color "#f59e0b"}} "未保存"])
