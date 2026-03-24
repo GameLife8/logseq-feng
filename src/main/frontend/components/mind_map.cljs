@@ -7,6 +7,7 @@
      frontend.components.mind-map      – 画廊 UI + 路由入口"
   (:require [clojure.string :as str]
             [frontend.db :as db]
+            [frontend.handler.editor :as editor-handler]
             [frontend.handler.mind-map :as mind-map-handler]
             [frontend.handler.notification :as notification]
             [frontend.handler.route :as route-handler]
@@ -15,6 +16,7 @@
             [frontend.ui :as ui]
             [frontend.util :as util]
             [logseq.shui.ui :as shui]
+            [promesa.core :as p]
             [rum.core :as rum]
             [shadow.lazy :as lazy]))
 
@@ -86,6 +88,28 @@
                                  (state/get-current-repo)
                                  (:db/id block)
                                  (if (:block/page block) :block :page))))))
+         ;; Open or create the note block for a node.
+         ;; If note-block-uuid-str is non-empty, opens that block in the sidebar.
+         ;; If empty, creates a new child block under the mind-map page, opens it,
+         ;; and resolves the Promise with the new UUID string so core can store it.
+         :on-open-note-block
+         (fn [note-block-uuid-str]
+           (let [repo (state/get-current-repo)]
+             (if (seq note-block-uuid-str)
+               (do
+                 (when-let [block (db/entity [:block/uuid (uuid note-block-uuid-str)])]
+                   (state/sidebar-add-block! repo (:db/id block) :block))
+                 (p/resolved nil))
+               ;; Create a new block under the mind-map page
+               (p/let [result (editor-handler/api-insert-new-block!
+                               ""
+                               {:page         (uuid page-uuid)
+                                :edit-block?  false
+                                :end?         true
+                                :container-id :unknown-container})]
+                 (when result
+                   (state/sidebar-add-block! repo (:db/id result) :block)
+                   (str (:block/uuid result)))))))
          ;; Search blocks: returns a JS Promise resolving to a plain-data vector
          :on-search-blocks (fn [q]
                              (when (seq q)
