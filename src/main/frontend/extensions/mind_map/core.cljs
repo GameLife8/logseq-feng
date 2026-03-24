@@ -418,7 +418,7 @@
                   (reset! (::can-undo? state) (> idx 0))
                   (reset! (::can-redo? state) (< idx (dec len)))))
            (.on instance "node_active"
-                (fn [node active-list]
+                (fn [^js node active-list]
                   (reset! (::node-active? state)
                           (pos? (.-length active-list)))
                   (reset! (::node-is-root? state)
