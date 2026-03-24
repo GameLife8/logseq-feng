@@ -371,57 +371,6 @@
         (.execCommand ^js instance "SET_NODE_DATA" node #js {:associativeLineStyle new-assoc})
         (.updateActiveLineStyle ^js al)))))
 
-(defn- assoc-line-style-panel [assoc-styles set-assoc! close-fn]
-  (let [s assoc-styles
-        st (fn [k v] (set-assoc! (name k) v))]
-    [:div.mind-map-style-panel
-     {:style {:width "268px" :flexShrink "0"
-              :borderLeft "1px solid var(--lx-gray-05,#e5e7eb)"
-              :background "var(--ls-secondary-background-color,#f9fafb)"
-              :overflowY "auto" :overflowX "hidden"
-              :padding "0 12px 20px 12px"}}
-     [:div {:style {:display "flex" :justifyContent "space-between" :alignItems "center"
-                    :padding "8px 0 6px 0"
-                    :borderBottom "1px solid var(--lx-gray-05,#e5e7eb)"
-                    :marginBottom "2px"}}
-      [:span {:style {:fontSize "13px" :fontWeight "600" :color "var(--lx-gray-12,#111827)"}}
-       "关联线样式"]
-      [:button {:on-click close-fn
-                :style {:background "transparent" :border "none" :cursor "pointer"
-                        :fontSize "18px" :lineHeight "1"
-                        :color "var(--lx-gray-08,#9ca3af)" :padding "0"}}
-       "×"]]
-     ;; ── 连线 ──────────────────────────────────────────────────────────────
-     (sp-title "连线")
-     (sp-row
-      (sp-label "颜色")
-      (sp-color (:associativeLineColor s) #(st :associativeLineColor %))
-      (sp-label "样式")
-      (sp-select (or (get s :associativeLineDasharray) "6,4")
-                 dash-options #(st :associativeLineDasharray %) :width "68px"))
-     (sp-row
-      (sp-label "宽度")
-      (sp-select (str (or (get s :associativeLineWidth) 2))
-                 width-options #(st :associativeLineWidth (js/parseInt %)) :width "58px"))
-     ;; ── 激活状态 ──────────────────────────────────────────────────────────
-     (sp-title "激活状态")
-     (sp-row
-      (sp-label "颜色")
-      (sp-color (:associativeLineActiveColor s) #(st :associativeLineActiveColor %))
-      (sp-label "宽度")
-      (sp-select (str (or (get s :associativeLineActiveWidth) 2))
-                 width-options #(st :associativeLineActiveWidth (js/parseInt %)) :width "58px"))
-     ;; ── 文字样式 ──────────────────────────────────────────────────────────
-     (sp-title "文字样式")
-     (sp-row
-      (sp-select (get s :associativeLineTextFontFamily "微软雅黑, Microsoft YaHei")
-                 font-families #(st :associativeLineTextFontFamily %) :width "120px")
-      (sp-select (str (or (get s :associativeLineTextFontSize) 14))
-                 font-sizes #(st :associativeLineTextFontSize (js/parseInt %)) :width "58px"))
-     (sp-row
-      (sp-label "颜色")
-      (sp-color (:associativeLineTextColor s) #(st :associativeLineTextColor %)))]))
-
 ;; ── Node style panel ──────────────────────────────────────────────────────────
 
 (defn- rgb->hex [s]
@@ -718,6 +667,58 @@
      [:div {:style {:fontSize "11px" :color "var(--lx-gray-07,#9ca3af)"
                     :marginTop "4px"}}
       "输入页面名称或块 UUID，按 Enter 或 ↗ 在侧边栏打开"]]))
+
+;; assoc-line-style-panel is defined here (after sp-*/dash-options/width-options/font-*)
+(defn- assoc-line-style-panel [assoc-styles set-assoc! close-fn]
+  (let [s assoc-styles
+        st (fn [k v] (set-assoc! (name k) v))]
+    [:div.mind-map-style-panel
+     {:style {:width "268px" :flexShrink "0"
+              :borderLeft "1px solid var(--lx-gray-05,#e5e7eb)"
+              :background "var(--ls-secondary-background-color,#f9fafb)"
+              :overflowY "auto" :overflowX "hidden"
+              :padding "0 12px 20px 12px"}}
+     [:div {:style {:display "flex" :justifyContent "space-between" :alignItems "center"
+                    :padding "8px 0 6px 0"
+                    :borderBottom "1px solid var(--lx-gray-05,#e5e7eb)"
+                    :marginBottom "2px"}}
+      [:span {:style {:fontSize "13px" :fontWeight "600" :color "var(--lx-gray-12,#111827)"}}
+       "关联线样式"]
+      [:button {:on-click close-fn
+                :style {:background "transparent" :border "none" :cursor "pointer"
+                        :fontSize "18px" :lineHeight "1"
+                        :color "var(--lx-gray-08,#9ca3af)" :padding "0"}}
+       "×"]]
+     ;; ── 连线 ──────────────────────────────────────────────────────────────
+     (sp-title "连线")
+     (sp-row
+      (sp-label "颜色")
+      (sp-color (:associativeLineColor s) #(st :associativeLineColor %))
+      (sp-label "样式")
+      (sp-select (or (get s :associativeLineDasharray) "6,4")
+                 dash-options #(st :associativeLineDasharray %) :width "68px"))
+     (sp-row
+      (sp-label "宽度")
+      (sp-select (str (or (get s :associativeLineWidth) 2))
+                 width-options #(st :associativeLineWidth (js/parseInt %)) :width "58px"))
+     ;; ── 激活状态 ──────────────────────────────────────────────────────────
+     (sp-title "激活状态")
+     (sp-row
+      (sp-label "颜色")
+      (sp-color (:associativeLineActiveColor s) #(st :associativeLineActiveColor %))
+      (sp-label "宽度")
+      (sp-select (str (or (get s :associativeLineActiveWidth) 2))
+                 width-options #(st :associativeLineActiveWidth (js/parseInt %)) :width "58px"))
+     ;; ── 文字样式 ──────────────────────────────────────────────────────────
+     (sp-title "文字样式")
+     (sp-row
+      (sp-select (get s :associativeLineTextFontFamily "微软雅黑, Microsoft YaHei")
+                 font-families #(st :associativeLineTextFontFamily %) :width "120px")
+      (sp-select (str (or (get s :associativeLineTextFontSize) 14))
+                 font-sizes #(st :associativeLineTextFontSize (js/parseInt %)) :width "58px"))
+     (sp-row
+      (sp-label "颜色")
+      (sp-color (:associativeLineTextColor s) #(st :associativeLineTextColor %)))]))
 
 ;; ── Main component ────────────────────────────────────────────────────────────
 
