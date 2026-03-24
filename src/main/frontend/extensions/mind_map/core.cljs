@@ -345,6 +345,25 @@
                                                  (.-target e)
                                                  "class:" (.. e -target -className)))
                                false)
+           ;; Diagnose pointer-events after render
+           (js/setTimeout
+            (fn []
+              (let [svg    (.querySelector container "svg")
+                    nodes  (.querySelectorAll container ".smm-node")]
+                (js/console.log "[MindMap] SVG el:" svg)
+                (when svg
+                  (js/console.log "[MindMap] SVG pointer-events:"
+                                  (.. js/window (getComputedStyle svg) -pointerEvents))
+                  (js/console.log "[MindMap] SVG style.pointerEvents:"
+                                  (.. svg -style -pointerEvents)))
+                (js/console.log "[MindMap] .smm-node count:" (.-length nodes))
+                (when (pos? (.-length nodes))
+                  (let [n (aget nodes 0)]
+                    (js/console.log "[MindMap] first node pointer-events:"
+                                    (.. js/window (getComputedStyle n) -pointerEvents))
+                    (js/console.log "[MindMap] first node BCR:"
+                                    (.getBoundingClientRect n))))))
+            1000)
            (.observe ro container)
            (reset! (::instance state) instance)
            (reset! (::timer-id state) timer)
@@ -584,7 +603,8 @@
                 (let [next-ro (not readonly?)]
                   (reset! (::readonly? state) next-ro)
                   (when-let [i @*instance]
-                    (.setReadonly ^js i next-ro))))
+                    ;; v0.14 API: setMode replaces setReadonly
+                    (.setMode ^js i (if next-ro "readonly" "edit")))))
               :active? readonly?)]
 
      ;; ── canvas ──────────────────────────────────────────────────────────────
