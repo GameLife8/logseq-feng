@@ -262,13 +262,95 @@
 ;; ── Layouts ───────────────────────────────────────────────────────────────────
 
 (def ^:private layouts
-  [["logicalStructure"      "逻辑结构"]
+  [["logicalStructure"      "逻辑结构（右）"]
+   ["logicalStructureLeft"  "逻辑结构（左）"]
    ["mindMap"               "思维导图"]
-   ["catalogOrganization"   "目录组织"]
    ["organizationStructure" "组织结构"]
-   ["timeline"              "时间线"]
-   ["verticalTimeline"      "垂直时间线"]
+   ["catalogOrganization"   "目录组织"]
+   ["timeline"              "时间轴"]
+   ["timeline2"             "时间轴2"]
+   ["verticalTimeline"      "垂直时间轴"]
    ["fishbone"              "鱼骨图"]])
+
+;; ── Outline panel ─────────────────────────────────────────────────────────────
+
+(defn- outline-node-row
+  "Recursively renders one node row + its children in the outline tree.
+   GO_TARGET_NODE accepts a UID string — expands path, selects, and centers."
+  [^js js-node depth *instance]
+  (let [data     (.-data js-node)
+        text     (or (.-text data) "")
+        uid      (.-uid data)
+        children (.-children js-node)
+        n-kids   (if children (.-length children) 0)]
+    [:div {:key (or uid (str depth "-" text))}
+     ;; row
+     [:div
+      {:on-click       (fn [^js e]
+                         (.stopPropagation e)
+                         (when (and uid @*instance)
+                           (.execCommand ^js @*instance "GO_TARGET_NODE" uid)))
+       :on-mouse-enter #(set! (.. ^js % -currentTarget -style -background)
+                              "var(--lx-gray-03,#f3f4f6)")
+       :on-mouse-leave #(set! (.. ^js % -currentTarget -style -background)
+                              "transparent")
+       :style {:display       "flex"
+               :alignItems    "center"
+               :gap           "4px"
+               :paddingLeft   (str (+ (* depth 16) 8) "px")
+               :paddingRight  "12px"
+               :paddingTop    "3px"
+               :paddingBottom "3px"
+               :cursor        "pointer"
+               :borderRadius  "4px"
+               :fontSize      "13px"
+               :lineHeight    "1.5"
+               :color         "var(--lx-gray-11,#374151)"}}
+      ;; bullet / arrow
+      [:span {:style {:fontSize   "8px"
+                      :color      "var(--lx-gray-07,#d1d5db)"
+                      :minWidth   "10px"
+                      :textAlign  "center"
+                      :flexShrink "0"}}
+       (if (pos? n-kids) "▶" "•")]
+      [:span text]]
+     ;; children
+     (when (pos? n-kids)
+       (for [i (range n-kids)]
+         (outline-node-row (aget children i) (inc depth) *instance)))]))
+
+(defn- outline-panel [outline-data *instance close-fn]
+  [:div
+   {:style {:width      "260px"
+            :flexShrink "0"
+            :borderLeft "1px solid var(--lx-gray-05,#e5e7eb)"
+            :background "var(--ls-secondary-background-color,#f9fafb)"
+            :overflowY  "auto"
+            :overflowX  "hidden"
+            :display    "flex"
+            :flexDirection "column"}}
+   ;; header
+   [:div {:style {:display        "flex"
+                  :justifyContent "space-between"
+                  :alignItems     "center"
+                  :padding        "8px 12px 6px 12px"
+                  :borderBottom   "1px solid var(--lx-gray-05,#e5e7eb)"
+                  :flexShrink     "0"}}
+    [:span {:style {:fontSize "13px" :fontWeight "600"
+                    :color "var(--lx-gray-12,#111827)"}} "大纲"]
+    [:button {:on-click close-fn
+              :style    {:background "transparent" :border "none"
+                         :cursor "pointer" :fontSize "18px" :lineHeight "1"
+                         :color "var(--lx-gray-08,#9ca3af)" :padding "0"}}
+     "×"]]
+   ;; tip
+   [:div {:style {:fontSize "11px" :color "var(--lx-gray-08,#9ca3af)"
+                  :padding "4px 12px 2px 12px" :flexShrink "0"}}
+    "点击节点可在画布中定位"]
+   ;; tree
+   [:div {:style {:overflowY "auto" :padding "4px 0 12px 0" :flex "1"}}
+    (when outline-data
+      (outline-node-row outline-data 0 *instance))]])
 
 ;; ── Node style panel ──────────────────────────────────────────────────────────
 
@@ -544,6 +626,9 @@
   ;; style panel
   (rum/local false ::show-style-panel?)
   (rum/local {}    ::node-styles)
+  ;; outline panel
+  (rum/local false ::show-outline?)
+  (rum/local nil   ::outline-data)
   {:did-mount
    (fn [state]
      (let [args         (-> state :rum/args first)
@@ -686,7 +771,11 @@
                   (reset! (::zoom-pct state)
                           (js/Math.round (* s 100)))))
            (.on instance "data_change"
-                (fn [] (reset! (::unsaved? state) true)))
+                (fn []
+                  (reset! (::unsaved? state) true)
+                  (when @(::show-outline? state)
+                    (reset! (::outline-data state)
+                            (.getData ^js instance)))))
            (.observe ro container)
            (reset! (::instance state) instance)
            (reset! (::timer-id state) timer)
@@ -789,6 +878,8 @@
         ctx-menu       (rum/react (::ctx-menu state))
         show-style?    (rum/react (::show-style-panel? state))
         node-styles    (rum/react (::node-styles state))
+        show-outline?  (rum/react (::show-outline? state))
+        outline-data   (rum/react (::outline-data state))
         cmd!           (fn [c] (when-let [i @*instance] (.execCommand ^js i c)))
         set-style!     (fn [prop value]
                          (when-let [i @*instance]
@@ -953,9 +1044,22 @@
 
       (tb-sep)
 
+      ;; 大纲面板
+      (tb-btn "☰ 大纲" "打开大纲视图"
+              (fn []
+                (let [opening? (not show-outline?)]
+                  (reset! (::show-outline? state) opening?)
+                  (reset! (::show-style-panel? state) false)
+                  (when (and opening? @*instance)
+                    (reset! (::outline-data state)
+                            (.getData ^js @*instance)))))
+              :active? show-outline?)
+
       ;; 节点样式面板
       (tb-btn "⊞ 样式" "打开节点样式面板"
-              #(swap! (::show-style-panel? state) not)
+              (fn []
+                (reset! (::show-style-panel? state) (not show-style?))
+                (reset! (::show-outline? state) false))
               :active? show-style?)
 
       (tb-sep)
@@ -977,6 +1081,12 @@
       [:div
        {:ref   (fn [el] (reset! *container el))
         :style {:flex "1" :min-width "0" :overflow "hidden"}}]
+      ;; outline panel (right sidebar)
+      (when show-outline?
+        (outline-panel
+         outline-data
+         *instance
+         #(reset! (::show-outline? state) false)))
       ;; style panel (right sidebar)
       (when show-style?
         (node-style-panel
