@@ -10,6 +10,7 @@
             [frontend.handler.mind-map :as mind-map-handler]
             [frontend.handler.notification :as notification]
             [frontend.handler.route :as route-handler]
+            [frontend.search :as search]
             [frontend.state :as state]
             [frontend.ui :as ui]
             [frontend.util :as util]
@@ -76,29 +77,30 @@
          :on-back      (fn [] (route-handler/redirect! {:to :all-mind-maps}))
          :on-load-data mind-map-handler/load-mind-map-from-db
          :on-save-data mind-map-handler/save-mind-map-to-db!
-         :on-open-ref  (fn [ref-str]
-                         (let [repo (state/get-current-repo)]
-                           (cond
-                             ;; Block UUID ref: ((xxxxxxxx-xxxx-…))
-                             (re-matches #"\(\([0-9a-f\-]{36}\)\)" ref-str)
-                             (let [uuid-str (subs ref-str 2 (- (count ref-str) 2))
-                                   block    (db/entity [:block/uuid (uuid uuid-str)])]
-                               (when block
-                                 (state/sidebar-add-block! repo (:db/id block) :block)))
-
-                             ;; Page ref: [[page name]]
-                             (and (str/starts-with? ref-str "[[")
-                                  (str/ends-with?   ref-str "]]"))
-                             (let [page-name (subs ref-str 2 (- (count ref-str) 2))
-                                   page      (db/entity [:block/name (util/page-name-sanity-lc page-name)])]
-                               (when page
-                                 (state/sidebar-add-block! repo (:db/id page) :page)))
-
-                             ;; Plain page name
-                             :else
-                             (let [page (db/entity [:block/name (util/page-name-sanity-lc ref-str)])]
-                               (when page
-                                 (state/sidebar-add-block! repo (:db/id page) :page))))))})])))
+         ;; Open a linked block (by UUID string) in the right sidebar
+         :on-open-block (fn [uuid-str]
+                          (when (seq uuid-str)
+                            (let [block (db/entity [:block/uuid (uuid uuid-str)])]
+                              (when block
+                                (state/sidebar-add-block!
+                                 (state/get-current-repo)
+                                 (:db/id block)
+                                 (if (:block/page block) :block :page))))))
+         ;; Search blocks: returns a JS Promise resolving to a plain-data vector
+         :on-search-blocks (fn [q]
+                             (when (seq q)
+                               (let [res-p (search/block-search
+                                            (state/get-current-repo) q
+                                            {:built-in? false :enable-snippet? false})]
+                                 (when res-p
+                                   (.then res-p
+                                          (fn [res]
+                                            (mapv (fn [block]
+                                                    {:block-id    (str (:block/uuid block))
+                                                     :block-title (or (:block/title block) "(无标题)")
+                                                     :page-title  (some-> (db/entity (:db/id (:block/page block)))
+                                                                          :block/title)})
+                                                  (take 25 (or res [])))))))))})])))
 
 ;; ── 思维导图画廊页 ────────────────────────────────────────────────────────────
 
