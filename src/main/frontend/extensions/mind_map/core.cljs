@@ -270,6 +270,243 @@
    ["verticalTimeline"      "垂直时间线"]
    ["fishbone"              "鱼骨图"]])
 
+;; ── Node style panel ──────────────────────────────────────────────────────────
+
+(defn- rgb->hex [s]
+  (when-let [[_ r g b] (re-matches #"rgba?\((\d+),\s*(\d+),\s*(\d+).*" s)]
+    (letfn [(pad [x] (let [h (.toString (js/parseInt x) 16)]
+                       (if (= 1 (count h)) (str "0" h) h)))]
+      (str "#" (pad r) (pad g) (pad b)))))
+
+(defn- ensure-hex [c]
+  (cond
+    (nil? c)                          "#333333"
+    (re-matches #"#[0-9a-fA-F]{6}" c) (.toLowerCase ^js c)
+    (and (string? c) (.startsWith ^js c "rgb")) (or (rgb->hex c) "#333333")
+    :else "#333333"))
+
+(defn- sp-title [text]
+  [:div {:style {:fontSize     "11px"
+                 :fontWeight   "700"
+                 :letterSpacing "0.6px"
+                 :color        "var(--lx-gray-09,#6b7280)"
+                 :padding      "10px 0 4px 0"
+                 :borderBottom "1px solid var(--lx-gray-04,#f3f4f6)"
+                 :marginBottom "6px"}}
+   text])
+
+(defn- sp-row [& children]
+  (into [:div {:style {:display "flex" :alignItems "center"
+                       :gap "6px" :flexWrap "wrap" :marginBottom "6px"}}]
+        children))
+
+(defn- sp-label [text]
+  [:span {:style {:fontSize "12px" :color "var(--lx-gray-09,#6b7280)"
+                  :minWidth "26px" :flexShrink "0"}}
+   text])
+
+(defn- sp-color [current-val on-change]
+  (let [hex (ensure-hex current-val)]
+    [:label {:style {:cursor "pointer" :display "inline-block"
+                     :flexShrink "0" :position "relative"}}
+     [:span {:style {:display "block" :width "58px" :height "22px"
+                     :borderRadius "4px"
+                     :border "1px solid var(--lx-gray-06,#d1d5db)"
+                     :background (or current-val "#ffffff")}}]
+     [:input {:type      "color"
+              :value     hex
+              :style     {:position "absolute" :opacity "0"
+                          :width "1px" :height "1px" :top "0" :left "0"}
+              :on-change (fn [^js e] (on-change (.. e -target -value)))}]]))
+
+(defn- sp-select [value options on-change & {:keys [width]}]
+  [:select
+   {:value     (str value)
+    :on-change (fn [^js e] (on-change (.. e -target -value)))
+    :style     {:fontSize   "12px"
+                :padding    "2px 4px"
+                :border     "1px solid var(--lx-gray-06,#d1d5db)"
+                :borderRadius "4px"
+                :background "var(--ls-primary-background-color,#fff)"
+                :color      "var(--lx-gray-11,#374151)"
+                :width      (or width "auto")
+                :cursor     "pointer"}}
+   (for [[v lbl] options]
+     [:option {:key v :value (str v)} lbl])])
+
+(defn- sp-toggle [text active? on-click extra-style]
+  [:button
+   {:on-click on-click
+    :style    (merge {:fontSize "13px" :padding "2px 8px"
+                      :border   "1px solid var(--lx-gray-06,#d1d5db)"
+                      :borderRadius "4px" :cursor "pointer"
+                      :background   (if active?
+                                      "var(--lx-accent-09,#4f46e5)"
+                                      "var(--ls-primary-background-color,#fff)")
+                      :color        (if active?
+                                      "#fff"
+                                      "var(--lx-gray-11,#374151)")}
+                     extra-style)}
+   text])
+
+(def ^:private font-families
+  [["微软雅黑, Microsoft YaHei" "微软雅黑"]
+   ["宋体, SimSun, Songti SC"   "宋体"]
+   ["楷体, STKaiti"              "楷体"]
+   ["黑体, SimHei, Heiti SC"    "黑体"]
+   ["Arial, sans-serif"          "Arial"]
+   ["Times New Roman, serif"     "Times New Roman"]
+   ["Courier New, monospace"     "Courier New"]])
+
+(def ^:private font-sizes
+  [["10" "10"] ["12" "12"] ["14" "14"] ["16" "16"]
+   ["18" "18"] ["24" "24"] ["32" "32"] ["48" "48"]])
+
+(def ^:private text-aligns
+  [["left" "左对齐"] ["center" "居中"] ["right" "右对齐"]])
+
+(def ^:private dash-options
+  [["none"    "实线"]
+   ["5,5"     "短虚线"]
+   ["10,10"   "长虚线"]
+   ["5,5,1,5" "点划线"]
+   ["1,5"     "细点线"]])
+
+(def ^:private width-options
+  [["0" "0"] ["1" "1"] ["2" "2"] ["3" "3"] ["4" "4"] ["5" "5"] ["6" "6"]])
+
+(def ^:private radius-options
+  [["0" "0"] ["2" "2"] ["4" "4"] ["6" "6"] ["8" "8"] ["10" "10"] ["14" "14"] ["20" "20"]])
+
+(def ^:private shape-options
+  [["rectangle"                "矩形"]
+   ["roundedRectangle"         "圆角矩形"]
+   ["ellipse"                  "椭圆"]
+   ["circle"                   "圆形"]
+   ["diamond"                  "菱形"]
+   ["parallelogram"            "平行四边形"]
+   ["octagonalRectangle"       "八边形"]
+   ["outerTriangularRectangle" "外三角矩形"]
+   ["innerTriangularRectangle" "内三角矩形"]])
+
+(def ^:private marker-dirs
+  [["end" "尾部"] ["start" "头部"]])
+
+(defn- node-style-panel [node-styles set-style! close-fn]
+  (let [s node-styles
+        st (fn [k v] (set-style! (name k) v))]
+    [:div.mind-map-style-panel
+     {:style {:width       "268px"
+              :flex-shrink "0"
+              :border-left "1px solid var(--lx-gray-05,#e5e7eb)"
+              :background  "var(--ls-secondary-background-color,#f9fafb)"
+              :overflow-y  "auto"
+              :overflow-x  "hidden"
+              :padding     "0 12px 20px 12px"}}
+
+     ;; ── panel header ──────────────────────────────────────────────────────
+     [:div {:style {:display         "flex"
+                    :justify-content "space-between"
+                    :align-items     "center"
+                    :padding         "8px 0 6px 0"
+                    :border-bottom   "1px solid var(--lx-gray-05,#e5e7eb)"
+                    :margin-bottom   "2px"}}
+      [:span {:style {:font-size "13px" :font-weight "600"
+                      :color     "var(--lx-gray-12,#111827)"}}
+       "节点样式"]
+      [:button {:on-click close-fn
+                :style    {:background "transparent" :border "none"
+                           :cursor "pointer" :font-size "18px" :line-height "1"
+                           :color "var(--lx-gray-08,#9ca3af)" :padding "0"}}
+       "×"]]
+
+     ;; ── 文字 ──────────────────────────────────────────────────────────────
+     (sp-title "文字")
+     (sp-row
+      (sp-select (get s :fontFamily "微软雅黑, Microsoft YaHei")
+                 font-families #(st :fontFamily %) :width "96px")
+      (sp-select (str (get s :fontSize 14))
+                 font-sizes #(st :fontSize (js/parseInt %)) :width "58px")
+      (sp-select (get s :textAlign "left")
+                 text-aligns #(st :textAlign %) :width "72px"))
+     (sp-row
+      ;; text color swatch (A)
+      [:label {:style {:cursor "pointer" :display "inline-flex"
+                       :align-items "center" :gap "2px"
+                       :border "1px solid var(--lx-gray-06,#d1d5db)"
+                       :border-radius "4px" :padding "2px 6px"
+                       :background "var(--ls-primary-background-color,#fff)"
+                       :position "relative"}}
+       [:span {:style {:font-weight "600" :font-size "13px"
+                       :color "var(--lx-gray-11,#374151)"}} "A"]
+       [:span {:style {:width "14px" :height "3px" :border-radius "2px"
+                       :background (or (:color s) "#333333")
+                       :display "block"}}]
+       [:input {:type "color" :value (ensure-hex (:color s))
+                :style {:position "absolute" :opacity "0"
+                        :width "1px" :height "1px"}
+                :on-change #(st :color (.. % -target -value))}]]
+      (sp-toggle "B" (= "bold" (get s :fontWeight))
+                 #(st :fontWeight (if (= "bold" (get s :fontWeight)) "normal" "bold"))
+                 {:font-weight "bold"})
+      (sp-toggle "I" (= "italic" (get s :fontStyle))
+                 #(st :fontStyle (if (= "italic" (get s :fontStyle)) "normal" "italic"))
+                 {:font-style "italic"})
+      (sp-toggle "U" (= "underline" (get s :textDecoration))
+                 #(st :textDecoration (if (= "underline" (get s :textDecoration))
+                                        "none" "underline"))
+                 {:text-decoration "underline"})
+      (sp-toggle "S" (= "line-through" (get s :textDecoration))
+                 #(st :textDecoration (if (= "line-through" (get s :textDecoration))
+                                        "none" "line-through"))
+                 {:text-decoration "line-through"}))
+
+     ;; ── 边框 ──────────────────────────────────────────────────────────────
+     (sp-title "边框")
+     (sp-row
+      (sp-label "颜色")
+      (sp-color (:borderColor s) #(st :borderColor %))
+      (sp-label "样式")
+      (sp-select (get s :borderDasharray "none")
+                 dash-options #(st :borderDasharray %) :width "68px"))
+     (sp-row
+      (sp-label "宽度")
+      (sp-select (str (get s :borderWidth 2))
+                 width-options #(st :borderWidth (js/parseInt %)) :width "58px")
+      (sp-label "圆角")
+      (sp-select (str (get s :borderRadius 5))
+                 radius-options #(st :borderRadius (js/parseInt %)) :width "58px"))
+
+     ;; ── 背景 ──────────────────────────────────────────────────────────────
+     (sp-title "背景")
+     (sp-row
+      (sp-label "颜色")
+      (sp-color (:fillColor s) #(st :fillColor %)))
+
+     ;; ── 形状 ──────────────────────────────────────────────────────────────
+     (sp-title "形状")
+     (sp-row
+      (sp-select (get s :shape "rectangle")
+                 shape-options #(st :shape %) :width "150px"))
+
+     ;; ── 线条 ──────────────────────────────────────────────────────────────
+     (sp-title "线条")
+     (sp-row
+      (sp-label "颜色")
+      (sp-color (:lineColor s) #(st :lineColor %))
+      (sp-label "样式")
+      (sp-select (get s :lineDasharray "none")
+                 dash-options #(st :lineDasharray %) :width "68px"))
+     (sp-row
+      (sp-label "宽度")
+      (sp-select (str (get s :lineWidth 2))
+                 width-options #(st :lineWidth (js/parseInt %)) :width "58px")
+      (sp-label "箭头")
+      (sp-select (get s :lineMarkerDir "end")
+                 marker-dirs #(do (st :showLineMarker true)
+                                  (st :lineMarkerDir %))
+                 :width "58px"))]))
+
 ;; ── Main component ────────────────────────────────────────────────────────────
 
 (rum/defcs mind-map-editor
@@ -304,6 +541,9 @@
   ;; context menu
   (rum/local nil   ::ctx-menu)
   (rum/local nil   ::ctx-handler)
+  ;; style panel
+  (rum/local false ::show-style-panel?)
+  (rum/local {}    ::node-styles)
   {:did-mount
    (fn [state]
      (let [args         (-> state :rum/args first)
@@ -419,10 +659,28 @@
                   (reset! (::can-redo? state) (< idx (dec len)))))
            (.on instance "node_active"
                 (fn [^js node active-list]
-                  (reset! (::node-active? state)
-                          (pos? (.-length active-list)))
-                  (reset! (::node-is-root? state)
-                          (boolean (and node (.-isRoot node))))))
+                  (let [active? (pos? (.-length active-list))]
+                    (reset! (::node-active? state)  active?)
+                    (reset! (::node-is-root? state) (boolean (and node (.-isRoot node))))
+                    (when (and active? node)
+                      (reset! (::node-styles state)
+                              {:fontFamily     (.getStyle ^js node "fontFamily")
+                               :fontSize       (.getStyle ^js node "fontSize")
+                               :textAlign      (.getStyle ^js node "textAlign")
+                               :color          (.getStyle ^js node "color")
+                               :fontWeight     (.getStyle ^js node "fontWeight")
+                               :fontStyle      (.getStyle ^js node "fontStyle")
+                               :textDecoration (.getStyle ^js node "textDecoration")
+                               :borderColor    (.getStyle ^js node "borderColor")
+                               :borderWidth    (.getStyle ^js node "borderWidth")
+                               :borderDasharray (.getStyle ^js node "borderDasharray")
+                               :borderRadius   (.getStyle ^js node "borderRadius")
+                               :fillColor      (.getStyle ^js node "fillColor")
+                               :shape          (.getStyle ^js node "shape")
+                               :lineColor      (.getStyle ^js node "lineColor")
+                               :lineWidth      (.getStyle ^js node "lineWidth")
+                               :lineDasharray  (.getStyle ^js node "lineDasharray")
+                               :lineMarkerDir  (.getStyle ^js node "lineMarkerDir")})))))
            (.on instance "scale"
                 (fn [s]
                   (reset! (::zoom-pct state)
@@ -528,8 +786,16 @@
         show-export?  (rum/react (::show-export? state))
         readonly?     (rum/react (::readonly? state))
         unsaved?      (rum/react (::unsaved? state))
-        ctx-menu      (rum/react (::ctx-menu state))
-        cmd!          (fn [c] (when-let [i @*instance] (.execCommand ^js i c)))]
+        ctx-menu       (rum/react (::ctx-menu state))
+        show-style?    (rum/react (::show-style-panel? state))
+        node-styles    (rum/react (::node-styles state))
+        cmd!           (fn [c] (when-let [i @*instance] (.execCommand ^js i c)))
+        set-style!     (fn [prop value]
+                         (when-let [i @*instance]
+                           (let [node (aget (.. ^js i -renderer -activeNodeList) 0)]
+                             (when node
+                               (.execCommand ^js i "SET_NODE_STYLE" node prop value)
+                               (swap! (::node-styles state) assoc (keyword prop) value)))))]
 
     [:div.mind-map-wrapper
      {:style {:width "100%" :height "100%" :display "flex" :flexDirection "column"
@@ -687,6 +953,13 @@
 
       (tb-sep)
 
+      ;; 节点样式面板
+      (tb-btn "⊞ 样式" "打开节点样式面板"
+              #(swap! (::show-style-panel? state) not)
+              :active? show-style?)
+
+      (tb-sep)
+
       ;; 只读模式切换
       (tb-btn (if readonly? "✎ 编辑" "👁 只读")
               (if readonly? "切换到编辑模式" "切换到只读模式")
@@ -698,10 +971,18 @@
                     (.setMode ^js i (if next-ro "readonly" "edit")))))
               :active? readonly?)]
 
-     ;; ── canvas ──────────────────────────────────────────────────────────────
-     [:div
-      {:ref   (fn [el] (reset! *container el))
-       :style {:flex "1" :width "100%" :overflow "hidden"}}]
+     ;; ── canvas + style panel ────────────────────────────────────────────────
+     [:div {:style {:flex "1" :display "flex" :overflow "hidden"}}
+      ;; canvas
+      [:div
+       {:ref   (fn [el] (reset! *container el))
+        :style {:flex "1" :min-width "0" :overflow "hidden"}}]
+      ;; style panel (right sidebar)
+      (when show-style?
+        (node-style-panel
+         node-styles
+         set-style!
+         #(reset! (::show-style-panel? state) false)))]
 
      ;; ── context menu ────────────────────────────────────────────────────────
      (ctx-menu-panel ctx-menu node-active? node-is-root?
