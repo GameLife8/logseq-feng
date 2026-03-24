@@ -39,7 +39,9 @@ body {
 }
 
 @layer base {
-  svg {
+  /* Whiteboard gallery thumbnails are decorative SVGs inside clickable cards;
+     disable pointer-events so clicks pass through to the card container. */
+  .wb-thumbnail-area svg {
     pointer-events: none;
   }
 

@@ -209,10 +209,6 @@
            on-load-data (:on-load-data args)
            container    @(::container-ref state)
            MindMapCtor  (get-mind-map-ctor)]
-       (js/console.log "[MindMap] did-mount"
-                       "map-id:" map-id
-                       "container:" container
-                       "MindMapCtor:" MindMapCtor)
        (when (and container MindMapCtor)
          (let [saved-json (or (when on-load-data (on-load-data map-id)) nil)
                init-data  (or (when saved-json
@@ -315,61 +311,20 @@
                                  (when (and (> w 10) (> h 10))
                                    (.resize ^js inst w h))))))]
            ;; ── wire reactive events ────────────────────────────────────────
-           (js/console.log "[MindMap] instance created:" instance
-                           "el:" (.-el ^js instance))
-           ;; Fix: Logseq's common.css has `@layer base { svg { pointer-events: none } }`
-           ;; which blocks all clicks on SimpleMindMap's SVG nodes.
-           ;; Inline style overrides any CSS layer rule.
-           (let [svg (.querySelector container "svg")]
-             (when svg
-               (set! (.. svg -style -pointerEvents) "auto")))
            (.on instance "back_forward"
                 (fn [idx len]
                   (reset! (::can-undo? state) (> idx 0))
                   (reset! (::can-redo? state) (< idx (dec len)))))
            (.on instance "node_active"
-                (fn [node active-list]
-                  (js/console.log "[MindMap] node_active fired, count:" (.-length active-list) "node:" node)
+                (fn [_node active-list]
                   (reset! (::node-active? state)
                           (pos? (.-length active-list)))))
-           (.on instance "node_click"
-                (fn [node _e]
-                  (js/console.log "[MindMap] node_click fired, node:" node)))
-           (.on instance "draw_click"
-                (fn [_e]
-                  (js/console.log "[MindMap] draw_click (SVG background clicked)")))
            (.on instance "scale"
                 (fn [s]
                   (reset! (::zoom-pct state)
                           (js/Math.round (* s 100)))))
            (.on instance "data_change"
                 (fn [] (reset! (::unsaved? state) true)))
-           ;; native click on container to debug mouse events
-           (.addEventListener container "click"
-                               (fn [^js e]
-                                 (js/console.log "[MindMap] container click target:"
-                                                 (.-target e)
-                                                 "class:" (.. e -target -className)))
-                               false)
-           ;; Diagnose pointer-events after render
-           (js/setTimeout
-            (fn []
-              (let [svg    (.querySelector container "svg")
-                    nodes  (.querySelectorAll container ".smm-node")]
-                (js/console.log "[MindMap] SVG el:" svg)
-                (when svg
-                  (js/console.log "[MindMap] SVG pointer-events:"
-                                  (.. js/window (getComputedStyle svg) -pointerEvents))
-                  (js/console.log "[MindMap] SVG style.pointerEvents:"
-                                  (.. svg -style -pointerEvents)))
-                (js/console.log "[MindMap] .smm-node count:" (.-length nodes))
-                (when (pos? (.-length nodes))
-                  (let [n (aget nodes 0)]
-                    (js/console.log "[MindMap] first node pointer-events:"
-                                    (.. js/window (getComputedStyle n) -pointerEvents))
-                    (js/console.log "[MindMap] first node BCR:"
-                                    (.getBoundingClientRect n))))))
-            1000)
            (.observe ro container)
            (reset! (::instance state) instance)
            (reset! (::timer-id state) timer)
