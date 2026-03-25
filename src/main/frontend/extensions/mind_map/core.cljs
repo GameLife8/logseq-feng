@@ -1318,7 +1318,7 @@
                :flexWrap     "wrap"}}
 
       ;; ← 返回 + 标题
-      (tb-btn "← 返回" "保存并返回"
+      (tb-btn "←" "保存并返回"
               (fn []
                 (when-let [i @*instance]
                   (save-to-ls! map-id (.getData ^js i)))
@@ -1343,17 +1343,17 @@
       (tb-sep)
 
       ;; 撤销 / 重做
-      (tb-btn "↩ 撤销" "撤销 (Ctrl+Z)"   #(cmd! "BACK")    :disabled? (or readonly? (not can-undo?)))
-      (tb-btn "↪ 重做" "重做 (Ctrl+Y)"   #(cmd! "FORWARD") :disabled? (or readonly? (not can-redo?)))
+      (tb-btn "↩" "撤销 (Ctrl+Z)"   #(cmd! "BACK")    :disabled? (or readonly? (not can-undo?)))
+      (tb-btn "↪" "重做 (Ctrl+Y)"   #(cmd! "FORWARD") :disabled? (or readonly? (not can-redo?)))
 
       (tb-sep)
 
       ;; 节点操作（只读时禁用）
-      (tb-btn "⊕ 同级" "插入同级节点 (Enter)"
+      (tb-btn "⊕" "插入同级节点 (Enter)"
               #(cmd! "INSERT_NODE") :disabled? (or readonly? (not node-active?)))
-      (tb-btn "⊕ 子节点" "插入子节点 (Tab)"
+      (tb-btn "⊕↳" "插入子节点 (Tab)"
               #(cmd! "INSERT_CHILD_NODE") :disabled? (or readonly? (not node-active?)))
-      (tb-btn "⊖ 删除" "删除节点 (Delete)"
+      (tb-btn "⊖" "删除节点 (Delete)"
               #(cmd! "REMOVE_NODE") :disabled? (or readonly? (not node-active?)))
 
       (tb-sep)
@@ -1390,7 +1390,7 @@
 
       ;; 布局选择
       (tb-dropdown
-       (str "布局 ▾")
+       "⊹▾"
        "切换布局"
        show-layout?
        #(do (swap! (::show-layout? state) not)
@@ -1408,7 +1408,7 @@
 
       ;; 导出菜单
       (tb-dropdown
-       "导出 ▾"
+       "⬇▾"
        "导出思维导图"
        show-export?
        #(do (swap! (::show-export? state) not)
@@ -1427,7 +1427,7 @@
                      (reset! (::show-export? state) false))}])
 
       ;; 导入 JSON
-      (tb-btn "导入" "从 JSON 文件导入"
+      (tb-btn "⬆" "从 JSON 文件导入"
               (fn []
                 (when-let [el @*file-input]
                   (.click el)))
@@ -1439,7 +1439,7 @@
       (when (and @*instance (.-associativeLine ^js @*instance))
         (tb-sep))
       (when (and @*instance (.-associativeLine ^js @*instance))
-        (tb-btn "↔ 关联线" "添加关联线：选中源节点后点击目标节点"
+        (tb-btn "↔" "添加关联线：选中源节点后点击目标节点"
                 #(when-let [i @*instance]
                    (.createLineFromActiveNode ^js (.-associativeLine ^js i)))
                 :disabled? (not node-active?)))
@@ -1447,7 +1447,7 @@
       (tb-sep)
 
       ;; 大纲面板
-      (tb-btn "☰ 大纲" "打开大纲视图"
+      (tb-btn "☰" "打开大纲视图"
               (fn []
                 (let [opening? (not show-outline?)]
                   (reset! (::show-outline? state) opening?)
@@ -1458,14 +1458,14 @@
               :active? show-outline?)
 
       ;; 节点样式面板
-      (tb-btn "⊞ 样式" "打开节点样式面板"
+      (tb-btn "⊞" "打开节点样式面板"
               (fn []
                 (reset! (::show-style-panel? state) (not show-style?))
                 (reset! (::show-outline? state) false))
               :active? show-style?)
 
       ;; 块操作面板（备注块 + 链接块）
-      (tb-btn "📎 块" "打开块操作面板（备注块 / 链接块）"
+      (tb-btn "📎" "打开块操作面板（备注块 / 链接块）"
               (fn []
                 (reset! (::show-blocks-panel? state) (not show-blocks-panel?))
                 (reset! (::show-outline? state) false)
@@ -1476,7 +1476,7 @@
       (tb-sep)
 
       ;; 只读模式切换
-      (tb-btn (if readonly? "✎ 编辑" "👁 只读")
+      (tb-btn (if readonly? "✎" "👁")
               (if readonly? "切换到编辑模式" "切换到只读模式")
               (fn []
                 (let [next-ro (not readonly?)]
