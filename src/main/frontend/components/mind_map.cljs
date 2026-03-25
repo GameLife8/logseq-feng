@@ -7,6 +7,7 @@
      frontend.components.mind-map      – 画廊 UI + 路由入口"
   (:require [clojure.string :as str]
             [frontend.db :as db]
+            [frontend.db.async :as db-async]
             [frontend.handler.editor :as editor-handler]
             [frontend.handler.mind-map :as mind-map-handler]
             [frontend.handler.notification :as notification]
@@ -79,19 +80,15 @@
          :on-back      (fn [] (route-handler/redirect! {:to :all-mind-maps}))
          :on-load-data mind-map-handler/load-mind-map-from-db
          :on-save-data mind-map-handler/save-mind-map-to-db!
-         ;; Open a linked block (by UUID string) in the right sidebar
+         ;; Open a linked block (by UUID string) in the right sidebar.
+         ;; Uses db-async/<get-block to ensure the block is loaded into the
+         ;; main-thread DataScript before looking it up (same pattern as whiteboard).
          :on-open-block (fn [uuid-str]
-                          (js/console.log "[mind-map] on-open-block called, uuid-str:" uuid-str)
                           (when (seq uuid-str)
                             (let [uid (try (uuid uuid-str) (catch :default e (js/console.error "[mind-map] invalid uuid:" uuid-str e) nil))]
                               (when uid
-                                (let [block (db/entity [:block/uuid uid])]
-                                  (js/console.log "[mind-map] on-open-block entity:" (boolean block) "db/id:" (:db/id block))
-                                  (when block
-                                    (state/sidebar-add-block!
-                                     (state/get-current-repo)
-                                     (:db/id block)
-                                     :block)))))))
+                                (p/let [_ (db-async/<get-block (state/get-current-repo) uid :children? false)]
+                                  (editor-handler/open-block-in-sidebar! uid))))))
          ;; Create a new note block under the mind-map page.
          ;; Returns a Promise resolving to the new block's UUID string.
          :on-add-note-block

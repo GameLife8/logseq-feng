@@ -662,6 +662,83 @@
       (sp-label "颜色")
       (sp-color (:associativeLineTextColor s) #(st :associativeLineTextColor %)))]))
 
+;; ── Blocks panel (right sidebar) ─────────────────────────────────────────────
+
+(defn- blocks-panel
+  "Right-side panel for managing note blocks and linked blocks on the active node."
+  [{:keys [note-block-ids node-linked-blocks
+           on-open remove-note! remove-linked!
+           add-note! on-add-linked close-fn]}]
+  (let [row-style {:display "flex" :alignItems "center" :gap "3px"
+                   :padding "3px 6px" :borderRadius "4px"
+                   :background "var(--lx-gray-02,#f3f4f6)"
+                   :marginBottom "4px"}
+        icon-btn  (fn [label title color on-click]
+                    [:button {:on-click on-click :title title
+                              :style {:background "none" :border "none" :cursor "pointer"
+                                      :fontSize "12px" :color color :padding "2px 3px"}}
+                     label])
+        preview   (fn [s] (if (> (count s) 5) (str (subs s 0 5) "…") s))]
+    [:div.mind-map-style-panel
+     {:style {:width "230px" :flexShrink "0"
+              :borderLeft "1px solid var(--lx-gray-05,#e5e7eb)"
+              :background "var(--ls-secondary-background-color,#f9fafb)"
+              :overflowY "auto" :overflowX "hidden"
+              :padding "0 12px 16px 12px"}}
+     ;; header
+     [:div {:style {:display "flex" :justifyContent "space-between" :alignItems "center"
+                    :padding "8px 0 6px 0"
+                    :borderBottom "1px solid var(--lx-gray-05,#e5e7eb)"
+                    :marginBottom "10px"}}
+      [:span {:style {:fontSize "13px" :fontWeight "600" :color "var(--lx-gray-12,#111827)"}}
+       "块操作"]
+      [:button {:on-click close-fn
+                :style {:background "transparent" :border "none" :cursor "pointer"
+                        :fontSize "18px" :lineHeight "1"
+                        :color "var(--lx-gray-08,#9ca3af)" :padding "0"}}
+       "×"]]
+     ;; Note blocks
+     (when (seq note-block-ids)
+       [:div {:style {:marginBottom "10px"}}
+        [:div {:style {:fontSize "11px" :fontWeight "600" :color "var(--lx-gray-09,#6b7280)"
+                       :marginBottom "5px"}}
+         "备注块"]
+        (for [[i uid] (map-indexed vector note-block-ids)]
+          [:div {:key (str "bp-note-" uid) :style row-style}
+           [:span {:style {:flex "1" :fontSize "12px" :color "var(--lx-gray-11,#374151)"
+                           :overflow "hidden" :textOverflow "ellipsis" :whiteSpace "nowrap"}}
+            (str "备注 " (inc i))]
+           (icon-btn "↗" "在侧边栏打开" "#6b7280" #(on-open uid))
+           (icon-btn "×" "移除引用" "#ef4444" #(remove-note! uid))])])
+     ;; Linked blocks
+     (when (seq node-linked-blocks)
+       [:div {:style {:marginBottom "10px"}}
+        [:div {:style {:fontSize "11px" :fontWeight "600" :color "var(--lx-gray-09,#6b7280)"
+                       :marginBottom "5px"}}
+         "链接块"]
+        (for [{:keys [block-id block-title]} node-linked-blocks]
+          [:div {:key (str "bp-link-" block-id) :style row-style}
+           [:span {:style {:flex "1" :fontSize "12px" :color "var(--lx-gray-11,#374151)"
+                           :overflow "hidden" :textOverflow "ellipsis" :whiteSpace "nowrap"
+                           :title block-title}}
+            (preview (or block-title ""))]
+           (icon-btn "↗" "在侧边栏打开" "#6b7280" #(on-open block-id))
+           (icon-btn "×" "移除引用" "#ef4444" #(remove-linked! block-id))])])
+     ;; Action buttons
+     [:div {:style {:display "flex" :flexDirection "column" :gap "5px"}}
+      [:button {:on-click add-note!
+                :style {:padding "5px 8px" :fontSize "12px" :borderRadius "5px"
+                        :border "1px dashed var(--lx-gray-06,#d1d5db)"
+                        :cursor "pointer" :background "transparent"
+                        :color "var(--lx-gray-08,#6b7280)" :textAlign "left"}}
+       "📝 新增备注块"]
+      [:button {:on-click on-add-linked
+                :style {:padding "5px 8px" :fontSize "12px" :borderRadius "5px"
+                        :border "1px dashed var(--lx-gray-06,#d1d5db)"
+                        :cursor "pointer" :background "transparent"
+                        :color "var(--lx-gray-08,#6b7280)" :textAlign "left"}}
+       "🔗 添加链接块"]]]))
+
 ;; ── Block picker modal ────────────────────────────────────────────────────────
 ;; Similar to Excalidraw's block-picker: fuzzy-searches blocks via on-search,
 ;; then calls on-select with {:block-id :block-title :page-title}.
@@ -832,6 +909,7 @@
   (rum/local []    ::note-block-ids)       ; vector of UUID strings (note blocks)
   (rum/local []    ::node-linked-blocks)   ; [{:block-id :block-title :page-title}]
   (rum/local false ::show-block-picker?)
+  (rum/local false ::show-blocks-panel?)
   {:did-mount
    (fn [state]
      (let [args         (-> state :rum/args first)
@@ -998,7 +1076,8 @@
                       ;; the spurious CLEAR_ACTIVE_NODE that fires when a line is clicked.
                       (when (> (- (.now js/Date) @(::assoc-last-click state)) 400)
                         (reset! (::note-block-ids state)     [])
-                        (reset! (::node-linked-blocks state) []))))))
+                        (reset! (::node-linked-blocks state) [])
+                        (reset! (::show-blocks-panel? state) false))))))
            (.on instance "scale"
                 (fn [s]
                   (reset! (::zoom-pct state)
@@ -1146,6 +1225,7 @@
         note-block-ids      (rum/react (::note-block-ids state))
         node-linked-blocks  (rum/react (::node-linked-blocks state))
         show-block-picker?  (rum/react (::show-block-picker? state))
+        show-blocks-panel?  (rum/react (::show-blocks-panel? state))
         on-open-block       (:on-open-block (-> state :rum/args first))
         on-search-blocks    (:on-search-blocks (-> state :rum/args first))
         on-add-note-block   (:on-add-note-block (-> state :rum/args first))
@@ -1180,6 +1260,14 @@
                                     (or @(::node-linked-blocks state) []))]
             (reset! (::node-linked-blocks state) new-blocks)
             (persist-linked-blocks! new-blocks)))
+        remove-note-block!
+        (fn [uid]
+          (let [new-ids (filterv #(not= % uid) @(::note-block-ids state))]
+            (reset! (::note-block-ids state) new-ids)
+            (when-let [i @*instance]
+              (when-let [node (aget (.. ^js i -renderer -activeNodeList) 0)]
+                (.execCommand ^js i "SET_NODE_DATA" node
+                              #js {:noteBlockIds (js/JSON.stringify (clj->js new-ids))})))))
         open-linked-block! (fn [block-id]
                              (js/console.log "[mind-map] open-linked-block! called, block-id:" block-id "on-open-block:" (boolean on-open-block))
                              (when (and (seq block-id) on-open-block)
@@ -1376,55 +1464,14 @@
                 (reset! (::show-outline? state) false))
               :active? show-style?)
 
-      ;; 新增备注：为当前节点创建新备注块（存储为页面下的 Logseq block）
-      (when node-active?
-        (tb-btn "📝 新增备注" "为节点新建一个备注块（存入思维导图页面）"
-                add-note-block!))
-
-      ;; 链接块：显示/打开与此节点关联的所有块（备注块 + 手动链接块）
-      (when node-active?
-        (let [all-linked (into []
-                               (concat
-                                (map-indexed (fn [i uuid] {:block-id uuid :block-title (str "备注 " (inc i)) :note? true})
-                                             note-block-ids)
-                                node-linked-blocks))]
-          (when (seq all-linked)
-            (list
-             (for [{:keys [block-id block-title]} all-linked]
-               [:button
-                {:key      (str "tb-link-" block-id)
-                 :on-click (fn []
-                              (js/console.log "[mind-map] toolbar linked block clicked, block-id:" block-id)
-                              (open-linked-block! block-id))
-                 :title    (str "在侧边栏打开：" block-title)
-                 :style    {:padding      "3px 8px"
-                            :fontSize     "11px"
-                            :borderRadius "4px"
-                            :border       "1px solid var(--lx-gray-06,#d1d5db)"
-                            :cursor       "pointer"
-                            :background   "var(--ls-primary-background-color,#fff)"
-                            :color        "var(--lx-gray-10,#374151)"
-                            :maxWidth     "120px"
-                            :overflow     "hidden"
-                            :textOverflow "ellipsis"
-                            :whiteSpace   "nowrap"}}
-                block-title " ↗"])))))
-
-      ;; 添加链接块按钮
-      (when node-active?
-        [:button
-         {:on-click (fn []
-                      (js/console.log "[mind-map] open block picker")
-                      (reset! (::show-block-picker? state) true))
-          :title    "添加链接块"
-          :style    {:padding      "3px 8px"
-                     :fontSize     "11px"
-                     :borderRadius "4px"
-                     :border       "1px dashed var(--lx-gray-06,#d1d5db)"
-                     :cursor       "pointer"
-                     :background   "transparent"
-                     :color        "var(--lx-gray-08,#6b7280)"}}
-         "🔗 +"])
+      ;; 块操作面板（备注块 + 链接块）
+      (tb-btn "📎 块" "打开块操作面板（备注块 / 链接块）"
+              (fn []
+                (reset! (::show-blocks-panel? state) (not show-blocks-panel?))
+                (reset! (::show-outline? state) false)
+                (reset! (::show-style-panel? state) false))
+              :active?   show-blocks-panel?
+              :disabled? (not node-active?))
 
       (tb-sep)
 
@@ -1460,7 +1507,18 @@
       ;; style panel (right sidebar)
       (when (and show-style? (not show-assoc?))
         (node-style-panel
-         node-styles set-style! #(reset! (::show-style-panel? state) false)))]
+         node-styles set-style! #(reset! (::show-style-panel? state) false)))
+      ;; blocks panel (right sidebar)
+      (when (and show-blocks-panel? node-active? (not show-assoc?))
+        (blocks-panel
+         {:note-block-ids    note-block-ids
+          :node-linked-blocks node-linked-blocks
+          :on-open           open-linked-block!
+          :remove-note!      remove-note-block!
+          :remove-linked!    remove-linked-block!
+          :add-note!         add-note-block!
+          :on-add-linked     #(reset! (::show-block-picker? state) true)
+          :close-fn          #(reset! (::show-blocks-panel? state) false)}))]
 
      ;; ── block picker modal ───────────────────────────────────────────────────
      (when show-block-picker?
