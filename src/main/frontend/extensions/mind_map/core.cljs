@@ -1029,7 +1029,7 @@
                       ;; (triggered by CLEAR_ACTIVE_NODE inside setActiveLine)
                       (when-let [al (.-associativeLine ^js instance)]
                         (js/console.log "[mind-map] assoc line click: setting isNotRenderAllLines=true")
-                        (set! (.-isNotRenderAllLines al) true)))))
+                        (set! (.-isNotRenderAllLines al) true))))))
            ;; Guard: ignore deactivate fired within 400 ms of a click
            ;; (SimpleMindMap sometimes fires both events in one tick)
            (.on instance "associative_line_deactivate"
