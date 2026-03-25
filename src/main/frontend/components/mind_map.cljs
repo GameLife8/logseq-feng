@@ -81,34 +81,33 @@
          :on-save-data mind-map-handler/save-mind-map-to-db!
          ;; Open a linked block (by UUID string) in the right sidebar
          :on-open-block (fn [uuid-str]
+                          (js/console.log "[mind-map] on-open-block called, uuid-str:" uuid-str)
                           (when (seq uuid-str)
-                            (when-let [block (db/entity [:block/uuid (uuid uuid-str)])]
-                              (state/sidebar-add-block!
-                               (state/get-current-repo)
-                               (:db/id block)
-                               :block))))
-         ;; Open or create the note block for a node.
-         ;; If note-block-uuid-str is non-empty, opens that block in the sidebar.
-         ;; If empty, creates a new child block under the mind-map page, opens it,
-         ;; and resolves the Promise with the new UUID string so core can store it.
-         :on-open-note-block
-         (fn [note-block-uuid-str]
+                            (let [uid (try (uuid uuid-str) (catch :default e (js/console.error "[mind-map] invalid uuid:" uuid-str e) nil))]
+                              (when uid
+                                (let [block (db/entity [:block/uuid uid])]
+                                  (js/console.log "[mind-map] on-open-block entity:" (boolean block) "db/id:" (:db/id block))
+                                  (when block
+                                    (state/sidebar-add-block!
+                                     (state/get-current-repo)
+                                     (:db/id block)
+                                     :block)))))))
+         ;; Create a new note block under the mind-map page.
+         ;; Returns a Promise resolving to the new block's UUID string.
+         :on-add-note-block
+         (fn []
+           (js/console.log "[mind-map] on-add-note-block called, page-uuid:" page-uuid)
            (let [repo (state/get-current-repo)]
-             (if (seq note-block-uuid-str)
-               (do
-                 (when-let [block (db/entity [:block/uuid (uuid note-block-uuid-str)])]
-                   (state/sidebar-add-block! repo (:db/id block) :block))
-                 (p/resolved nil))
-               ;; Create a new block under the mind-map page
-               (p/let [result (editor-handler/api-insert-new-block!
-                               ""
-                               {:page         (uuid page-uuid)
-                                :edit-block?  false
-                                :end?         true
-                                :container-id :unknown-container})]
-                 (when result
-                   (state/sidebar-add-block! repo (:db/id result) :block)
-                   (str (:block/uuid result)))))))
+             (p/let [result (editor-handler/api-insert-new-block!
+                             ""
+                             {:page         (uuid page-uuid)
+                              :edit-block?  false
+                              :end?         true
+                              :container-id :unknown-container})]
+               (js/console.log "[mind-map] on-add-note-block result:" (clj->js result))
+               (when result
+                 (state/sidebar-add-block! repo (:db/id result) :block)
+                 (str (:block/uuid result))))))
          ;; Search blocks: returns a JS Promise resolving to a plain-data vector
          :on-search-blocks (fn [q]
                              (when (seq q)

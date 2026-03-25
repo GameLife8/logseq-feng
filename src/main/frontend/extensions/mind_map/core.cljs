@@ -493,8 +493,7 @@
 (def ^:private marker-dirs
   [["end" "尾部"] ["start" "头部"]])
 
-(defn- node-style-panel [node-styles set-style! close-fn
-                          linked-blocks open-block-picker! open-block! remove-block!]
+(defn- node-style-panel [node-styles set-style! close-fn]
   (let [s  node-styles
         st (fn [k v] (set-style! (name k) v))]
     [:div.mind-map-style-panel
@@ -609,53 +608,7 @@
                                   (st :lineMarkerDir %))
                  :width "58px"))
 
-     ;; ── 链接块（支持多个）──────────────────────────────────────────────────
-     (sp-title "链接块")
-     (when (seq linked-blocks)
-       [:div {:style {:marginBottom "4px"}}
-        (for [{:keys [block-id block-title page-title]} linked-blocks]
-          [:div {:key   block-id
-                 :style {:display      "flex"
-                         :alignItems   "center"
-                         :gap          "4px"
-                         :padding      "5px 8px"
-                         :borderRadius "6px"
-                         :border       "1px solid var(--lx-gray-05,#e5e7eb)"
-                         :background   "var(--ls-secondary-background-color,#f9fafb)"
-                         :marginBottom "4px"}}
-           [:div {:style {:flex "1" :minWidth "0"}}
-            [:div {:style {:fontSize   "12px" :fontWeight "500"
-                           :color      "var(--lx-gray-11,#374151)"
-                           :overflow   "hidden" :textOverflow "ellipsis"
-                           :whiteSpace "nowrap"}}
-             block-title]
-            (when (seq page-title)
-              [:div {:style {:fontSize "11px" :color "var(--lx-gray-08,#9ca3af)"}}
-               page-title])]
-           [:button {:on-click #(open-block! block-id)
-                     :title    "在侧边栏打开"
-                     :style    {:padding "2px 7px" :fontSize "11px" :flexShrink "0"
-                                :border "1px solid var(--lx-gray-06,#d1d5db)"
-                                :borderRadius "4px" :cursor "pointer"
-                                :background "var(--ls-primary-background-color,#fff)"
-                                :color "var(--lx-gray-11,#374151)"}}
-            "↗"]
-           [:button {:on-click #(remove-block! block-id)
-                     :title    "移除"
-                     :style    {:padding "2px 7px" :fontSize "11px" :flexShrink "0"
-                                :border "1px solid var(--lx-gray-06,#d1d5db)"
-                                :borderRadius "4px" :cursor "pointer"
-                                :background "var(--ls-primary-background-color,#fff)"
-                                :color "#ef4444"}}
-            "×"]])])
-     [:button
-      {:on-click open-block-picker!
-       :style    {:width "100%" :padding "6px" :fontSize "12px"
-                  :border "1px dashed var(--lx-gray-06,#d1d5db)"
-                  :borderRadius "6px" :cursor "pointer"
-                  :background "transparent"
-                  :color "var(--lx-gray-09,#6b7280)"}}
-      "🔗 添加块…"]]))
+]))
 
 ;; assoc-line-style-panel is defined here (after sp-*/dash-options/width-options/font-*)
 (defn- assoc-line-style-panel [assoc-styles set-assoc! close-fn]
@@ -876,7 +829,7 @@
   (rum/local {}    ::assoc-line-styles)
   (rum/local 0     ::assoc-last-click)     ; epoch-ms of last associative_line_click
   ;; per-node note block and linked blocks (read from node data on node_active)
-  (rum/local nil   ::note-block-id)        ; UUID string of linked note block
+  (rum/local []    ::note-block-ids)       ; vector of UUID strings (note blocks)
   (rum/local []    ::node-linked-blocks)   ; [{:block-id :block-title :page-title}]
   (rum/local false ::show-block-picker?)
   {:did-mount
@@ -1023,9 +976,13 @@
                                  :lineWidth      (.getStyle ^js node "lineWidth")
                                  :lineDasharray  (.getStyle ^js node "lineDasharray")
                                  :lineMarkerDir  (.getStyle ^js node "lineMarkerDir")})
-                        ;; note block UUID
-                        (reset! (::note-block-id state)
-                                (or (.getData ^js node "noteBlockId") ""))
+                        ;; note block UUIDs — stored as JSON array in "noteBlockIds"
+                        (let [ids-str (.getData ^js node "noteBlockIds")]
+                          (reset! (::note-block-ids state)
+                                  (if (seq ids-str)
+                                    (try (vec (js/JSON.parse ids-str))
+                                         (catch :default _ []))
+                                    [])))
                         ;; linked blocks — stored as JSON array in "linkedBlocksJson"
                         (let [json-str (.getData ^js node "linkedBlocksJson")
                               blocks   (when (seq json-str)
@@ -1040,7 +997,7 @@
                       ;; No active node: clear per-node data, but guard against
                       ;; the spurious CLEAR_ACTIVE_NODE that fires when a line is clicked.
                       (when (> (- (.now js/Date) @(::assoc-last-click state)) 400)
-                        (reset! (::note-block-id state)      nil)
+                        (reset! (::note-block-ids state)     [])
                         (reset! (::node-linked-blocks state) []))))))
            (.on instance "scale"
                 (fn [s]
@@ -1067,7 +1024,12 @@
                                             (or (aget line-style p)
                                                 (.getStyle ^js node p))])
                                          assoc-style-props)))
-                      (reset! (::show-assoc-panel? state) true)))))
+                      (reset! (::show-assoc-panel? state) true)
+                      ;; Protect active line from being cleared by the upcoming renderAllLines
+                      ;; (triggered by CLEAR_ACTIVE_NODE inside setActiveLine)
+                      (when-let [al (.-associativeLine ^js instance)]
+                        (js/console.log "[mind-map] assoc line click: setting isNotRenderAllLines=true")
+                        (set! (.-isNotRenderAllLines al) true)))))
            ;; Guard: ignore deactivate fired within 400 ms of a click
            ;; (SimpleMindMap sometimes fires both events in one tick)
            (.on instance "associative_line_deactivate"
@@ -1181,12 +1143,12 @@
         outline-data   (rum/react (::outline-data state))
         show-assoc?         (rum/react (::show-assoc-panel? state))
         assoc-styles        (rum/react (::assoc-line-styles state))
-        note-block-id       (rum/react (::note-block-id state))
+        note-block-ids      (rum/react (::note-block-ids state))
         node-linked-blocks  (rum/react (::node-linked-blocks state))
         show-block-picker?  (rum/react (::show-block-picker? state))
         on-open-block       (:on-open-block (-> state :rum/args first))
         on-search-blocks    (:on-search-blocks (-> state :rum/args first))
-        on-open-note-block  (:on-open-note-block (-> state :rum/args first))
+        on-add-note-block   (:on-add-note-block (-> state :rum/args first))
         cmd!           (fn [c] (when-let [i @*instance] (.execCommand ^js i c)))
         set-style!     (fn [prop value]
                          (when-let [i @*instance]
@@ -1219,22 +1181,26 @@
             (reset! (::node-linked-blocks state) new-blocks)
             (persist-linked-blocks! new-blocks)))
         open-linked-block! (fn [block-id]
+                             (js/console.log "[mind-map] open-linked-block! called, block-id:" block-id "on-open-block:" (boolean on-open-block))
                              (when (and (seq block-id) on-open-block)
                                (on-open-block block-id)))
-        ;; Open (or create) the note block for the active node
-        open-note-block!
+        ;; Always creates a new note block and appends its UUID to the node data array
+        add-note-block!
         (fn []
-          (when on-open-note-block
-            (let [cur-id (or @(::note-block-id state) "")
-                  p      (on-open-note-block cur-id)]
+          (when on-add-note-block
+            (js/console.log "[mind-map] add-note-block! called")
+            (let [p (on-add-note-block)]
               (when p
                 (.then p (fn [new-uuid]
+                           (js/console.log "[mind-map] add-note-block! got uuid:" new-uuid)
                            (when (seq new-uuid)
-                             (reset! (::note-block-id state) new-uuid)
-                             (when-let [i @*instance]
-                               (when-let [node (aget (.. ^js i -renderer -activeNodeList) 0)]
-                                 (.execCommand ^js i "SET_NODE_DATA" node
-                                               #js {:noteBlockId new-uuid}))))))))))]
+                             (let [cur-ids @(::note-block-ids state)
+                                   new-ids (conj cur-ids new-uuid)]
+                               (reset! (::note-block-ids state) new-ids)
+                               (when-let [i @*instance]
+                                 (when-let [node (aget (.. ^js i -renderer -activeNodeList) 0)]
+                                   (.execCommand ^js i "SET_NODE_DATA" node
+                                                 #js {:noteBlockIds (js/JSON.stringify (clj->js new-ids))}))))))))))))]
 
     [:div.mind-map-wrapper
      {:style {:width "100%" :height "100%" :display "flex" :flexDirection "column"
@@ -1410,11 +1376,55 @@
                 (reset! (::show-outline? state) false))
               :active? show-style?)
 
-      ;; 备注：在侧边栏打开/创建与该节点关联的 Logseq block
+      ;; 新增备注：为当前节点创建新备注块（存储为页面下的 Logseq block）
       (when node-active?
-        (tb-btn "📝 备注"
-                (if (seq note-block-id) "在侧边栏打开备注块" "为节点创建备注块")
-                open-note-block!))
+        (tb-btn "📝 新增备注" "为节点新建一个备注块（存入思维导图页面）"
+                add-note-block!))
+
+      ;; 链接块：显示/打开与此节点关联的所有块（备注块 + 手动链接块）
+      (when node-active?
+        (let [all-linked (into []
+                               (concat
+                                (map-indexed (fn [i uuid] {:block-id uuid :block-title (str "备注 " (inc i)) :note? true})
+                                             note-block-ids)
+                                node-linked-blocks))]
+          (when (seq all-linked)
+            (list
+             (for [{:keys [block-id block-title]} all-linked]
+               [:button
+                {:key      (str "tb-link-" block-id)
+                 :on-click (fn []
+                              (js/console.log "[mind-map] toolbar linked block clicked, block-id:" block-id)
+                              (open-linked-block! block-id))
+                 :title    (str "在侧边栏打开：" block-title)
+                 :style    {:padding      "3px 8px"
+                            :fontSize     "11px"
+                            :borderRadius "4px"
+                            :border       "1px solid var(--lx-gray-06,#d1d5db)"
+                            :cursor       "pointer"
+                            :background   "var(--ls-primary-background-color,#fff)"
+                            :color        "var(--lx-gray-10,#374151)"
+                            :maxWidth     "120px"
+                            :overflow     "hidden"
+                            :textOverflow "ellipsis"
+                            :whiteSpace   "nowrap"}}
+                block-title " ↗"])))))
+
+      ;; 添加链接块按钮
+      (when node-active?
+        [:button
+         {:on-click (fn []
+                      (js/console.log "[mind-map] open block picker")
+                      (reset! (::show-block-picker? state) true))
+          :title    "添加链接块"
+          :style    {:padding      "3px 8px"
+                     :fontSize     "11px"
+                     :borderRadius "4px"
+                     :border       "1px dashed var(--lx-gray-06,#d1d5db)"
+                     :cursor       "pointer"
+                     :background   "transparent"
+                     :color        "var(--lx-gray-08,#6b7280)"}}
+         "🔗 +"])
 
       (tb-sep)
 
@@ -1450,11 +1460,7 @@
       ;; style panel (right sidebar)
       (when (and show-style? (not show-assoc?))
         (node-style-panel
-         node-styles set-style! #(reset! (::show-style-panel? state) false)
-         node-linked-blocks
-         #(reset! (::show-block-picker? state) true)
-         open-linked-block!
-         remove-linked-block!))]
+         node-styles set-style! #(reset! (::show-style-panel? state) false)))]
 
      ;; ── block picker modal ───────────────────────────────────────────────────
      (when show-block-picker?
