@@ -1200,7 +1200,7 @@
                                (when-let [i @*instance]
                                  (when-let [node (aget (.. ^js i -renderer -activeNodeList) 0)]
                                    (.execCommand ^js i "SET_NODE_DATA" node
-                                                 #js {:noteBlockIds (js/JSON.stringify (clj->js new-ids))}))))))))))))]
+                                                 #js {:noteBlockIds (js/JSON.stringify (clj->js new-ids))})))))))))))]
 
     [:div.mind-map-wrapper
      {:style {:width "100%" :height "100%" :display "flex" :flexDirection "column"
