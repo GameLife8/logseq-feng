@@ -82,12 +82,11 @@
          ;; Open a linked block (by UUID string) in the right sidebar
          :on-open-block (fn [uuid-str]
                           (when (seq uuid-str)
-                            (let [block (db/entity [:block/uuid (uuid uuid-str)])]
-                              (when block
-                                (state/sidebar-add-block!
-                                 (state/get-current-repo)
-                                 (:db/id block)
-                                 (if (:block/page block) :block :page))))))
+                            (when-let [block (db/entity [:block/uuid (uuid uuid-str)])]
+                              (state/sidebar-add-block!
+                               (state/get-current-repo)
+                               (:db/id block)
+                               :block))))
          ;; Open or create the note block for a node.
          ;; If note-block-uuid-str is non-empty, opens that block in the sidebar.
          ;; If empty, creates a new child block under the mind-map page, opens it,

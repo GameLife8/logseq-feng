@@ -997,8 +997,12 @@
                   (let [active? (pos? (.-length active-list))]
                     (reset! (::node-active? state)  active?)
                     (reset! (::node-is-root? state) (boolean (and node (.-isRoot node))))
-                    ;; clicking a node closes the assoc-line panel
-                    (reset! (::show-assoc-panel? state) false)
+                    ;; Close assoc-line panel only when a real node-click happens
+                    ;; (not when CLEAR_ACTIVE_NODE fires from setActiveLine after a line click).
+                    ;; setActiveLine stores a timestamp in ::assoc-last-click; we ignore
+                    ;; node_active events that arrive within 400 ms of that click.
+                    (when (> (- (.now js/Date) @(::assoc-last-click state)) 400)
+                      (reset! (::show-assoc-panel? state) false))
                     (if (and active? node)
                       (do
                         (reset! (::node-styles state)
@@ -1033,7 +1037,9 @@
                                                  (js/JSON.parse json-str))
                                            (catch :default _ [])))]
                           (reset! (::node-linked-blocks state) (or blocks []))))
-                      (do
+                      ;; No active node: clear per-node data, but guard against
+                      ;; the spurious CLEAR_ACTIVE_NODE that fires when a line is clicked.
+                      (when (> (- (.now js/Date) @(::assoc-last-click state)) 400)
                         (reset! (::note-block-id state)      nil)
                         (reset! (::node-linked-blocks state) []))))))
            (.on instance "scale"
