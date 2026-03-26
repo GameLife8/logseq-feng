@@ -53,29 +53,23 @@
 
 (defn <get-config
   "Async version of get-config.
-   Uses db-async/<get-block to fetch the config page directly from the worker
-   DB, bypassing the lazy main-thread DataScript replica.  This ensures the
-   :block/excalidraw-config attribute is available even on first load after a
-   page refresh.  Returns a Promise resolving to the config map."
+   Uses db-async/<pull with [:block/name] to fetch the config page directly
+   from the worker DB, bypassing the lazy main-thread DataScript replica.
+   thread-api/pull explicitly handles [:block/name title] lookups, whereas
+   thread-api/get-blocks (used by <get-block) only resolves UUID strings.
+   Returns a Promise resolving to the config map."
   []
   (let [repo (state/get-current-repo)]
-    (js/console.log "[ex-cfg] <get-config called, repo=" repo)
-    (p/let [page (db-async/<get-block repo config-page-title :children? false)]
-      (js/console.log "[ex-cfg] <get-block returned page=" (clj->js page)
-                      "db/id=" (when page (:db/id page))
-                      "all-keys=" (when page (clj->js (keys (into {} page))))
-                      ":block/excalidraw-config=" (when page (:block/excalidraw-config page)))
-      (if-let [raw (and page (:block/excalidraw-config page))]
-        (try (let [cfg (merge default-config
-                              (js->clj (js/JSON.parse raw) :keywordize-keys true))]
-               (js/console.log "[ex-cfg] parsed config=" (clj->js cfg))
-               cfg)
+    (p/let [result (db-async/<pull repo
+                                   '[:db/id :block/excalidraw-config]
+                                   [:block/name config-page-title])]
+      (if-let [raw (and result (:block/excalidraw-config result))]
+        (try (merge default-config
+                    (js->clj (js/JSON.parse raw) :keywordize-keys true))
              (catch :default e
-               (js/console.warn "[ex-cfg] async JSON parse error" e)
+               (js/console.warn "[ex-cfg] JSON parse error" e)
                default-config))
-        (do
-          (js/console.log "[ex-cfg] no :block/excalidraw-config found, returning default")
-          default-config)))))
+        default-config))))
 
 ;; ── write ─────────────────────────────────────────────────────────────────────
 
