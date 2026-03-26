@@ -1263,10 +1263,9 @@
   (rum/local false ::saved?)        ; show "已保存" flash after save
   {:did-mount
    (fn [state]
-     ;; Load config asynchronously from the worker DB to avoid reading a stale
-     ;; main-thread DataScript replica (lazy-DB issue: the page entity and its
-     ;; :block/excalidraw-config attribute may not be in the main-thread DB yet).
+     (js/console.log "[settings-excalidraw] did-mount, starting async config load")
      (p/let [cfg (ex-cfg/<get-config)]
+       (js/console.log "[settings-excalidraw] async config loaded:" (clj->js cfg))
        (reset! (::config state) cfg)
        (reset! (::whitelist-txt state) (or (:embed-whitelist cfg) "")))
      state)}
@@ -1290,7 +1289,10 @@
                         :boxSizing    "border-box"}
         ;; Collect all current field values into one config map and persist
         save-all!  (fn []
-                     (let [merged (assoc cfg :embed-whitelist whitelist-txt)]
+                     (let [merged (merge ex-cfg/default-config
+                                        (or cfg {})
+                                        {:embed-whitelist whitelist-txt})]
+                       (js/console.log "[settings-excalidraw] save-all! merged=" (clj->js merged))
                        (reset! *cfg merged)
                        (ex-cfg/save-config! merged)
                        (reset! *saved? true)

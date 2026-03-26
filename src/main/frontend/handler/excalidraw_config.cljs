@@ -59,14 +59,23 @@
    page refresh.  Returns a Promise resolving to the config map."
   []
   (let [repo (state/get-current-repo)]
+    (js/console.log "[ex-cfg] <get-config called, repo=" repo)
     (p/let [page (db-async/<get-block repo config-page-title :children? false)]
+      (js/console.log "[ex-cfg] <get-block returned page=" (clj->js page)
+                      "db/id=" (when page (:db/id page))
+                      "all-keys=" (when page (clj->js (keys (into {} page))))
+                      ":block/excalidraw-config=" (when page (:block/excalidraw-config page)))
       (if-let [raw (and page (:block/excalidraw-config page))]
-        (try (merge default-config
-                    (js->clj (js/JSON.parse raw) :keywordize-keys true))
+        (try (let [cfg (merge default-config
+                              (js->clj (js/JSON.parse raw) :keywordize-keys true))]
+               (js/console.log "[ex-cfg] parsed config=" (clj->js cfg))
+               cfg)
              (catch :default e
                (js/console.warn "[ex-cfg] async JSON parse error" e)
                default-config))
-        default-config))))
+        (do
+          (js/console.log "[ex-cfg] no :block/excalidraw-config found, returning default")
+          default-config)))))
 
 ;; ── write ─────────────────────────────────────────────────────────────────────
 
