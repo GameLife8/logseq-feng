@@ -220,44 +220,60 @@
                     :padding      "4px 0"
                     :userSelect   "none"}
          :on-click (fn [^js e] (.stopPropagation e))}
-        (ctx-item "插入同级节点" "Enter"  (na! #(cmd! "INSERT_NODE"))
-                  :disabled? (or (not node-active?) is-root?))
-        (ctx-item "插入子节点"   "Tab"    (na! #(cmd! "INSERT_CHILD_NODE"))
-                  :disabled? (not node-active?))
-        (ctx-item "插入父节点"   ""       (na! #(cmd! "INSERT_PARENT_NODE"))
-                  :disabled? (or (not node-active?) is-root?))
-        (ctx-item "插入概要"     "Ctrl+G" (na! #(cmd! "ADD_GENERALIZATION"))
-                  :disabled? (not node-active?))
-        (ctx-sep)
-        (ctx-item "上移节点"     ""       (na! #(cmd! "UP_NODE"))
-                  :disabled? (or (not node-active?) is-root?))
-        (ctx-item "下移节点"     ""       (na! #(cmd! "DOWN_NODE"))
-                  :disabled? (or (not node-active?) is-root?))
-        (ctx-item "展开所有节点" ""       (na! #(cmd! "EXPAND_ALL")))
-        (ctx-item "折叠所有节点" ""       (na! #(cmd! "UNEXPAND_ALL")))
-        (ctx-sep)
-        (ctx-item "删除节点"       "Delete"         (na! #(cmd! "REMOVE_NODE"))
-                  :danger? true :disabled? (or (not node-active?) is-root?))
-        (ctx-item "仅删除当前节点" "Shift+Backspace" (na! #(cmd! "REMOVE_CURRENT_NODE"))
-                  :danger? true :disabled? (or (not node-active?) is-root?))
-        (ctx-sep)
-        (ctx-item "复制节点" "Ctrl+C"
-                  (na! #(when-let [i @instance-atom]
-                          (.copy ^js (.-renderer ^js i)))))
-        (ctx-item "剪切节点" "Ctrl+X"   (na! #(cmd! "CUT_NODE"))
-                  :disabled? (or (not node-active?) is-root?))
-        (ctx-item "粘贴节点" "Ctrl+V"   (na! #(cmd! "PASTE_NODE"))
-                  :disabled? (not node-active?))
-        (ctx-sep)
-        (ctx-item "去除自定义样式" "" (na! #(cmd! "REMOVE_CUSTOM_STYLES"))
-                  :disabled? (not node-active?))
-        (when (and node-active? assoc-avail?)
-          (ctx-sep))
-        (when (and node-active? assoc-avail?)
-          (ctx-item "添加关联线" ""
-                    (na! #(when-let [i @instance-atom]
-                            (.createLineFromActiveNode
-                             ^js (.-associativeLine ^js i))))))]])))
+        (if node-active?
+          ;; ── Node context menu ────────────────────────────────────────
+          (list
+           (ctx-item "插入同级节点" "Enter"  (na! #(cmd! "INSERT_NODE"))
+                     :disabled? is-root?)
+           (ctx-item "插入子节点"   "Tab"    (na! #(cmd! "INSERT_CHILD_NODE")))
+           (ctx-item "插入父节点"   ""       (na! #(cmd! "INSERT_PARENT_NODE"))
+                     :disabled? is-root?)
+           (ctx-item "插入概要"     "Ctrl+G" (na! #(cmd! "ADD_GENERALIZATION")))
+           (ctx-sep)
+           (ctx-item "上移节点" "" (na! #(cmd! "UP_NODE"))
+                     :disabled? is-root?)
+           (ctx-item "下移节点" "" (na! #(cmd! "DOWN_NODE"))
+                     :disabled? is-root?)
+           (ctx-sep)
+           (ctx-item "删除节点"       "Delete"         (na! #(cmd! "REMOVE_NODE"))
+                     :danger? true :disabled? is-root?)
+           (ctx-item "仅删除当前节点" "Shift+Backspace" (na! #(cmd! "REMOVE_CURRENT_NODE"))
+                     :danger? true :disabled? is-root?)
+           (ctx-sep)
+           (ctx-item "复制节点" "Ctrl+C"
+                     (na! #(when-let [i @instance-atom]
+                             (.copy ^js (.-renderer ^js i)))))
+           (ctx-item "剪切节点" "Ctrl+X" (na! #(cmd! "CUT_NODE"))
+                     :disabled? is-root?)
+           (ctx-item "粘贴节点" "Ctrl+V" (na! #(cmd! "PASTE_NODE")))
+           (ctx-sep)
+           (ctx-item "去除自定义样式" "" (na! #(cmd! "REMOVE_CUSTOM_STYLES")))
+           (when assoc-avail?
+             (ctx-sep))
+           (when assoc-avail?
+             (ctx-item "添加关联线" ""
+                       (na! #(when-let [i @instance-atom]
+                               (.createLineFromActiveNode
+                                ^js (.-associativeLine ^js i)))))))
+          ;; ── Canvas context menu (no node selected) ──────────────────
+          (list
+           (ctx-item "回到根节点"   "Ctrl+Enter"
+                     (na! #(when-let [i @instance-atom]
+                             (let [data   (.getData ^js i)
+                                   uid    (some-> data .-data .-uid)]
+                               (when uid
+                                 (.execCommand ^js i "GO_TARGET_NODE" uid))))))
+           (ctx-sep)
+           (ctx-item "展开所有节点" "" (na! #(cmd! "EXPAND_ALL")))
+           (ctx-item "折叠所有节点" "" (na! #(cmd! "UNEXPAND_ALL")))
+           (ctx-sep)
+           (ctx-item "一键整理布局" "Ctrl+L" (na! #(cmd! "RESET_LAYOUT")))
+           (ctx-item "适应画布"     "Ctrl+I"
+                     (na! #(when-let [i @instance-atom]
+                             (.fit ^js (.-view ^js i)))))
+           (ctx-sep)
+           (ctx-item "去除所有自定义样式" ""
+                     (na! #(cmd! "REMOVE_ALL_NODE_CUSTOM_STYLES")))))]])))
 
 ;; ── Layouts ───────────────────────────────────────────────────────────────────
 
