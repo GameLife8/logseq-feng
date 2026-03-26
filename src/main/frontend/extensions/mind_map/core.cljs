@@ -195,9 +195,12 @@
   [:div {:style {:height "1px" :background "var(--lx-gray-04,#f3f4f6)" :margin "3px 0"}}])
 
 (defn- ctx-menu-panel
-  [menu node-active? is-root? close! cmd! instance-atom]
+  [menu _node-active? _is-root? close! cmd! instance-atom]
+  ;; node-active? and is-root? are snapshotted into the menu map at contextmenu
+  ;; time (see ctx-handler).  We ignore the reactive params to avoid the race
+  ;; where simple-mind-map clears the selection before the browser fires contextmenu.
   (when menu
-    (let [{:keys [x y]} menu
+    (let [{:keys [x y node-active? is-root?]} menu
           na!          (fn [f] (fn [] (close!) (f)))
           assoc-avail? (boolean (when-let [i @instance-atom]
                                   (.-associativeLine ^js i)))
@@ -1179,12 +1182,25 @@
              (reset! (::focusin-handler state)  focusin-handler)
              (reset! (::focusout-handler state) focusout-handler))
            ;; ── right-click context menu ─────────────────────────────────────
+          ;; Snapshot node-active? / is-root? from the instance at contextmenu
+          ;; time.  Do NOT read reactive ::node-active? here: simple-mind-map
+          ;; fires node_active (clearing selection) BEFORE the browser dispatches
+          ;; contextmenu, so the reactive atom is already false when we arrive.
            (let [ctx-handler
                  (fn [^js e]
                    (.preventDefault e)
                    (.stopPropagation e)
-                   (reset! (::ctx-menu state)
-                           {:x (.-clientX e) :y (.-clientY e)}))]
+                   (let [inst    @(::instance state)
+                         al      (when inst (.. ^js inst -renderer -activeNodeList))
+                         node    (when (and al (pos? (.-length al))) (aget al 0))
+                         active? (boolean node)
+                         root?   (boolean (when node (.-isRoot node)))]
+                     (js/console.log "[mind-map] contextmenu node-active?" active? "is-root?" root?)
+                     (reset! (::ctx-menu state)
+                             {:x            (.-clientX e)
+                              :y            (.-clientY e)
+                              :node-active? active?
+                              :is-root?     root?})))]
              (.addEventListener container "contextmenu" ctx-handler false)
              (reset! (::ctx-handler state) ctx-handler)))))
      state)
