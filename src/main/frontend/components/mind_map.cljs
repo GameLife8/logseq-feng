@@ -207,7 +207,8 @@
          (for [mm   mind-maps
                :let [mm-uuid  (str (:block/uuid mm))
                      mm-title (or (:block/title mm) "未命名")
-                     renaming? (= editing-uuid mm-uuid)]]
+                     renaming? (= editing-uuid mm-uuid)
+                     thumb    (.getItem js/localStorage (str "mind-map-thumb-" mm-uuid))]]
            [:div.mm-gallery-card
             {:key            (str "mmcard-" mm-uuid)
              :style          {:border       "1px solid var(--lx-gray-05, #e5e7eb)"
@@ -233,17 +234,27 @@
                                                  (.closest ".mm-card-actions, .mm-rename-input"))
                                  (mind-map-handler/redirect-to-mind-map! mm-uuid)))}
 
-            ;; 缩略图占位区
+            ;; 缩略图区：有缩略图时显示 SVG 预览，否则显示占位图标。
+            ;; 使用 <img> 而非内联 SVG，绕过 Logseq common.css 中
+            ;;   svg { pointer-events: none }  的全局规则。
             [:div.mm-thumbnail-area
-             {:style {:width          "100%"
-                      :height         "130px"
-                      :background     "var(--lx-gray-02, #f9fafb)"
-                      :borderRadius   "8px 8px 0 0"
-                      :display        "flex"
-                      :alignItems     "center"
+             {:style {:width        "100%"
+                      :height       "130px"
+                      :background   "var(--lx-gray-02, #f9fafb)"
+                      :borderRadius "8px 8px 0 0"
+                      :overflow     "hidden"
+                      :display      "flex"
+                      :alignItems   "center"
                       :justifyContent "center"}}
-             [:div.opacity-20
-              (ui/icon "hierarchy" {:size 40})]]
+             (if thumb
+               [:img {:src   thumb
+                      :style {:width         "100%"
+                              :height        "100%"
+                              :objectFit     "contain"
+                              :pointerEvents "none"
+                              :display       "block"
+                              :padding       "8px"}}]
+               [:div.opacity-20 (ui/icon "hierarchy" {:size 40})])]
 
             ;; 底部：标题 + 操作按钮
             [:div.flex.items-center.gap-2.px-3.py-2

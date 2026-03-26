@@ -21,6 +21,17 @@
 ;; ── localStorage fast cache ───────────────────────────────────────────────────
 
 (defn- ls-key [map-id] (str "mind-map-data-" map-id))
+(defn- thumb-ls-key [map-id] (str "mind-map-thumb-" map-id))
+
+;; Save a static SVG snapshot to localStorage for gallery thumbnails.
+;; Uses isDownload=false so export() returns the data-url instead of downloading.
+(defn- save-thumbnail! [instance map-id]
+  (when (and instance map-id)
+    (-> (.export ^js instance "svg" false "thumb")
+        (.then (fn [data-url]
+                 (when data-url
+                   (.setItem js/localStorage (thumb-ls-key map-id) data-url))))
+        (.catch (fn [e] (js/console.warn "[mind-map] thumbnail export failed:" e))))))
 
 (defn- load-from-ls [map-id]
   (when-let [raw (.getItem js/localStorage (ls-key map-id))]
@@ -1026,6 +1037,7 @@
                            (fn []
                              (when-let [inst @(::instance state)]
                                (save-to-ls! map-id (.getData ^js inst))
+                               (save-thumbnail! inst map-id)
                                (reset! (::unsaved? state) false)))
                            3000)
                ;; ResizeObserver: resize mind map when container changes size
