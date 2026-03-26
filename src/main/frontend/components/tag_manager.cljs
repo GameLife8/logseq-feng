@@ -15,6 +15,7 @@
   [:logseq.class/Journal
    :logseq.class/Task
    :logseq.class/Whiteboard
+   :logseq.class/Excalidraw
    :logseq.class/Asset
    :logseq.class/Tag
    :logseq.class/Page
@@ -34,6 +35,7 @@
   {:logseq.class/Journal     "Journal（日记）"
    :logseq.class/Task        "Task（任务）"
    :logseq.class/Whiteboard  "Whiteboard（白板）"
+   :logseq.class/Excalidraw  "Excalidraw（白板配置）"
    :logseq.class/Asset       "Asset（资产）"
    :logseq.class/Tag         "Tag（标签类型）"
    :logseq.class/Page        "Page（页面）"

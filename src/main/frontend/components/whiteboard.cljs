@@ -18,6 +18,7 @@
             [frontend.db.react :as react]
             [frontend.extensions.excalidraw.api :as ex-api]
             [frontend.handler.editor :as editor-handler]
+            [frontend.handler.excalidraw-config :as ex-cfg]
             [frontend.handler.notification :as notification]
             [frontend.handler.route :as route-handler]
             [frontend.handler.whiteboard :as whiteboard-handler]
@@ -417,7 +418,8 @@
       (fn [] (reset! (::loaded? state) true)))
      state)}
   [state {:keys [page-uuid page-title on-back on-api-ready
-                 on-show-linked-blocks on-selection-change render-tags on-rename]}]
+                 on-show-linked-blocks on-selection-change render-tags on-rename
+                 validate-embeddable default-font-family]}]
   (let [loaded? (rum/react (::loaded? state))]
     [:div.wb-canvas {:style {:width "100%" :height "100%"}}
      (if loaded?
@@ -430,6 +432,9 @@
          :on-selection-change    on-selection-change
          :on-rename              on-rename
          :render-tags            render-tags
+         ;; Config-driven props (from excalidraw settings panel)
+         :validate-embeddable    validate-embeddable
+         :default-font-family    default-font-family
          ;; DB persistence callbacks (main bundle → lazy bundle boundary)
          :on-load-data           whiteboard-handler/load-canvas-from-db
          :on-save-data           whiteboard-handler/save-canvas-to-db!})
@@ -453,6 +458,11 @@
         page-uuid          (str (:block/uuid page-entity))
         page-title         (or (:block/title page-entity) "Untitled Whiteboard")
         repo               (state/get-current-repo)
+
+        ;; Read Excalidraw settings (embed whitelist + font family)
+        ex-config          (ex-cfg/get-config)
+        validate-embed     (ex-cfg/make-validate-embeddable (:embed-whitelist ex-config))
+        default-font       (:font-family ex-config)
 
         on-back (fn []
                   (notification/show! "白板已保存" :success)
@@ -511,7 +521,9 @@
                                    (reset! *linked-panel-el-id nil)))
         :on-rename             (fn [new-title]
                                  (whiteboard-handler/<rename-whiteboard! page-uuid new-title))
-        :render-tags           (fn [] (tags-bar page-uuid page-entity))})]
+        :render-tags           (fn [] (tags-bar page-uuid page-entity))
+        :validate-embeddable   validate-embed
+        :default-font-family   default-font})]
 
      ;; Linked-blocks panel (shown when linked-panel-el-id is set)
      (when (and linked-panel-el-id @*canvas-api)

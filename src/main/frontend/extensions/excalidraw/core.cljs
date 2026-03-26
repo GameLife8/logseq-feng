@@ -249,17 +249,34 @@
      state)}
   [state {:keys [page-uuid page-title on-back on-api-ready
                  on-show-linked-blocks on-selection-change
-                 on-load-data on-save-data render-tags on-rename]}]
+                 on-load-data on-save-data render-tags on-rename
+                 validate-embeddable default-font-family]}]
   (let [*api        (::api state)
         *sel-el-id  (::sel-el-id state)
         *dirty?     (::dirty? state)
         *library    (::library-items state)
-        init-data   (or (when on-load-data
-                          (try
-                            (when-let [json-str (on-load-data page-uuid)]
-                              (js/JSON.parse json-str))
-                            (catch :default _ nil)))
-                        (load-from-ls page-uuid))
+        ;; Merge saved canvas appState with configured defaults (e.g. font-family).
+        ;; The saved state takes priority so user's last choice is preserved.
+        apply-font  (fn [data]
+                      (when data
+                        (if default-font-family
+                          (let [astate (or (.-appState data) #js {})
+                                ;; Only set if not already saved in this canvas
+                                cur-font (gobj/get astate "currentItemFontFamily")]
+                            (if cur-font
+                              data
+                              (js/Object.assign
+                               #js {} data
+                               #js {:appState (js/Object.assign #js {} astate
+                                                                #js {:currentItemFontFamily default-font-family})})))
+                          data)))
+        init-data   (apply-font
+                     (or (when on-load-data
+                           (try
+                             (when-let [json-str (on-load-data page-uuid)]
+                               (js/JSON.parse json-str))
+                             (catch :default _ nil)))
+                         (load-from-ls page-uuid)))
         save-and-back!
         (fn []
           (let [api @*api]
@@ -292,11 +309,12 @@
            :theme            (if (= "dark" (state/sub :ui/theme)) "dark" "light")
            :UIOptions        #js {:canvasActions #js {:export    false
                                                       :loadScene false}}
-           ;; Allow embedding any URL (bypass Excalidraw's built-in domain whitelist).
-           ;; Logseq runs on Electron/Chromium, so whether an iframe actually loads
-           ;; depends on the target site's X-Frame-Options / CSP headers, not on
-           ;; Excalidraw's JS-side whitelist check.
-           :validateEmbeddable true
+           ;; validateEmbeddable controls Excalidraw's own domain whitelist.
+           ;; Value comes from the user's excalidraw settings config:
+           ;;   false  → block all (default when whitelist is empty)
+           ;;   true   → allow all (whitelist contains "*")
+           ;;   fn(url)→ custom check against whitelist domains
+           :validateEmbeddable (or validate-embeddable false)
            :libraryItems     (or @*library #js [])
            :onLibraryChange  (fn [^js items]
                                (reset! *library items)

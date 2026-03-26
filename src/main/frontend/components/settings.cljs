@@ -16,6 +16,7 @@
             [frontend.handler.db-based.sync :as rtc-handler]
             [frontend.handler.db-based.vector-search-flows :as vector-search-flows]
             [frontend.handler.global-config :as global-config-handler]
+            [frontend.handler.excalidraw-config :as ex-cfg]
             [frontend.handler.notification :as notification]
             [frontend.handler.plugin :as plugin-handler]
             [frontend.handler.property :as property-handler]
@@ -1253,6 +1254,99 @@
                    nil))])]
            [:div.warning "WebGPU is not supported on this browser, please upgrade it or using another browser."])]]]]]))
 
+
+;; ── Excalidraw settings panel ─────────────────────────────────────────────────
+
+(rum/defcs settings-excalidraw < rum/reactive
+  (rum/local nil ::config)   ; loaded config map
+  {:did-mount
+   (fn [state]
+     (reset! (::config state) (ex-cfg/get-config))
+     state)}
+  [state]
+  (let [*cfg    (::config state)
+        cfg     (rum/react *cfg)
+        row-cls "it sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start"
+        label-cls "block text-sm font-medium leading-5 opacity-70"
+
+        save!   (fn [new-cfg]
+                  (reset! *cfg new-cfg)
+                  (ex-cfg/save-config! new-cfg))]
+    [:div.panel-wrap.is-excalidraw.mb-8
+
+     ;; ── Embed whitelist ────────────────────────────────────────────────────
+     [:div {:class row-cls}
+      [:div.flex.flex-col
+       [:label {:class label-cls} "嵌入网页白名单"]
+       [:div.text-xs.opacity-50.mt-1 "每行一个域名，"*" 表示允许所有网址"]]
+      [:div.mt-1.sm:mt-0.sm:col-span-2
+       [:textarea
+        {:rows      6
+         :value     (or (:embed-whitelist cfg) "")
+         :placeholder "每行一个域名，例如：
+youtube.com
+example.com
+
+留空则禁止所有嵌入，输入 * 则允许全部"
+         :style     {:display     "block"
+                     :width       "100%"
+                     :padding     "6px 10px"
+                     :borderRadius "6px"
+                     :border      "1px solid var(--lx-gray-07,#d1d5db)"
+                     :outline     "none"
+                     :fontSize    "12px"
+                     :fontFamily  "monospace"
+                     :resize      "vertical"
+                     :boxSizing   "border-box"}
+         :on-blur   (fn [^js e]
+                      (save! (assoc cfg :embed-whitelist (.. e -target -value))))}]
+       [:div.text-xs.opacity-40.mt-1
+        "修改后点击文本框外部生效。白名单仅控制 Excalidraw 是否尝试加载 iframe；"
+        "目标网站的 X-Frame-Options / CSP 策略仍然有效。"]]]
+
+     [:hr {:style {:border "none" :border-top "1px solid var(--lx-gray-05,#e5e7eb)" :margin "16px 0"}}]
+
+     ;; ── Default font family ───────────────────────────────────────────────
+     [:div {:class row-cls}
+      [:div.flex.flex-col
+       [:label {:class label-cls} "默认字体"]
+       [:div.text-xs.opacity-50.mt-1 "新建文本元素的默认字体"]]
+      [:div.mt-1.sm:mt-0.sm:col-span-2
+       [:div {:style {:display "flex" :gap "8px" :flexWrap "wrap"}}
+        (for [[id label preview]
+              [[1 "Virgil" "手写"]
+               [2 "Helvetica" "常规"]
+               [3 "Cascadia" "等宽"]]]
+          [:button
+           {:key      (str "font-" id)
+            :title    (str label " – " preview)
+            :on-click #(save! (assoc cfg :font-family id))
+            :style    {:padding     "6px 14px"
+                       :borderRadius "6px"
+                       :border      (if (= (:font-family cfg) id)
+                                      "2px solid #6366f1"
+                                      "1px solid var(--lx-gray-07,#d1d5db)")
+                       :background  (if (= (:font-family cfg) id)
+                                      "#eef2ff"
+                                      "var(--lx-gray-02,#f9fafb)")
+                       :cursor      "pointer"
+                       :fontSize    "13px"
+                       :fontWeight  (if (= (:font-family cfg) id) "600" "400")
+                       :color       (if (= (:font-family cfg) id) "#4f46e5" "inherit")}}
+           label])]
+       [:div.text-xs.opacity-40.mt-2
+        "Virgil = 手写风格（默认），Helvetica = 普通无衬线，Cascadia = 等宽代码风格"]]]
+
+     [:hr {:style {:border "none" :border-top "1px solid var(--lx-gray-05,#e5e7eb)" :margin "16px 0"}}]
+
+     ;; ── Config page info ──────────────────────────────────────────────────
+     [:div.text-xs.opacity-40
+      "配置存储于页面 "
+      [:code "logseq/excalidraw"]
+      "，标签 #Excalidraw。您也可以直接编辑该页面的 "
+      [:code "excalidraw-config"]
+      " 属性（JSON 格式）。"]]))
+
 (rum/defcs ^:large-vars/cleanup-todo settings
   < (rum/local DEFAULT-ACTIVE-TAB-STATE ::active)
   {:will-mount
@@ -1294,6 +1388,7 @@
 
                [:ai (t :settings-page/tab-ai) (t :settings-page/ai) (ui/icon "wand")]
 
+               [:excalidraw "excalidraw" "白板" (ui/icon "layout-board")]
                [:advanced "advanced" (t :settings-page/tab-advanced) (ui/icon "bulb")]
                [:features "features" (t :settings-page/tab-features) (ui/icon "app-feature")]
                (when logged-in?
@@ -1343,6 +1438,9 @@
 
          :assets
          (assets/settings-content)
+
+         :excalidraw
+         (settings-excalidraw)
 
          :advanced
          (settings-advanced)
