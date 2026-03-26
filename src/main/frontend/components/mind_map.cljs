@@ -6,8 +6,11 @@
      frontend.handler.mind-map         – DB 读写（多文档支持）
      frontend.components.mind-map      – 画廊 UI + 路由入口"
   (:require [clojure.string :as str]
+            [datascript.core :as d]
             [frontend.db :as db]
+            [frontend.db-mixins :as db-mixins]
             [frontend.db.async :as db-async]
+            [frontend.db.react :as react]
             [frontend.handler.editor :as editor-handler]
             [frontend.handler.mind-map :as mind-map-handler]
             [frontend.handler.notification :as notification]
@@ -125,7 +128,7 @@
 
 (rum/defcs all-mind-maps
   "画廊页：列出所有思维导图，支持新建、重命名、删除。"
-  < rum/reactive
+  < rum/reactive db-mixins/query
   (rum/local false ::creating?)
   (rum/local "" ::new-name)
   (rum/local nil ::editing-uuid)
@@ -139,9 +142,23 @@
         new-name      (rum/react *new-name)
         editing-uuid  (rum/react *editing-uuid)
         rename-val    (rum/react *rename-val)
+        repo          (state/get-current-repo)
 
-        ;; 直接从本地 DataScript 副本读取（mind-map 列表不需要 async worker query）
-        mind-maps     (mind-map-handler/get-all-mind-maps)
+        ;; 查找 MindMap class 实体 ID（用于建立响应式订阅）
+        mm-class-id   (when-let [db (db/get-db)]
+                        (ffirst (d/q '[:find [?e ...]
+                                       :where [?e :block/title "MindMap"]
+                                              [?e :block/tags ?t]
+                                              [?t :db/ident :logseq.class/Tag]]
+                                     db)))
+        ;; 订阅 MindMap class 对象变更（删除/新增思维导图时 :block/tags 变化会触发）
+        ;; 返回 result atom；若 class 尚不存在则退化到直接读本地 DB。
+        mm-atom       (when (and repo mm-class-id)
+                        (react/q repo [:frontend.worker.react/objects mm-class-id]
+                                 {:query-fn (fn [_db _] (mind-map-handler/get-all-mind-maps))}
+                                 nil))
+        mind-maps     (or (some-> mm-atom rum/react)
+                          (mind-map-handler/get-all-mind-maps))
 
         do-create!
         (fn []

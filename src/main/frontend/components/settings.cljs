@@ -1258,8 +1258,9 @@
 ;; ── Excalidraw settings panel ─────────────────────────────────────────────────
 
 (rum/defcs settings-excalidraw < rum/reactive
-  (rum/local nil  ::config)        ; loaded config map
-  (rum/local ""   ::whitelist-txt) ; textarea controlled value
+  (rum/local nil   ::config)        ; loaded config map (working copy, not yet saved)
+  (rum/local ""    ::whitelist-txt) ; textarea controlled value
+  (rum/local false ::saved?)        ; show "已保存" flash after save
   {:did-mount
    (fn [state]
      (let [cfg (ex-cfg/get-config)]
@@ -1269,8 +1270,10 @@
   [state]
   (let [*cfg           (::config state)
         *whitelist-txt (::whitelist-txt state)
+        *saved?        (::saved? state)
         cfg            (rum/react *cfg)
         whitelist-txt  (rum/react *whitelist-txt)
+        saved?         (rum/react *saved?)
         row-cls        "it sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start"
         label-cls      "block text-sm font-medium leading-5 opacity-70"
         input-style    {:display      "block"
@@ -1282,9 +1285,13 @@
                         :fontSize     "12px"
                         :fontFamily   "monospace"
                         :boxSizing    "border-box"}
-        save!   (fn [new-cfg]
-                  (reset! *cfg new-cfg)
-                  (ex-cfg/save-config! new-cfg))]
+        ;; Collect all current field values into one config map and persist
+        save-all!  (fn []
+                     (let [merged (assoc cfg :embed-whitelist whitelist-txt)]
+                       (reset! *cfg merged)
+                       (ex-cfg/save-config! merged)
+                       (reset! *saved? true)
+                       (js/setTimeout #(reset! *saved? false) 2000)))]
     [:div.panel-wrap.is-excalidraw.mb-8
 
      ;; ── Embed whitelist ────────────────────────────────────────────────────
@@ -1298,26 +1305,21 @@
          :value       whitelist-txt
          :placeholder "每行一个域名，例如：\nyoutube.com\nexample.com\n\n留空则禁止所有嵌入，输入 * 则允许全部"
          :style       (assoc input-style :resize "vertical")
-         :on-change   (fn [^js e] (reset! *whitelist-txt (.. e -target -value)))
-         :on-blur     (fn [_] (save! (assoc cfg :embed-whitelist whitelist-txt)))}]
+         :on-change   (fn [^js e] (reset! *whitelist-txt (.. e -target -value)))}]
        [:div.text-xs.opacity-40.mt-1
-        "修改后点击文本框外部生效。白名单仅控制 Excalidraw 是否尝试加载 iframe；"
+        "白名单仅控制 Excalidraw 是否尝试加载 iframe；"
         "目标网站的 X-Frame-Options / CSP 策略仍然有效。"]]]
 
      [:hr {:style {:border "none" :border-top "1px solid var(--lx-gray-05,#e5e7eb)" :margin "16px 0"}}]
 
      ;; ── Font paths ────────────────────────────────────────────────────────
-     ;; Each of the three Excalidraw built-in fonts can be overridden with a
-     ;; local font file path.  The path is passed to Excalidraw's
-     ;; :customFonts prop so the renderer loads your disk font instead of the
-     ;; bundled one.  Leave blank to use the built-in font.
      [:div {:class row-cls}
       [:div.flex.flex-col
        [:label {:class label-cls} "字体文件路径"]
        [:div.text-xs.opacity-50.mt-1 "可选：填写磁盘上字体文件的路径，覆盖内置字体"]]
       [:div.mt-1.sm:mt-0.sm:col-span-2
        (for [[key label desc]
-             [[:font-path-virgil   "Virgil 路径"   "手写风格（默认 font-family=1）"]
+             [[:font-path-virgil    "Virgil 路径"    "手写风格（font-family=1）"]
               [:font-path-helvetica "Helvetica 路径" "普通无衬线（font-family=2）"]
               [:font-path-cascadia  "Cascadia 路径"  "等宽代码（font-family=3）"]]]
          [:div {:key (name key) :style {:marginBottom "10px"}}
@@ -1329,12 +1331,28 @@
             :placeholder (str "例如：/Users/xxx/Fonts/" label ".ttf")
             :style       input-style
             :on-change   (fn [^js e]
-                           (let [v (.. e -target -value)]
-                             (reset! *cfg (assoc cfg key v))))
-            :on-blur     (fn [_] (save! cfg))}]])
+                           (reset! *cfg (assoc cfg key (.. e -target -value))))}]])
        [:div.text-xs.opacity-40.mt-1
         "支持 TTF / OTF / WOFF2。路径需为绝对路径或应用可访问的 file:// URL。"
-        "修改后刷新白板页面生效。"]]]
+        "保存后刷新白板页面生效。"]]]
+
+     [:hr {:style {:border "none" :border-top "1px solid var(--lx-gray-05,#e5e7eb)" :margin "16px 0"}}]
+
+     ;; ── Save button ───────────────────────────────────────────────────────
+     [:div.flex.items-center.gap-3
+      [:button
+       {:on-click save-all!
+        :style    {:padding      "7px 20px"
+                   :borderRadius "6px"
+                   :border       "none"
+                   :background   "#6366f1"
+                   :color        "#fff"
+                   :fontSize     "13px"
+                   :fontWeight   "600"
+                   :cursor       "pointer"}}
+       "保存设置"]
+      (when saved?
+        [:span.text-xs {:style {:color "#22c55e" :fontWeight "600"}} "✓ 已保存"])]
 
      [:hr {:style {:border "none" :border-top "1px solid var(--lx-gray-05,#e5e7eb)" :margin "16px 0"}}]
 
