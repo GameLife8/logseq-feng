@@ -6,13 +6,14 @@
                  attr   = :block/excalidraw-config  (JSON string)
 
    Config map keys (ClojureScript, keywordized):
-     :embed-whitelist  – newline-separated domain list, e.g. \"example.com\\nyoutube.com\".
-                         Use \"*\" (alone) to allow every URL.
-                         Empty string / nil → block all iframe embeds.
-     :font-family      – integer font family used as Excalidraw default:
-                           1 = Virgil（手写体）
-                           2 = Helvetica（常规）
-                           3 = Cascadia（等宽体）"
+     :embed-whitelist    – newline-separated domain list, e.g. \"example.com\\nyoutube.com\".
+                           Use \"*\" (alone) to allow every URL.
+                           Empty string / nil → block all iframe embeds.
+     :font-path-virgil   – absolute path (or file:// URL) to a TTF/OTF/WOFF2 that
+                           overrides Excalidraw's built-in Virgil (font-family 1).
+                           Leave blank to use the built-in font.
+     :font-path-helvetica – same for Helvetica (font-family 2).
+     :font-path-cascadia  – same for Cascadia (font-family 3)."
   (:require [frontend.db :as db]
             [frontend.handler.common.page :as common-page-handler]
             [frontend.handler.notification :as notification]
@@ -25,8 +26,10 @@
 (def ^:private config-attr       :block/excalidraw-config)
 
 (def default-config
-  {:embed-whitelist ""     ; block all by default (empty = deny all)
-   :font-family     1})    ; 1 = Virgil
+  {:embed-whitelist     ""   ; block all by default (empty = deny all)
+   :font-path-virgil    ""   ; built-in Virgil
+   :font-path-helvetica ""   ; built-in Helvetica
+   :font-path-cascadia  ""}) ; built-in Cascadia
 
 ;; ── read ─────────────────────────────────────────────────────────────────────
 

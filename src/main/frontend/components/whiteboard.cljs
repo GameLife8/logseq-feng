@@ -419,7 +419,7 @@
      state)}
   [state {:keys [page-uuid page-title on-back on-api-ready
                  on-show-linked-blocks on-selection-change render-tags on-rename
-                 validate-embeddable default-font-family]}]
+                 validate-embeddable custom-fonts]}]
   (let [loaded? (rum/react (::loaded? state))]
     [:div.wb-canvas {:style {:width "100%" :height "100%"}}
      (if loaded?
@@ -434,7 +434,7 @@
          :render-tags            render-tags
          ;; Config-driven props (from excalidraw settings panel)
          :validate-embeddable    validate-embeddable
-         :default-font-family    default-font-family
+         :custom-fonts           custom-fonts
          ;; DB persistence callbacks (main bundle → lazy bundle boundary)
          :on-load-data           whiteboard-handler/load-canvas-from-db
          :on-save-data           whiteboard-handler/save-canvas-to-db!})
@@ -459,10 +459,12 @@
         page-title         (or (:block/title page-entity) "Untitled Whiteboard")
         repo               (state/get-current-repo)
 
-        ;; Read Excalidraw settings (embed whitelist + font family)
+        ;; Read Excalidraw settings (embed whitelist + custom font paths)
         ex-config          (ex-cfg/get-config)
         validate-embed     (ex-cfg/make-validate-embeddable (:embed-whitelist ex-config))
-        default-font       (:font-family ex-config)
+        custom-fonts       {:virgil    (:font-path-virgil ex-config)
+                            :helvetica (:font-path-helvetica ex-config)
+                            :cascadia  (:font-path-cascadia ex-config)}
 
         on-back (fn []
                   (notification/show! "白板已保存" :success)
@@ -523,7 +525,7 @@
                                  (whiteboard-handler/<rename-whiteboard! page-uuid new-title))
         :render-tags           (fn [] (tags-bar page-uuid page-entity))
         :validate-embeddable   validate-embed
-        :default-font-family   default-font})]
+        :custom-fonts          custom-fonts})]
 
      ;; Linked-blocks panel (shown when linked-panel-el-id is set)
      (when (and linked-panel-el-id @*canvas-api)

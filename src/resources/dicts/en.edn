@@ -168,6 +168,7 @@
  :context-menu/toggle-number-list "Toggle number list"
  :settings-page/ai "AI"
  :settings-page/tab-ai "AI"
+ :settings-page/tab-excalidraw "Whiteboard"
  :settings-page/enable-mcp-server "MCP Server"
  :settings-page/enable-mcp-server-desc "Enable MCP Server to allow commmunication with local AI applications. MCP Server depends on HTTP API server."
  :settings-page/edit-config-edn "Edit config.edn"

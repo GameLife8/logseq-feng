@@ -155,6 +155,7 @@
  :settings-page/tab-general "常规"
  :settings-page/tab-editor "编辑器"
  :settings-page/tab-keymap "快捷键"
+ :settings-page/tab-excalidraw "白板"
  :settings-page/tab-advanced "高级设置"
  :settings-page/tab-features "更多功能"
  :settings-page/plugin-system "插件系统"

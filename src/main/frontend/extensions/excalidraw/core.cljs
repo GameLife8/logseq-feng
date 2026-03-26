@@ -234,7 +234,31 @@
                     ".excalidraw .context-menu-option__shortcut { display: none !important; }\n"
                     ".excalidraw .context-menu-item-separator { display: none !important; }\n"
                     ".excalidraw .context-menu-item__label { font-size: 12px !important; }\n"
-                    ".excalidraw .context-menu-item { min-height: 28px !important; }"))))
+                    ".excalidraw .context-menu-item { min-height: 28px !important; }")))
+       ;; Inject @font-face overrides for custom font paths configured by the user.
+       ;; Excalidraw uses font-family names "Virgil", "Helvetica" and "Cascadia".
+       ;; If the user provides a disk path we inject a higher-priority @font-face
+       ;; that shadows the bundled one.
+       (let [args       (first (:rum/args state))
+             fonts      (:custom-fonts args)
+             face-rules (str
+                         (when (seq (:virgil fonts))
+                           (str "@font-face { font-family: 'Virgil'; src: url('"
+                                (:virgil fonts) "') format('truetype'); font-style: normal; font-weight: normal; }\n"))
+                         (when (seq (:helvetica fonts))
+                           (str "@font-face { font-family: 'Helvetica'; src: url('"
+                                (:helvetica fonts) "') format('truetype'); font-style: normal; font-weight: normal; }\n"))
+                         (when (seq (:cascadia fonts))
+                           (str "@font-face { font-family: 'Cascadia'; src: url('"
+                                (:cascadia fonts) "') format('truetype'); font-style: normal; font-weight: normal; }\n")))]
+         (when (seq face-rules)
+           (let [fe (or (.getElementById js/document "excalidraw-custom-fonts")
+                        (let [new-el (.createElement js/document "style")]
+                          (set! (.-id new-el) "excalidraw-custom-fonts")
+                          (.. js/document -head (appendChild new-el))
+                          new-el))]
+             (set! (.-textContent fe) face-rules)
+             (js/console.log "[excalidraw] injected custom @font-face rules")))))
      state)
    :will-unmount
    (fn [state]
@@ -250,33 +274,17 @@
   [state {:keys [page-uuid page-title on-back on-api-ready
                  on-show-linked-blocks on-selection-change
                  on-load-data on-save-data render-tags on-rename
-                 validate-embeddable default-font-family]}]
+                 validate-embeddable custom-fonts]}]
   (let [*api        (::api state)
         *sel-el-id  (::sel-el-id state)
         *dirty?     (::dirty? state)
         *library    (::library-items state)
-        ;; Merge saved canvas appState with configured defaults (e.g. font-family).
-        ;; The saved state takes priority so user's last choice is preserved.
-        apply-font  (fn [data]
-                      (when data
-                        (if default-font-family
-                          (let [astate (or (.-appState data) #js {})
-                                ;; Only set if not already saved in this canvas
-                                cur-font (gobj/get astate "currentItemFontFamily")]
-                            (if cur-font
-                              data
-                              (js/Object.assign
-                               #js {} data
-                               #js {:appState (js/Object.assign #js {} astate
-                                                                #js {:currentItemFontFamily default-font-family})})))
-                          data)))
-        init-data   (apply-font
-                     (or (when on-load-data
-                           (try
-                             (when-let [json-str (on-load-data page-uuid)]
-                               (js/JSON.parse json-str))
-                             (catch :default _ nil)))
-                         (load-from-ls page-uuid)))
+        init-data   (or (when on-load-data
+                          (try
+                            (when-let [json-str (on-load-data page-uuid)]
+                              (js/JSON.parse json-str))
+                            (catch :default _ nil)))
+                        (load-from-ls page-uuid))
         save-and-back!
         (fn []
           (let [api @*api]

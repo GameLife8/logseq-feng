@@ -1258,17 +1258,30 @@
 ;; ── Excalidraw settings panel ─────────────────────────────────────────────────
 
 (rum/defcs settings-excalidraw < rum/reactive
-  (rum/local nil ::config)   ; loaded config map
+  (rum/local nil  ::config)        ; loaded config map
+  (rum/local ""   ::whitelist-txt) ; textarea controlled value
   {:did-mount
    (fn [state]
-     (reset! (::config state) (ex-cfg/get-config))
+     (let [cfg (ex-cfg/get-config)]
+       (reset! (::config state) cfg)
+       (reset! (::whitelist-txt state) (or (:embed-whitelist cfg) "")))
      state)}
   [state]
-  (let [*cfg    (::config state)
-        cfg     (rum/react *cfg)
-        row-cls "it sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start"
-        label-cls "block text-sm font-medium leading-5 opacity-70"
-
+  (let [*cfg           (::config state)
+        *whitelist-txt (::whitelist-txt state)
+        cfg            (rum/react *cfg)
+        whitelist-txt  (rum/react *whitelist-txt)
+        row-cls        "it sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start"
+        label-cls      "block text-sm font-medium leading-5 opacity-70"
+        input-style    {:display      "block"
+                        :width        "100%"
+                        :padding      "5px 8px"
+                        :borderRadius "6px"
+                        :border       "1px solid var(--lx-gray-07,#d1d5db)"
+                        :outline      "none"
+                        :fontSize     "12px"
+                        :fontFamily   "monospace"
+                        :boxSizing    "border-box"}
         save!   (fn [new-cfg]
                   (reset! *cfg new-cfg)
                   (ex-cfg/save-config! new-cfg))]
@@ -1281,61 +1294,47 @@
        [:div.text-xs.opacity-50.mt-1 "每行一个域名，"*" 表示允许所有网址"]]
       [:div.mt-1.sm:mt-0.sm:col-span-2
        [:textarea
-        {:rows      6
-         :value     (or (:embed-whitelist cfg) "")
-         :placeholder "每行一个域名，例如：
-youtube.com
-example.com
-
-留空则禁止所有嵌入，输入 * 则允许全部"
-         :style     {:display     "block"
-                     :width       "100%"
-                     :padding     "6px 10px"
-                     :borderRadius "6px"
-                     :border      "1px solid var(--lx-gray-07,#d1d5db)"
-                     :outline     "none"
-                     :fontSize    "12px"
-                     :fontFamily  "monospace"
-                     :resize      "vertical"
-                     :boxSizing   "border-box"}
-         :on-blur   (fn [^js e]
-                      (save! (assoc cfg :embed-whitelist (.. e -target -value))))}]
+        {:rows        6
+         :value       whitelist-txt
+         :placeholder "每行一个域名，例如：\nyoutube.com\nexample.com\n\n留空则禁止所有嵌入，输入 * 则允许全部"
+         :style       (assoc input-style :resize "vertical")
+         :on-change   (fn [^js e] (reset! *whitelist-txt (.. e -target -value)))
+         :on-blur     (fn [_] (save! (assoc cfg :embed-whitelist whitelist-txt)))}]
        [:div.text-xs.opacity-40.mt-1
         "修改后点击文本框外部生效。白名单仅控制 Excalidraw 是否尝试加载 iframe；"
         "目标网站的 X-Frame-Options / CSP 策略仍然有效。"]]]
 
      [:hr {:style {:border "none" :border-top "1px solid var(--lx-gray-05,#e5e7eb)" :margin "16px 0"}}]
 
-     ;; ── Default font family ───────────────────────────────────────────────
+     ;; ── Font paths ────────────────────────────────────────────────────────
+     ;; Each of the three Excalidraw built-in fonts can be overridden with a
+     ;; local font file path.  The path is passed to Excalidraw's
+     ;; :customFonts prop so the renderer loads your disk font instead of the
+     ;; bundled one.  Leave blank to use the built-in font.
      [:div {:class row-cls}
       [:div.flex.flex-col
-       [:label {:class label-cls} "默认字体"]
-       [:div.text-xs.opacity-50.mt-1 "新建文本元素的默认字体"]]
+       [:label {:class label-cls} "字体文件路径"]
+       [:div.text-xs.opacity-50.mt-1 "可选：填写磁盘上字体文件的路径，覆盖内置字体"]]
       [:div.mt-1.sm:mt-0.sm:col-span-2
-       [:div {:style {:display "flex" :gap "8px" :flexWrap "wrap"}}
-        (for [[id label preview]
-              [[1 "Virgil" "手写"]
-               [2 "Helvetica" "常规"]
-               [3 "Cascadia" "等宽"]]]
-          [:button
-           {:key      (str "font-" id)
-            :title    (str label " – " preview)
-            :on-click #(save! (assoc cfg :font-family id))
-            :style    {:padding     "6px 14px"
-                       :borderRadius "6px"
-                       :border      (if (= (:font-family cfg) id)
-                                      "2px solid #6366f1"
-                                      "1px solid var(--lx-gray-07,#d1d5db)")
-                       :background  (if (= (:font-family cfg) id)
-                                      "#eef2ff"
-                                      "var(--lx-gray-02,#f9fafb)")
-                       :cursor      "pointer"
-                       :fontSize    "13px"
-                       :fontWeight  (if (= (:font-family cfg) id) "600" "400")
-                       :color       (if (= (:font-family cfg) id) "#4f46e5" "inherit")}}
-           label])]
-       [:div.text-xs.opacity-40.mt-2
-        "Virgil = 手写风格（默认），Helvetica = 普通无衬线，Cascadia = 等宽代码风格"]]]
+       (for [[key label desc]
+             [[:font-path-virgil   "Virgil 路径"   "手写风格（默认 font-family=1）"]
+              [:font-path-helvetica "Helvetica 路径" "普通无衬线（font-family=2）"]
+              [:font-path-cascadia  "Cascadia 路径"  "等宽代码（font-family=3）"]]]
+         [:div {:key (name key) :style {:marginBottom "10px"}}
+          [:label.text-xs.opacity-60 {:style {:display "block" :marginBottom "3px"}}
+           label [:span.opacity-40 {:style {:marginLeft "6px"}} desc]]
+          [:input
+           {:type        "text"
+            :value       (or (get cfg key) "")
+            :placeholder (str "例如：/Users/xxx/Fonts/" label ".ttf")
+            :style       input-style
+            :on-change   (fn [^js e]
+                           (let [v (.. e -target -value)]
+                             (reset! *cfg (assoc cfg key v))))
+            :on-blur     (fn [_] (save! cfg))}]])
+       [:div.text-xs.opacity-40.mt-1
+        "支持 TTF / OTF / WOFF2。路径需为绝对路径或应用可访问的 file:// URL。"
+        "修改后刷新白板页面生效。"]]]
 
      [:hr {:style {:border "none" :border-top "1px solid var(--lx-gray-05,#e5e7eb)" :margin "16px 0"}}]
 
