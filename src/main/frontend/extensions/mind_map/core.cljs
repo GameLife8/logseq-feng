@@ -914,6 +914,8 @@
   ;; context menu
   (rum/local nil   ::ctx-menu)
   (rum/local nil   ::ctx-handler)
+  (rum/local nil   ::ctx-md-handler)   ; mousedown capture handler (snapshot before SMM clears)
+  (rum/local {}    ::ctx-snapshot)     ; {:active? bool :root? bool} snapped on right-mousedown
   ;; style panel
   (rum/local false ::show-style-panel?)
   (rum/local {}    ::node-styles)
@@ -1182,27 +1184,34 @@
              (reset! (::focusin-handler state)  focusin-handler)
              (reset! (::focusout-handler state) focusout-handler))
            ;; ── right-click context menu ─────────────────────────────────────
-          ;; Snapshot node-active? / is-root? from the instance at contextmenu
-          ;; time.  Do NOT read reactive ::node-active? here: simple-mind-map
-          ;; fires node_active (clearing selection) BEFORE the browser dispatches
-          ;; contextmenu, so the reactive atom is already false when we arrive.
-           (let [ctx-handler
+          ;; simple-mind-map fires node_active (clearing selection) on mousedown,
+          ;; BEFORE the browser dispatches contextmenu.  So we must snapshot the
+          ;; active-node state in a mousedown CAPTURE listener (fires earlier than
+          ;; any bubble-phase handler, including SMM's own).
+           (let [md-handler
+                 (fn [^js e]
+                   (when (= 2 (.-button e))          ; right button only
+                     (let [inst @(::instance state)
+                           al   (when inst (.. ^js inst -renderer -activeNodeList))
+                           node (when (and al (pos? (.-length al))) (aget al 0))]
+                       (reset! (::ctx-snapshot state)
+                               {:active? (boolean node)
+                                :root?   (boolean (when node (.-isRoot node)))}))))
+                 ctx-handler
                  (fn [^js e]
                    (.preventDefault e)
                    (.stopPropagation e)
-                   (let [inst    @(::instance state)
-                         al      (when inst (.. ^js inst -renderer -activeNodeList))
-                         node    (when (and al (pos? (.-length al))) (aget al 0))
-                         active? (boolean node)
-                         root?   (boolean (when node (.-isRoot node)))]
+                   (let [{:keys [active? root?]} @(::ctx-snapshot state)]
                      (js/console.log "[mind-map] contextmenu node-active?" active? "is-root?" root?)
                      (reset! (::ctx-menu state)
                              {:x            (.-clientX e)
                               :y            (.-clientY e)
                               :node-active? active?
                               :is-root?     root?})))]
+             (.addEventListener container "mousedown"   md-handler  true)   ; capture!
              (.addEventListener container "contextmenu" ctx-handler false)
-             (reset! (::ctx-handler state) ctx-handler)))))
+             (reset! (::ctx-md-handler state) md-handler)
+             (reset! (::ctx-handler state)    ctx-handler)))))
      state)
    :will-unmount
    (fn [state]
@@ -1223,7 +1232,9 @@
          (.removeEventListener container "focusin"  fi-handler       false)
          (.removeEventListener container "focusout" fo-handler       false)
          (when-let [ctx-h @(::ctx-handler state)]
-           (.removeEventListener container "contextmenu" ctx-h false)))
+           (.removeEventListener container "contextmenu" ctx-h false))
+         (when-let [md-h @(::ctx-md-handler state)]
+           (.removeEventListener container "mousedown" md-h true)))
        (state/set-block-component-editing-mode! false)
        (when instance
          (let [data (.getData ^js instance)]
