@@ -292,6 +292,11 @@
            :theme            (if (= "dark" (state/sub :ui/theme)) "dark" "light")
            :UIOptions        #js {:canvasActions #js {:export    false
                                                       :loadScene false}}
+           ;; Allow embedding any URL (bypass Excalidraw's built-in domain whitelist).
+           ;; Logseq runs on Electron/Chromium, so whether an iframe actually loads
+           ;; depends on the target site's X-Frame-Options / CSP headers, not on
+           ;; Excalidraw's JS-side whitelist check.
+           :validateEmbeddable true
            :libraryItems     (or @*library #js [])
            :onLibraryChange  (fn [^js items]
                                (reset! *library items)
