@@ -59,14 +59,25 @@
     (if (mind-map-name-exists? title)
       (do (notification/show! (str "思维导图「" title "」已存在，请使用不同的名称") :warning)
           nil)
-      (p/let [page (common-page-handler/<create! title {:redirect? false})]
+      (p/let [page (common-page-handler/<create! title {:redirect? false})
+              ;; 找到或创建 "MindMap" 用户标签页，用于给所有思维导图页面打标签
+              tag  (let [database (db/get-db)
+                         existing-eid (when database
+                                        (ffirst (d/q '[:find [?e ...]
+                                                       :in $ ?t
+                                                       :where [?e :block/title ?t]
+                                                              [(missing? $ ?e :db/ident)]]
+                                                     database "MindMap")))]
+                     (if existing-eid
+                       (p/resolved (db/entity existing-eid))
+                       (common-page-handler/<create! "MindMap" {:redirect? false})))]
         (when page
-          ;; 写入默认 JSON 标记该页面为思维导图（使其被 get-all-mind-maps 查询到）
-          (db/transact! (state/get-current-repo)
-                        [{:db/id             (:db/id page)
-                          :block/mind-map-data (str "{\"data\":{\"text\":\"" title "\"},\"children\":[]}")
-                          :block/updated-at   (.now js/Date)}]
-                        {:outliner-op :save-block})
+          (let [repo (state/get-current-repo)
+                txs  (cond-> [{:db/id             (:db/id page)
+                               :block/mind-map-data (str "{\"data\":{\"text\":\"" title "\"},\"children\":[]}")
+                               :block/updated-at   (.now js/Date)}]
+                        tag (conj {:db/id (:db/id page) :block/tags #{(:db/id tag)}}))]
+            (db/transact! repo txs {:outliner-op :save-block}))
           (route-handler/redirect!
            {:to          :mind-map
             :path-params {:name (str (:block/uuid page))}})

@@ -2,7 +2,7 @@
   "Manages Excalidraw/Whiteboard user settings stored as a dedicated page entity.
 
    Config page:  title  = \"logseq/excalidraw\"
-                 tag    = :logseq.class/Excalidraw  (system class)
+                 tag    = \"Excalidraw\" user tag page (find or create)
                  attr   = :block/excalidraw-config  (JSON string)
 
    Config map keys (ClojureScript, keywordized):
@@ -14,7 +14,9 @@
                            Leave blank to use the built-in font.
      :font-path-helvetica – same for Helvetica (font-family 2).
      :font-path-cascadia  – same for Cascadia (font-family 3)."
-  (:require [frontend.db :as db]
+  (:require [clojure.string :as string]
+            [datascript.core :as d]
+            [frontend.db :as db]
             [frontend.handler.common.page :as common-page-handler]
             [frontend.handler.notification :as notification]
             [frontend.state :as state]
@@ -24,6 +26,7 @@
 
 (def ^:private config-page-title "logseq/excalidraw")
 (def ^:private config-attr       :block/excalidraw-config)
+(def ^:private tag-title         "Excalidraw")
 
 (def default-config
   {:embed-whitelist     ""   ; block all by default (empty = deny all)
@@ -49,21 +52,51 @@
 
 ;; ── write ─────────────────────────────────────────────────────────────────────
 
+(defn- <ensure-tag!
+  "Find or create a user tag page with the given title.
+   Returns a Promise<entity>.
+   Uses a user-page lookup (no :db/ident) to avoid colliding with system classes."
+  [title]
+  (let [database (db/get-db)
+        existing-eid (when database
+                       (ffirst (d/q '[:find [?e ...]
+                                      :in $ ?t
+                                      :where [?e :block/title ?t]
+                                             [(missing? $ ?e :db/ident)]]
+                                    database title)))]
+    (if existing-eid
+      (do (js/console.log "[ex-cfg] found existing tag" title "id=" existing-eid)
+          (p/resolved (db/entity existing-eid)))
+      (do (js/console.log "[ex-cfg] creating tag page" title)
+          (common-page-handler/<create! title {:redirect? false})))))
+
 (defn- ensure-config-page!
-  "Find or create the config page.  Returns a Promise<page-entity>."
+  "Find or create the config page, tagging it with the 'Excalidraw' user tag.
+   Returns a Promise<page-entity>."
   []
-  (if-let [existing (db/get-page config-page-title)]
-    (p/resolved existing)
-    (p/let [page (common-page-handler/<create! config-page-title {:redirect? false})]
-      (when page
-        (let [repo (state/get-current-repo)]
-          ;; Tag with system class :logseq.class/Excalidraw (if it exists)
-          (when-let [cls (db/entity :logseq.class/Excalidraw)]
-            (js/console.log "[ex-cfg] tagging config page with :logseq.class/Excalidraw id=" (:db/id cls))
-            (db/transact! repo
-                          [{:db/id (:db/id page) :block/tags #{(:db/id cls)}}]
-                          {:outliner-op :save-block}))))
-      page)))
+  (let [existing (db/get-page config-page-title)]
+    (if existing
+      ;; Page exists – ensure it still has the tag
+      (p/let [tag (<ensure-tag! tag-title)]
+        (when (and tag existing
+                   (not (some #(= (:db/id tag) (:db/id %))
+                              (:block/tags existing))))
+          (js/console.log "[ex-cfg] re-applying Excalidraw tag to existing config page")
+          (db/transact! (state/get-current-repo)
+                        [{:db/id      (:db/id existing)
+                          :block/tags #{(:db/id tag)}}]
+                        {:outliner-op :save-block}))
+        existing)
+      ;; Page doesn't exist – create page and tag together
+      (p/let [page (common-page-handler/<create! config-page-title {:redirect? false})
+              tag  (<ensure-tag! tag-title)]
+        (when (and page tag)
+          (js/console.log "[ex-cfg] tagging new config page with" tag-title "id=" (:db/id tag))
+          (db/transact! (state/get-current-repo)
+                        [{:db/id      (:db/id page)
+                          :block/tags #{(:db/id tag)}}]
+                        {:outliner-op :save-block}))
+        page))))
 
 (defn save-config!
   "Persist `config-map` to the config page entity.
@@ -87,8 +120,8 @@
 (defn parse-whitelist
   "Parse the newline-separated whitelist string into a vector of trimmed domain strings."
   [raw]
-  (->> (clojure.string/split (or raw "") #"\n")
-       (map clojure.string/trim)
+  (->> (string/split (or raw "") #"\n")
+       (map string/trim)
        (filter seq)
        vec))
 
@@ -112,6 +145,6 @@
           (let [hostname (.-hostname (js/URL. url))]
             (boolean (some (fn [d]
                              (or (= hostname d)
-                                 (clojure.string/ends-with? hostname (str "." d))))
+                                 (string/ends-with? hostname (str "." d))))
                            domains)))
           (catch :default _ false))))))

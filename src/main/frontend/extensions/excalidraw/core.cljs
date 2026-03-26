@@ -237,20 +237,32 @@
                     ".excalidraw .context-menu-item { min-height: 28px !important; }")))
        ;; Inject @font-face overrides for custom font paths configured by the user.
        ;; Excalidraw uses font-family names "Virgil", "Helvetica" and "Cascadia".
-       ;; If the user provides a disk path we inject a higher-priority @font-face
-       ;; that shadows the bundled one.
-       (let [args       (first (:rum/args state))
+       ;; Supports Unix paths (/usr/…), Windows paths (C:\… or C:/…), and URLs.
+       (let [path->url  (fn [p]
+                          (cond
+                            (or (nil? p) (= "" p))              nil
+                            (re-find #"^(file|http|https)://" p) p
+                            (re-find #"^[A-Za-z]:[/\\]" p)      ; Windows drive letter
+                            (str "file:///"
+                                 (clojure.string/replace p #"\\" "/"))
+                            :else                               ; Unix absolute
+                            (str "file://" p)))
+             ext->fmt   (fn [p]
+                          (condp re-find (or p "")
+                            #"(?i)\.woff2$" "woff2"
+                            #"(?i)\.woff$"  "woff"
+                            #"(?i)\.otf$"   "opentype"
+                            "truetype"))
+             face-rule  (fn [family path]
+                          (when-let [url (path->url path)]
+                            (str "@font-face { font-family: '" family "'; "
+                                 "src: url('" url "') format('" (ext->fmt path) "'); "
+                                 "font-style: normal; font-weight: normal; }\n")))
+             args       (first (:rum/args state))
              fonts      (:custom-fonts args)
-             face-rules (str
-                         (when (seq (:virgil fonts))
-                           (str "@font-face { font-family: 'Virgil'; src: url('"
-                                (:virgil fonts) "') format('truetype'); font-style: normal; font-weight: normal; }\n"))
-                         (when (seq (:helvetica fonts))
-                           (str "@font-face { font-family: 'Helvetica'; src: url('"
-                                (:helvetica fonts) "') format('truetype'); font-style: normal; font-weight: normal; }\n"))
-                         (when (seq (:cascadia fonts))
-                           (str "@font-face { font-family: 'Cascadia'; src: url('"
-                                (:cascadia fonts) "') format('truetype'); font-style: normal; font-weight: normal; }\n")))]
+             face-rules (str (face-rule "Virgil"    (:virgil    fonts))
+                             (face-rule "Helvetica" (:helvetica fonts))
+                             (face-rule "Cascadia"  (:cascadia  fonts)))]
          (when (seq face-rules)
            (let [fe (or (.getElementById js/document "excalidraw-custom-fonts")
                         (let [new-el (.createElement js/document "style")]
