@@ -52,6 +52,24 @@
     (let [data (:block/mind-map-data (db/entity [:block/uuid (uuid page-uuid)]))]
       (when (seq data) data))))
 
+(defn- <ensure-mindmap-class-tag!
+  "找到或创建名为 'MindMap' 的 Class 实体（可作为 :block/tags 的合法值）。
+   Class 实体的 :block/tags 包含 :logseq.class/Tag。
+   使用 {:class? true} 创建，确保生成正确的 :db/ident。"
+  []
+  (let [database (db/get-db)
+        existing-eid (when database
+                       (ffirst (d/q '[:find [?e ...]
+                                      :where [?e :block/title "MindMap"]
+                                             [?e :block/tags ?tag]
+                                             [?tag :db/ident :logseq.class/Tag]]
+                                    database)))]
+    (if existing-eid
+      (do (js/console.log "[mind-map] found existing MindMap class tag, id=" existing-eid)
+          (p/resolved (db/entity existing-eid)))
+      (do (js/console.log "[mind-map] creating MindMap class tag")
+          (common-page-handler/<create! "MindMap" {:redirect? false :class? true})))))
+
 (defn <create-mind-map!
   "创建新的思维导图页面，并跳转到编辑器。"
   [name]
@@ -60,24 +78,15 @@
       (do (notification/show! (str "思维导图「" title "」已存在，请使用不同的名称") :warning)
           nil)
       (p/let [page (common-page-handler/<create! title {:redirect? false})
-              ;; 找到或创建 "MindMap" 用户标签页，用于给所有思维导图页面打标签
-              tag  (let [database (db/get-db)
-                         existing-eid (when database
-                                        (ffirst (d/q '[:find [?e ...]
-                                                       :in $ ?t
-                                                       :where [?e :block/title ?t]
-                                                              [(missing? $ ?e :db/ident)]]
-                                                     database "MindMap")))]
-                     (if existing-eid
-                       (p/resolved (db/entity existing-eid))
-                       (common-page-handler/<create! "MindMap" {:redirect? false})))]
+              tag  (<ensure-mindmap-class-tag!)]
         (when page
+          ;; 写入默认 JSON + 打 MindMap 标签（合并为单次 transact!）
           (let [repo (state/get-current-repo)
-                txs  (cond-> [{:db/id             (:db/id page)
+                tx   (cond-> {:db/id             (:db/id page)
                                :block/mind-map-data (str "{\"data\":{\"text\":\"" title "\"},\"children\":[]}")
-                               :block/updated-at   (.now js/Date)}]
-                        tag (conj {:db/id (:db/id page) :block/tags #{(:db/id tag)}}))]
-            (db/transact! repo txs {:outliner-op :save-block}))
+                               :block/updated-at   (.now js/Date)}
+                        (some? tag) (assoc :block/tags #{(:db/id tag)}))]
+            (db/transact! repo [tx] {:outliner-op :save-block}))
           (route-handler/redirect!
            {:to          :mind-map
             :path-params {:name (str (:block/uuid page))}})

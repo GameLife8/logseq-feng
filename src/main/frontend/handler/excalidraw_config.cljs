@@ -2,7 +2,7 @@
   "Manages Excalidraw/Whiteboard user settings stored as a dedicated page entity.
 
    Config page:  title  = \"logseq/excalidraw\"
-                 tag    = \"Excalidraw\" user tag page (find or create)
+                 tag    = \"Excalidraw\" class entity (find or create with :class? true)
                  attr   = :block/excalidraw-config  (JSON string)
 
    Config map keys (ClojureScript, keywordized):
@@ -52,32 +52,35 @@
 
 ;; ── write ─────────────────────────────────────────────────────────────────────
 
-(defn- <ensure-tag!
-  "Find or create a user tag page with the given title.
-   Returns a Promise<entity>.
-   Uses a user-page lookup (no :db/ident) to avoid colliding with system classes."
+(defn- <ensure-class-tag!
+  "Find or create a Class entity (valid for :block/tags) with the given title.
+   Class entities have :logseq.class/Tag in their :block/tags.
+   Uses {:class? true} option which causes create! to build a proper class entity
+   with a :db/ident in the user.class namespace."
   [title]
   (let [database (db/get-db)
+        ;; Search for an existing class with this title
         existing-eid (when database
                        (ffirst (d/q '[:find [?e ...]
                                       :in $ ?t
                                       :where [?e :block/title ?t]
-                                             [(missing? $ ?e :db/ident)]]
+                                             [?e :block/tags ?tag]
+                                             [?tag :db/ident :logseq.class/Tag]]
                                     database title)))]
     (if existing-eid
-      (do (js/console.log "[ex-cfg] found existing tag" title "id=" existing-eid)
+      (do (js/console.log "[ex-cfg] found existing class tag" title "id=" existing-eid)
           (p/resolved (db/entity existing-eid)))
-      (do (js/console.log "[ex-cfg] creating tag page" title)
-          (common-page-handler/<create! title {:redirect? false})))))
+      (do (js/console.log "[ex-cfg] creating class tag" title)
+          (common-page-handler/<create! title {:redirect? false :class? true})))))
 
 (defn- ensure-config-page!
-  "Find or create the config page, tagging it with the 'Excalidraw' user tag.
+  "Find or create the config page, tagging it with the 'Excalidraw' class tag.
    Returns a Promise<page-entity>."
   []
   (let [existing (db/get-page config-page-title)]
     (if existing
-      ;; Page exists – ensure it still has the tag
-      (p/let [tag (<ensure-tag! tag-title)]
+      ;; Page exists – ensure it still has the tag (idempotent)
+      (p/let [tag (<ensure-class-tag! tag-title)]
         (when (and tag existing
                    (not (some #(= (:db/id tag) (:db/id %))
                               (:block/tags existing))))
@@ -87,9 +90,9 @@
                           :block/tags #{(:db/id tag)}}]
                         {:outliner-op :save-block}))
         existing)
-      ;; Page doesn't exist – create page and tag together
+      ;; Page doesn't exist – create page, then create/find tag, then apply
       (p/let [page (common-page-handler/<create! config-page-title {:redirect? false})
-              tag  (<ensure-tag! tag-title)]
+              tag  (<ensure-class-tag! tag-title)]
         (when (and page tag)
           (js/console.log "[ex-cfg] tagging new config page with" tag-title "id=" (:db/id tag))
           (db/transact! (state/get-current-repo)
