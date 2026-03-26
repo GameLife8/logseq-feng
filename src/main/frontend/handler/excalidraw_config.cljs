@@ -17,6 +17,7 @@
   (:require [clojure.string :as string]
             [datascript.core :as d]
             [frontend.db :as db]
+            [frontend.db.async :as db-async]
             [frontend.handler.common.page :as common-page-handler]
             [frontend.handler.notification :as notification]
             [frontend.state :as state]
@@ -49,6 +50,23 @@
              default-config))
       default-config)
     default-config))
+
+(defn <get-config
+  "Async version of get-config.
+   Uses db-async/<get-block to fetch the config page directly from the worker
+   DB, bypassing the lazy main-thread DataScript replica.  This ensures the
+   :block/excalidraw-config attribute is available even on first load after a
+   page refresh.  Returns a Promise resolving to the config map."
+  []
+  (let [repo (state/get-current-repo)]
+    (p/let [page (db-async/<get-block repo config-page-title :children? false)]
+      (if-let [raw (and page (:block/excalidraw-config page))]
+        (try (merge default-config
+                    (js->clj (js/JSON.parse raw) :keywordize-keys true))
+             (catch :default e
+               (js/console.warn "[ex-cfg] async JSON parse error" e)
+               default-config))
+        default-config))))
 
 ;; ── write ─────────────────────────────────────────────────────────────────────
 

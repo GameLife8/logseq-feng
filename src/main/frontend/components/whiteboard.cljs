@@ -451,19 +451,29 @@
   < rum/reactive
   (rum/local nil ::canvas-api)
   (rum/local nil ::linked-panel-el-id)  ; element ID whose panel is open, or nil
+  (rum/local nil ::ex-config)           ; async-loaded excalidraw config (nil = not yet loaded)
+  {:did-mount
+   (fn [state]
+     ;; Async-load the Excalidraw config from the worker DB.  The synchronous
+     ;; get-config falls back to default when the logseq/excalidraw page isn't in
+     ;; the main-thread DataScript replica yet (lazy-DB).  Once the async load
+     ;; resolves, the atom update triggers a re-render with the correct config.
+     (p/let [cfg (ex-cfg/<get-config)]
+       (reset! (::ex-config state) cfg))
+     state)}
   [state {:keys [page-entity]}]
   (let [*canvas-api        (::canvas-api state)
         *linked-panel-el-id (::linked-panel-el-id state)
+        *ex-config-atom    (::ex-config state)
         linked-panel-el-id (rum/react *linked-panel-el-id)
         page-uuid          (str (:block/uuid page-entity))
         page-title         (or (:block/title page-entity) "Untitled Whiteboard")
         repo               (state/get-current-repo)
 
-        ;; Read Excalidraw settings once per component instance (stable references).
-        ;; make-validate-embeddable returns false/true/fn; wrap in an atom so
-        ;; Excalidraw doesn't see a brand-new fn object on every re-render,
-        ;; which would trigger spurious onChange calls.
-        ex-config          (ex-cfg/get-config)
+        ;; Use async-loaded config when ready; fall back to synchronous read
+        ;; (which may return default-config on first load before async completes).
+        ;; The rum/react subscription ensures a re-render when async load finishes.
+        ex-config          (or (rum/react *ex-config-atom) (ex-cfg/get-config))
         ;; Derive validate-embed from the raw whitelist string, not calling
         ;; make-validate-embeddable in every render.  Use the raw string as the
         ;; stable value passed to core.cljs which converts it on did-mount.

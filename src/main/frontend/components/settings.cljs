@@ -1263,7 +1263,10 @@
   (rum/local false ::saved?)        ; show "已保存" flash after save
   {:did-mount
    (fn [state]
-     (let [cfg (ex-cfg/get-config)]
+     ;; Load config asynchronously from the worker DB to avoid reading a stale
+     ;; main-thread DataScript replica (lazy-DB issue: the page entity and its
+     ;; :block/excalidraw-config attribute may not be in the main-thread DB yet).
+     (p/let [cfg (ex-cfg/<get-config)]
        (reset! (::config state) cfg)
        (reset! (::whitelist-txt state) (or (:embed-whitelist cfg) "")))
      state)}

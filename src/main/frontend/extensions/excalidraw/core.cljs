@@ -270,6 +270,41 @@
              (set! (.-textContent fe) face-rules)
              (js/console.log "[excalidraw] injected custom @font-face rules")))))
      state)
+   :did-update
+   (fn [state]
+     ;; Re-inject @font-face CSS when custom-fonts prop changes (e.g. after
+     ;; async config load in the parent causes a re-render with real paths).
+     (let [args      (first (:rum/args state))
+           fonts     (:custom-fonts args)
+           path->url (fn [p]
+                       (cond
+                         (or (nil? p) (= "" p))              nil
+                         (re-find #"^(file|http|https)://" p) p
+                         (re-find #"^[A-Za-z]:[/\\]" p)
+                         (str "file:///" (clojure.string/replace p #"\\" "/"))
+                         :else (str "file://" p)))
+           ext->fmt  (fn [p]
+                       (condp re-find (or p "")
+                         #"(?i)\.woff2$" "woff2"
+                         #"(?i)\.woff$"  "woff"
+                         #"(?i)\.otf$"   "opentype"
+                         "truetype"))
+           face-rule (fn [family path]
+                       (when-let [url (path->url path)]
+                         (str "@font-face { font-family: '" family "'; "
+                              "src: url('" url "') format('" (ext->fmt path) "'); "
+                              "font-style: normal; font-weight: normal; }\n")))
+           face-rules (str (face-rule "Virgil"    (:virgil    fonts))
+                           (face-rule "Helvetica" (:helvetica fonts))
+                           (face-rule "Cascadia"  (:cascadia  fonts)))]
+       (when (seq face-rules)
+         (let [fe (or (.getElementById js/document "excalidraw-custom-fonts")
+                      (let [new-el (.createElement js/document "style")]
+                        (set! (.-id new-el) "excalidraw-custom-fonts")
+                        (.. js/document -head (appendChild new-el))
+                        new-el))]
+           (set! (.-textContent fe) face-rules))))
+     state)
    :will-unmount
    (fn [state]
      (let [api     @(::api state)
