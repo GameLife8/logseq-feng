@@ -1152,31 +1152,51 @@
            (reset! (::instance state) instance)
            (reset! (::timer-id state) timer)
            (reset! (::resize-observer state) ro)
-           ;; ── native keyboard interception (capture phase) ────────────────
-           ;; Logseq's KeyboardShortcutHandler owns Tab/Enter/Delete/Ctrl+Z/Y
-           ;; at the document-bubble level. We intercept in container-capture
-           ;; (fires before document-bubble) so SimpleMindMap gets these keys.
+           ;; ── native keyboard interception (document capture) ──────────────
+           ;; Problem: SimpleMindMap does not keep focus inside the container
+           ;; after node activation.  The focused element is often <body> or the
+           ;; Logseq sidebar, so keydown events never bubble through container –
+           ;; a container-capture listener is therefore useless.
+           ;;
+           ;; Fix: register on js/document in CAPTURE phase (fires before any
+           ;; child handler / Logseq shortcut system).  Guard with two conditions
+           ;; so we do NOT steal keys from unrelated UI:
+           ;;   A) an SMM node is currently active (activeNodeList non-empty), OR
+           ;;   B) the keydown target is inside our container (node-text editing)
+           ;; Skip if the target is a text input / contentEditable (node rename).
            (let [key-handler
                  (fn [^js e]
                    (let [target       (.-target e)
                          text-input?  (or (= "INPUT"    (.-tagName target))
                                           (= "TEXTAREA" (.-tagName target))
-                                          (.-isContentEditable target))]
-                     (when-not (or (.-isComposing e) text-input?)
+                                          (.-isContentEditable target))
+                         inst         @(::instance state)
+                         al           (when inst (.. ^js inst -renderer -activeNodeList))
+                         node-active? (boolean (and al (pos? (.-length al))))
+                         in-canvas?   (.contains container target)]
+                     (js/console.log "[mind-map] keydown" (.-key e)
+                                     "node-active?" node-active?
+                                     "in-canvas?" in-canvas?
+                                     "text-input?" text-input?
+                                     "target" (.-tagName target))
+                     (when (and (or node-active? in-canvas?)
+                                (not text-input?)
+                                (not (.-isComposing e)))
                        (let [key  (.-key e)
                              ctrl (or (.-ctrlKey e) (.-metaKey e))]
                          (when-let [cmd
                                     (cond
-                                      (= key "Tab")                        "INSERT_CHILD_NODE"
-                                      (= key "Enter")                      "INSERT_NODE"
+                                      (= key "Tab")                           "INSERT_CHILD_NODE"
+                                      (= key "Enter")                         "INSERT_NODE"
                                       (and (.-shiftKey e) (= key "Backspace")) "REMOVE_CURRENT_NODE"
                                       (contains? #{"Delete" "Backspace"} key) "REMOVE_NODE"
-                                      (and ctrl (= key "z"))               "BACK"
+                                      (and ctrl (= key "z"))                  "BACK"
                                       (and ctrl
                                            (or (= key "y")
                                                (and (.-shiftKey e) (= key "Z")))) "FORWARD"
-                                      (and ctrl (= key "g"))               "ADD_GENERALIZATION"
+                                      (and ctrl (= key "g"))                  "ADD_GENERALIZATION"
                                       :else nil)]
+                           (js/console.log "[mind-map] execCommand" cmd)
                            (.preventDefault e)
                            (.stopPropagation e)
                            (when-let [i @(::instance state)]
@@ -1188,9 +1208,9 @@
                    (when-not (and (.-relatedTarget e)
                                   (.contains container (.-relatedTarget e)))
                      (state/set-block-component-editing-mode! false)))]
-             (.addEventListener container "keydown"  key-handler      true)
-             (.addEventListener container "focusin"  focusin-handler  false)
-             (.addEventListener container "focusout" focusout-handler false)
+             (.addEventListener js/document "keydown"  key-handler      true)  ; document capture!
+             (.addEventListener container  "focusin"  focusin-handler  false)
+             (.addEventListener container  "focusout" focusout-handler false)
              (reset! (::key-handler state)      key-handler)
              (reset! (::focusin-handler state)  focusin-handler)
              (reset! (::focusout-handler state) focusout-handler))
@@ -1248,7 +1268,7 @@
        (when timer (js/clearInterval timer))
        (when ro (.disconnect ^js ro))
        (when (and container key-handler)
-         (.removeEventListener container "keydown"  key-handler      true)
+         (.removeEventListener js/document "keydown"  key-handler      true)
          (.removeEventListener container "focusin"  fi-handler       false)
          (.removeEventListener container "focusout" fo-handler       false)
          (when-let [ctx-h @(::ctx-handler state)]
