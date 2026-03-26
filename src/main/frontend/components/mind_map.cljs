@@ -145,12 +145,13 @@
         repo          (state/get-current-repo)
 
         ;; 查找 MindMap class 实体 ID（用于建立响应式订阅）
+        ;; [:find [?e ...]] 返回直接值向量，用 first 取第一个，不能用 ffirst
         mm-class-id   (when-let [db (db/get-db)]
-                        (ffirst (d/q '[:find [?e ...]
-                                       :where [?e :block/title "MindMap"]
-                                              [?e :block/tags ?t]
-                                              [?t :db/ident :logseq.class/Tag]]
-                                     db)))
+                        (first (d/q '[:find [?e ...]
+                                      :where [?e :block/title "MindMap"]
+                                             [?e :block/tags ?t]
+                                             [?t :db/ident :logseq.class/Tag]]
+                                    db)))
         ;; 订阅 MindMap class 对象变更（删除/新增思维导图时 :block/tags 变化会触发）
         ;; 返回 result atom；若 class 尚不存在则退化到直接读本地 DB。
         mm-atom       (when (and repo mm-class-id)

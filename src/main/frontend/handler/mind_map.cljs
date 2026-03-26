@@ -58,12 +58,13 @@
    使用 {:class? true} 创建，确保生成正确的 :db/ident。"
   []
   (let [database (db/get-db)
+        ;; [:find [?e ...]] 返回直接值向量，用 first，不能用 ffirst
         existing-eid (when database
-                       (ffirst (d/q '[:find [?e ...]
-                                      :where [?e :block/title "MindMap"]
-                                             [?e :block/tags ?tag]
-                                             [?tag :db/ident :logseq.class/Tag]]
-                                    database)))]
+                       (first (d/q '[:find [?e ...]
+                                     :where [?e :block/title "MindMap"]
+                                            [?e :block/tags ?tag]
+                                            [?tag :db/ident :logseq.class/Tag]]
+                                   database)))]
     (if existing-eid
       (do (js/console.log "[mind-map] found existing MindMap class tag, id=" existing-eid)
           (p/resolved (db/entity existing-eid)))

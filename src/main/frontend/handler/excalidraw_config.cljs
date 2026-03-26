@@ -2,7 +2,7 @@
   "Manages Excalidraw/Whiteboard user settings stored as a dedicated page entity.
 
    Config page:  title  = \"logseq/excalidraw\"
-                 tag    = \"Excalidraw\" class entity (find or create with :class? true)
+                 tag    = \"ConfigPage\" class entity (find or create with :class? true)
                  attr   = :block/excalidraw-config  (JSON string)
 
    Config map keys (ClojureScript, keywordized):
@@ -26,7 +26,7 @@
 
 (def ^:private config-page-title "logseq/excalidraw")
 (def ^:private config-attr       :block/excalidraw-config)
-(def ^:private tag-title         "Excalidraw")
+(def ^:private tag-title         "ConfigPage")
 
 (def default-config
   {:embed-whitelist     ""   ; block all by default (empty = deny all)
@@ -60,13 +60,14 @@
   [title]
   (let [database (db/get-db)
         ;; Search for an existing class with this title
+        ;; [:find [?e ...]] 返回直接值向量，用 first，不能用 ffirst
         existing-eid (when database
-                       (ffirst (d/q '[:find [?e ...]
-                                      :in $ ?t
-                                      :where [?e :block/title ?t]
-                                             [?e :block/tags ?tag]
-                                             [?tag :db/ident :logseq.class/Tag]]
-                                    database title)))]
+                       (first (d/q '[:find [?e ...]
+                                     :in $ ?t
+                                     :where [?e :block/title ?t]
+                                            [?e :block/tags ?tag]
+                                            [?tag :db/ident :logseq.class/Tag]]
+                                   database title)))]
     (if existing-eid
       (do (js/console.log "[ex-cfg] found existing class tag" title "id=" existing-eid)
           (p/resolved (db/entity existing-eid)))
