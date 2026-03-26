@@ -63,22 +63,20 @@
 ;; This avoids remounting (and state loss) on every Rum re-render.
 ;;
 ;; Props (JS object):
-;;   pageTitle     – current whiteboard title string
-;;   saveAndBack   – fn() save + navigate back
-;;   onRename      – fn(string) called with new title
-;;   renderTags    – fn() → ReactElement  (Rum tags-bar from main bundle)
-;;   onInsertBlock – fn()
-;;   onBlockClick  – fn(block-id-string)
-;;   selEl         – current selected Excalidraw element map | nil
+;;   pageTitle          – current whiteboard title string
+;;   saveAndBack        – fn() save + navigate back
+;;   onRename           – fn(string) called with new title
+;;   renderTags         – fn() → ReactElement  (Rum tags-bar from main bundle)
+;;   onShowLinkedBlocks – fn(element-id-string) open linked-blocks panel for selected el
+;;   selElId            – string ID of the single selected element | nil
 (def ^:private toolbar-buttons
   (fn toolbar-buttons [^js props]
-    (let [page-title      (gobj/get props "pageTitle")
-          save-and-back!  (gobj/get props "saveAndBack")
-          on-rename       (gobj/get props "onRename")
-          render-tags     (gobj/get props "renderTags")
-          on-insert-block (gobj/get props "onInsertBlock")
-          on-block-click  (gobj/get props "onBlockClick")
-          sel-el          (gobj/get props "selEl")
+    (let [page-title          (gobj/get props "pageTitle")
+          save-and-back!      (gobj/get props "saveAndBack")
+          on-rename           (gobj/get props "onRename")
+          render-tags         (gobj/get props "renderTags")
+          on-show-linked      (gobj/get props "onShowLinkedBlocks")
+          sel-el-id           (gobj/get props "selElId")
           ;; hooks – must be unconditionally at top level
           [open?     set-open!]    (rum/use-state false)
           [editing?  set-editing!] (rum/use-state false)
@@ -157,37 +155,21 @@
                                :whiteSpace "nowrap" :cursor "pointer"}}
             page-title))
 
-         ;; + 插入块
-         (js/React.createElement
-          "button"
-          #js {:title   "搜索并插入 Logseq 块卡片到画布"
-               :onClick (fn [] (when on-insert-block (on-insert-block)))
-               :style   #js {:display "flex" :alignItems "center" :gap "4px"
-                             :padding "5px 10px"
-                             :background "#6366f1" :color "#fff"
-                             :border "none" :borderRadius "6px"
-                             :cursor "pointer" :fontSize "13px"
-                             :whiteSpace "nowrap"}}
-          "+ 插入块")
-
-         ;; → 侧边栏 (only when a block card is selected on the canvas)
-         (when (and sel-el on-block-click)
-           (let [bid (some-> sel-el
-                             (gobj/get "customData")
-                             (gobj/get "blockId"))]
-             (when bid
-               (js/React.createElement
-                "button"
-                #js {:title   "在侧边栏中打开此块"
-                     :onClick (fn [] (on-block-click bid))
-                     :style   #js {:display "flex" :alignItems "center" :gap "4px"
-                                   :padding "5px 10px"
-                                   :background "var(--lx-gray-03,#f3f4f6)"
-                                   :color "var(--lx-gray-12,#111)"
-                                   :border "1px solid var(--lx-gray-06,#e5e7eb)"
-                                   :borderRadius "6px" :cursor "pointer"
-                                   :fontSize "13px" :whiteSpace "nowrap"}}
-                "→ 侧边栏"))))
+         ;; 🔗 链接块 — shown only when exactly one element is selected
+         (when (and sel-el-id on-show-linked)
+           (js/React.createElement
+            "button"
+            #js {:title   "管理此元素的关联块和备注"
+                 :onClick (fn []
+                            (js/console.log "[wb-toolbar] 🔗 clicked for el:" sel-el-id)
+                            (on-show-linked sel-el-id))
+                 :style   #js {:display "flex" :alignItems "center" :gap "4px"
+                               :padding "5px 10px"
+                               :background "#6366f1" :color "#fff"
+                               :border "none" :borderRadius "6px"
+                               :cursor "pointer" :fontSize "13px"
+                               :whiteSpace "nowrap"}}
+            "🔗 链接块"))
 
          ;; × 收起
          (js/React.createElement
@@ -209,22 +191,20 @@
   "Core Excalidraw canvas component.
 
    Props map:
-     :page-uuid       – UUID string of the whiteboard page
-     :page-title      – Display title string shown in the toolbar chip
-     :on-back         – fn() called to navigate back (after save completes)
-     :on-block-click  – fn called with block-id-string to open block in sidebar
-     :on-api-ready    – fn called with the ExcalidrawImperativeAPI once mounted
-     :on-insert-block – fn called when the user clicks '+ 插入块' in canvas toolbar
-     :on-load-data    – fn(page-uuid) → JSON-string | nil  (reads from DB)
-     :on-save-data    – fn(page-uuid, json-string)          (writes to DB)
-
-   Select a Logseq block card, then click '→ 侧边栏' in the top-right toolbar to open it."
+     :page-uuid          – UUID string of the whiteboard page
+     :page-title         – Display title string shown in the toolbar chip
+     :on-back            – fn() called to navigate back (after save completes)
+     :on-show-linked-blocks – fn(element-id-str) open linked-blocks panel in parent
+     :on-selection-change   – fn(element-id-str|nil) fired on every selection change
+     :on-api-ready       – fn called with the ExcalidrawImperativeAPI once mounted
+     :on-load-data       – fn(page-uuid) → JSON-string | nil  (reads from DB)
+     :on-save-data       – fn(page-uuid, json-string)          (writes to DB)"
   < rum/static
-  (rum/local nil   ::api)
-  (rum/local nil   ::selected-block-el)
-  (rum/local false ::dirty?)
-  (rum/local nil   ::timer-id)
-  (rum/local nil   ::library-items)
+  (rum/local nil    ::api)
+  (rum/local nil    ::sel-el-id)   ; ID string of selected element, or nil
+  (rum/local false  ::dirty?)
+  (rum/local nil    ::timer-id)
+  (rum/local nil    ::library-items)
   {:did-mount
    (fn [state]
      (let [*timer   (::timer-id state)
@@ -267,10 +247,11 @@
          (save-to-ls! p-uuid api)
          (when save-fn (save-fn p-uuid (canvas-json api)))))
      state)}
-  [state {:keys [page-uuid page-title on-back on-block-click on-api-ready
-                 on-insert-block on-load-data on-save-data render-tags on-rename]}]
+  [state {:keys [page-uuid page-title on-back on-api-ready
+                 on-show-linked-blocks on-selection-change
+                 on-load-data on-save-data render-tags on-rename]}]
   (let [*api        (::api state)
-        *sel-el     (::selected-block-el state)
+        *sel-el-id  (::sel-el-id state)
         *dirty?     (::dirty? state)
         *library    (::library-items state)
         init-data   (or (when on-load-data
@@ -316,21 +297,28 @@
                                (reset! *library items)
                                (.setItem js/localStorage (lib-key)
                                          (js/JSON.stringify items)))
-           :onChange         (fn [_elements _app-state _files]
+           :onChange         (fn [_elements ^js app-state _files]
                                (reset! *dirty? true)
-                               (reset! *sel-el (ex-api/get-selected-block-element @*api)))
+                               ;; Track selected element ID for the 🔗 toolbar button
+                               (let [sel-ids (js/Object.keys
+                                              (or (gobj/get app-state "selectedElementIds") #js {}))
+                                     sel-id  (when (= 1 (.-length sel-ids)) (aget sel-ids 0))]
+                                 (js/console.log "[wb] onChange sel-el-id:" sel-id)
+                                 (reset! *sel-el-id sel-id)
+                                 (when on-selection-change (on-selection-change sel-id))))
            ;; Top-right: collapsible toolbar (collapsed by default → click "☰ 工具" to expand)
            :renderTopRightUI
            (fn []
              (js/React.createElement
               toolbar-buttons
-              #js {:pageTitle     page-title
-                   :saveAndBack   save-and-back!
-                   :onRename      on-rename
-                   :renderTags    render-tags
-                   :onInsertBlock (fn [] (when on-insert-block (on-insert-block)))
-                   :onBlockClick  on-block-click
-                   :selEl         @*sel-el}))})]))
+              #js {:pageTitle          page-title
+                   :saveAndBack        save-and-back!
+                   :onRename           on-rename
+                   :renderTags         render-tags
+                   :onShowLinkedBlocks (fn [el-id]
+                                         (when on-show-linked-blocks
+                                           (on-show-linked-blocks el-id)))
+                   :selElId            @*sel-el-id}))})]))
 
 ;; Export for shadow.lazy loadable
 (def ^:export editor excalidraw-editor)

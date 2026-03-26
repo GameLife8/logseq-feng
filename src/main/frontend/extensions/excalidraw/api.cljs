@@ -1,17 +1,27 @@
 (ns frontend.extensions.excalidraw.api
   "Utility functions that operate on an ExcalidrawImperativeAPI instance.
    This namespace is part of the :main bundle (no Excalidraw import needed).
-   The functions work by calling JS methods on the api object at runtime."
+   The functions work by calling JS methods on the api object at runtime.
+
+   Element customData schema (new format):
+     {:linkedBlockIds  [uuid-str ...]   ;; references to existing Logseq blocks
+      :noteBlockIds    [uuid-str ...]   ;; new blocks created under the whiteboard page
+      ;; legacy block-card fields (backward compat):
+      :type            \"logseq-block\"
+      :blockId         uuid-str}"
   (:require [goog.object :as gobj]))
 
-;; ── element builders ──────────────────────────────────────────────────────────
+;; ── element ID generation ─────────────────────────────────────────────────────
 
 (defn- gen-id []
   (str "ls-" (.toString (.now js/Date) 36)
        "-" (.toString (rand-int 0xFFFFFF) 16)))
 
+;; ── element builders (kept for backward-compat; legacy block-card elements) ──
+
 (defn make-block-element
-  "Returns an Excalidraw rectangle element representing a Logseq block card."
+  "Returns an Excalidraw rectangle element with customData linking to a block.
+   Kept for backward compatibility with existing canvases."
   [block-id block-title page-title x y custom-label]
   (let [id (gen-id)]
     #js {:id             id
@@ -36,19 +46,18 @@
          :versionNonce   (rand-int 100000)
          :angle          0
          :locked         false
-         :customData     #js {:type        "logseq-block"
-                              :blockId     (str block-id)
-                              :blockTitle  (or block-title "")
-                              :pageTitle   (or page-title "")
-                              :customLabel (or custom-label "")}}))
+         :customData     #js {:type           "logseq-block"
+                              :blockId        (str block-id)
+                              :blockTitle     (or block-title "")
+                              :pageTitle      (or page-title "")
+                              :customLabel    (or custom-label "")
+                              :linkedBlockIds #js [(str block-id)]
+                              :noteBlockIds   #js []}}))
 
 (defn make-block-text-element
-  "Returns an Excalidraw text element bound to the given block rectangle.
-   Line 1: '📌 Insert Block' header badge.
-   Line 2: custom-label (user-defined description) or '(未标记)' if not set.
-   Line 3: block content truncated to 10 characters."
+  "Returns an Excalidraw text element bound to the given block rectangle."
   [rect-id rect-x rect-y block-title page-title custom-label]
-  (let [line1 "📌 Insert Block"
+  (let [line1 "📌 Block"
         line2 (str "⊞ " (if (seq custom-label) custom-label "(未标记)"))
         raw   (or block-title "")
         line3 (if (> (count raw) 10) (str (subs raw 0 10) "…") (if (seq raw) raw "(空内容)"))
@@ -84,25 +93,141 @@
          :lineHeight     1.25
          :customData     nil}))
 
-;; ── api helpers ───────────────────────────────────────────────────────────────
+;; ── scene queries ─────────────────────────────────────────────────────────────
+
+(defn get-element-by-id
+  "Find a scene element by its Excalidraw element ID."
+  [^js api elem-id]
+  (when (and api elem-id)
+    (.find (.getSceneElements api) #(= (gobj/get % "id") elem-id))))
+
+(defn get-selected-element-id
+  "Returns the ID of the single selected element, or nil if 0 or >1 elements selected."
+  [^js api]
+  (when api
+    (let [app-state (.getAppState api)
+          sel-ids   (js/Object.keys (or (gobj/get app-state "selectedElementIds") #js {}))]
+      (when (= 1 (.-length sel-ids))
+        (aget sel-ids 0)))))
+
+;; ── element customData accessors ──────────────────────────────────────────────
+
+(defn get-linked-block-ids
+  "Returns a ClojureScript vector of linked block UUID strings for element `el`.
+   Handles both new format (linkedBlockIds array) and legacy block-card (blockId string)."
+  [^js el]
+  (let [cd (some-> el (gobj/get "customData"))]
+    (if cd
+      (let [new-ids (gobj/get cd "linkedBlockIds")
+            old-id  (gobj/get cd "blockId")]
+        (cond
+          (and new-ids (pos? (.-length new-ids))) (vec (array-seq new-ids))
+          (seq old-id) [old-id]
+          :else []))
+      [])))
+
+(defn get-note-block-ids
+  "Returns a ClojureScript vector of note block UUID strings for element `el`."
+  [^js el]
+  (let [cd (some-> el (gobj/get "customData"))]
+    (if cd
+      (let [ids (gobj/get cd "noteBlockIds")]
+        (if (and ids (pos? (.-length ids))) (vec (array-seq ids)) []))
+      [])))
+
+;; ── element customData mutators ───────────────────────────────────────────────
+
+(defn- update-el-cd!
+  "Apply `f` to element `elem-id`'s customData JS object, then updateScene."
+  [^js api elem-id f]
+  (when (and api elem-id)
+    (let [els     (.getSceneElements api)
+          new-els (.map els
+                        (fn [^js el]
+                          (if (= (gobj/get el "id") elem-id)
+                            (let [old-cd (or (gobj/get el "customData") #js {})
+                                  new-cd (f old-cd)]
+                              (js/Object.assign #js {} el
+                                                #js {:customData new-cd
+                                                     :version    (inc (or (gobj/get el "version") 1))
+                                                     :updated    (.now js/Date)}))
+                            el)))]
+      (.updateScene api #js {:elements new-els}))))
+
+(defn add-linked-block!
+  "Add `block-uuid-str` to element's linkedBlockIds. No-op if already present."
+  [^js api elem-id block-uuid-str]
+  (js/console.log "[wb-api] add-linked-block! elem:" elem-id "block:" block-uuid-str)
+  (update-el-cd! api elem-id
+    (fn [^js cd]
+      (let [existing    (or (gobj/get cd "linkedBlockIds") #js [])
+            already-set (set (array-seq existing))]
+        (if (already-set block-uuid-str)
+          (do (js/console.log "[wb-api] block already linked, skipping") cd)
+          (let [new-cd (js/Object.assign #js {} cd)]
+            (gobj/set new-cd "linkedBlockIds" (.concat existing #js [block-uuid-str]))
+            new-cd))))))
+
+(defn remove-linked-block!
+  "Remove `block-uuid-str` from element's linkedBlockIds."
+  [^js api elem-id block-uuid-str]
+  (js/console.log "[wb-api] remove-linked-block! elem:" elem-id "block:" block-uuid-str)
+  (update-el-cd! api elem-id
+    (fn [^js cd]
+      (let [new-cd   (js/Object.assign #js {} cd)
+            existing (or (gobj/get cd "linkedBlockIds") #js [])
+            filtered (.filter existing #(not= % block-uuid-str))
+            old-id   (gobj/get cd "blockId")]
+        (gobj/set new-cd "linkedBlockIds" filtered)
+        ;; Clear legacy single-blockId field if it matches
+        (when (= old-id block-uuid-str)
+          (gobj/set new-cd "blockId" ""))
+        new-cd))))
+
+(defn add-note-block!
+  "Add `note-uuid-str` to element's noteBlockIds."
+  [^js api elem-id note-uuid-str]
+  (js/console.log "[wb-api] add-note-block! elem:" elem-id "note:" note-uuid-str)
+  (update-el-cd! api elem-id
+    (fn [^js cd]
+      (let [existing (or (gobj/get cd "noteBlockIds") #js [])
+            new-cd   (js/Object.assign #js {} cd)]
+        (gobj/set new-cd "noteBlockIds" (.concat existing #js [note-uuid-str]))
+        new-cd))))
+
+(defn remove-note-block!
+  "Remove `note-uuid-str` from element's noteBlockIds."
+  [^js api elem-id note-uuid-str]
+  (js/console.log "[wb-api] remove-note-block! elem:" elem-id "note:" note-uuid-str)
+  (update-el-cd! api elem-id
+    (fn [^js cd]
+      (let [existing (or (gobj/get cd "noteBlockIds") #js [])
+            filtered (.filter existing #(not= % note-uuid-str))
+            new-cd   (js/Object.assign #js {} cd)]
+        (gobj/set new-cd "noteBlockIds" filtered)
+        new-cd))))
+
+;; ── backward-compat helpers ───────────────────────────────────────────────────
+
+(defn logseq-block-element?
+  "True if `el` is a legacy Logseq block-card element."
+  [^js el]
+  (= "logseq-block" (some-> el (gobj/get "customData") (gobj/get "type"))))
 
 (defn insert-block-elements!
-  "Add a Logseq block card (rectangle + text) to the Excalidraw canvas.
-   `api`          – ExcalidrawImperativeAPI instance obtained from the :ref callback.
-   `custom-label` – User-provided description shown as line 1 of the card."
+  "Add a Logseq block card (rectangle + text) to the canvas.
+   Kept for backward compatibility – no longer exposed in the UI."
   [^js api block-id block-title page-title custom-label]
   (when api
     (let [existing  (.getSceneElements api)
           app-state (.getAppState api)
           scroll-x  (gobj/get app-state "scrollX")
           scroll-y  (gobj/get app-state "scrollY")
-          ;; centre the card in the current viewport
           vp-w      (gobj/get app-state "width")
           vp-h      (gobj/get app-state "height")
           zoom      (or (gobj/getValueByKeys app-state "zoom" "value") 1)
           cx        (- (/ vp-w 2 zoom) scroll-x)
           cy        (- (/ vp-h 2 zoom) scroll-y)
-          ;; jitter so repeated inserts don't perfectly overlap
           x         (+ cx (- (rand-int 60) 30))
           y         (+ cy (- (rand-int 40) 20))
           rect      (make-block-element block-id block-title page-title x y custom-label)
@@ -110,19 +235,3 @@
           txt       (make-block-text-element rect-id x y block-title page-title custom-label)
           new-elems (.concat existing #js [rect txt])]
       (.updateScene api #js {:elements new-elems}))))
-
-(defn logseq-block-element?
-  "True if `el` is a Logseq block card."
-  [^js el]
-  (= "logseq-block" (some-> el (gobj/get "customData") (gobj/get "type"))))
-
-(defn get-selected-block-element
-  "Returns the selected block-card element (one selected, must be logseq-block), or nil."
-  [^js api]
-  (when api
-    (let [els       (.getSceneElements api)
-          app-state (.getAppState api)
-          sel-ids   (js/Object.keys (or (gobj/get app-state "selectedElementIds") #js {}))]
-      (when (= 1 (.-length sel-ids))
-        (let [el (.find els #(= (gobj/get % "id") (aget sel-ids 0)))]
-          (when (logseq-block-element? el) el))))))

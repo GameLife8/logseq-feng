@@ -2,15 +2,22 @@
   "Whiteboard page component backed by Excalidraw.
 
    Architecture:
-     frontend.extensions.excalidraw.api  – element builders (main bundle)
+     frontend.extensions.excalidraw.api  – element builders + customData CRUD (main bundle)
      frontend.extensions.excalidraw.core – Excalidraw React wrapper (lazy bundle)
-     frontend.components.whiteboard      – page UI / toolbar / block-picker (main bundle)"
+     frontend.components.whiteboard      – page UI / linked-blocks panel (main bundle)
+
+   Element block model:
+     Each Excalidraw element can carry linked blocks (references to existing Logseq
+     blocks) and note blocks (new blocks created under the whiteboard page).  Both are
+     stored as UUID arrays in element.customData.linkedBlockIds / .noteBlockIds and
+     persisted as part of the canvas JSON."
   (:require [clojure.string :as string]
             [frontend.db :as db]
             [frontend.db-mixins :as db-mixins]
             [frontend.db.async :as db-async]
             [frontend.db.react :as react]
             [frontend.extensions.excalidraw.api :as ex-api]
+            [frontend.handler.editor :as editor-handler]
             [frontend.handler.notification :as notification]
             [frontend.handler.route :as route-handler]
             [frontend.handler.whiteboard :as whiteboard-handler]
@@ -185,131 +192,218 @@
         ])]))
 
 
-;; ── block-picker panel ────────────────────────────────────────────────────────
+;; ── linked-blocks panel ─────────────────────────────────────────────────────
+;;
+;; Floating right-side panel that shows linked blocks and note blocks for a
+;; selected canvas element.  Opened by clicking "🔗 链接块" in the toolbar.
+;;
+;; Data flow:
+;;   1. "🔗" click in core.cljs toolbar → onShowLinkedBlocks(el-id) callback
+;;   2. whiteboard-page sets *linked-panel-el-id → panel mounts
+;;   3. did-mount reads linkedBlockIds / noteBlockIds from element's customData
+;;   4. Add/remove operations call ex-api mutators (which do api.updateScene)
+;;      AND update the panel's local state atoms so the UI stays in sync.
 
-(rum/defcs block-picker
-  "Floating search panel to pick a block and insert it as a card.
-   Props: :on-insert fn({:block-id :block-title :page-title})
-          :on-close  fn()"
+(rum/defcs linked-blocks-panel
+  "Right-side panel for managing linked blocks and notes of a selected canvas element."
   < rum/reactive
-  (rum/local "" ::query)
-  (rum/local [] ::results)
+  (rum/local [] ::linked-ids)     ; linked block UUID strings
+  (rum/local [] ::note-ids)       ; note block UUID strings
+  (rum/local false ::show-search?) ; show inline block-search
+  (rum/local "" ::search-q)
+  (rum/local [] ::search-res)
   (rum/local false ::searching?)
-  (rum/local "" ::custom-label)
-  {:did-mount (fn [state]
-                (js/setTimeout
-                 #(when-let [el (.querySelector js/document ".wb-picker-input")]
-                    (.focus el))
-                 50)
-                state)}
-  [state {:keys [on-insert on-close]}]
-  (let [*q      (::query state)
-        *res    (::results state)
-        *busy?  (::searching? state)
-        *label  (::custom-label state)
-        query   (rum/react *q)
-        results (rum/react *res)]
-    [:div.wb-block-picker
-     {:style {:position     "absolute"
-              :top          "58px"
-              :left         "50%"
-              :transform    "translateX(-50%)"
-              :width        "400px"
-              :maxWidth     "90vw"
-              :background   "var(--lx-gray-02, #fff)"
-              :border       "1px solid var(--lx-gray-07, #e5e7eb)"
+  {:did-mount
+   (fn [state]
+     (let [{:keys [api el-id]} (-> state :rum/args first)
+           el (ex-api/get-element-by-id api el-id)]
+       (js/console.log "[wb-panel] did-mount el-id:" el-id "found?" (boolean el))
+       (reset! (::linked-ids state) (ex-api/get-linked-block-ids el))
+       (reset! (::note-ids state)   (ex-api/get-note-block-ids el)))
+     state)}
+  [state {:keys [api el-id page-uuid on-close on-open-block on-add-note-block]}]
+  (let [*linked-ids   (::linked-ids state)
+        *note-ids     (::note-ids state)
+        *show-search? (::show-search? state)
+        *search-q     (::search-q state)
+        *search-res   (::search-res state)
+        *searching?   (::searching? state)
+        linked-ids    (rum/react *linked-ids)
+        note-ids      (rum/react *note-ids)
+        show-search?  (rum/react *show-search?)
+
+        ;; Look up block title from main-thread DataScript (may be nil if not cached)
+        title-for-uid (fn [uid-str]
+                        (let [uid (try (uuid uid-str) (catch :default _ nil))
+                              e   (when uid (db/entity [:block/uuid uid]))]
+                          (or (:block/title e)
+                              (str "(块 " (subs uid-str 0 (min 8 (count uid-str))) "…)"))))
+
+        close-search! (fn []
+                        (reset! *show-search? false)
+                        (reset! *search-q "")
+                        (reset! *search-res []))
+
+        do-add-linked! (fn [block-uuid-str]
+                         (js/console.log "[wb-panel] add-linked" block-uuid-str)
+                         (ex-api/add-linked-block! api el-id block-uuid-str)
+                         (swap! *linked-ids #(if (some #{block-uuid-str} %) %
+                                                 (conj % block-uuid-str)))
+                         (close-search!))
+
+        do-remove-linked! (fn [uid]
+                            (js/console.log "[wb-panel] remove-linked" uid)
+                            (ex-api/remove-linked-block! api el-id uid)
+                            (reset! *linked-ids (filterv #(not= % uid) linked-ids)))
+
+        do-remove-note! (fn [uid]
+                          (js/console.log "[wb-panel] remove-note" uid)
+                          (ex-api/remove-note-block! api el-id uid)
+                          (reset! *note-ids (filterv #(not= % uid) note-ids)))
+
+        open-block!   (fn [uid-str]
+                        (js/console.log "[wb-panel] open-block" uid-str)
+                        (on-open-block uid-str))
+
+        row-style     {:display      "flex" :alignItems "center" :gap "6px"
+                       :padding      "5px 7px" :borderRadius "6px"
+                       :background   "var(--lx-gray-03,#f3f4f6)" :marginBottom "4px"}
+
+        section-label {:fontSize "11px" :opacity "0.5" :marginBottom "6px"
+                       :fontWeight "600" :textTransform "uppercase" :letterSpacing "0.05em"}
+
+        icon-btn-style {:background "none" :border "none" :cursor "pointer"
+                        :fontSize "13px" :opacity "0.6" :padding "1px 3px"
+                        :flexShrink "0"}]
+
+    [:div.wb-linked-panel
+     {:style {:position "absolute" :top "58px" :right "12px"
+              :width "290px"
+              :background "var(--lx-gray-01,#fff)"
+              :border "1px solid var(--lx-gray-06,#e5e7eb)"
               :borderRadius "10px"
-              :boxShadow    "0 8px 32px rgba(0,0,0,0.2)"
-              :zIndex       1000
-              :padding      "14px"}}
-     ;; header
-     [:div.flex.items-center.justify-between.mb-3
-      [:span.font-semibold.text-sm "插入块到白板"]
+              :boxShadow "0 6px 24px rgba(0,0,0,0.15)"
+              :zIndex 1000 :overflowY "auto" :maxHeight "80vh"
+              :padding "14px"}}
+
+     ;; ── Header ──────────────────────────────────────────────────────────────
+     [:div {:style {:display "flex" :justifyContent "space-between"
+                    :alignItems "center" :marginBottom "12px"}}
+      [:span {:style {:fontWeight "600" :fontSize "13px"}} "🔗 关联块"]
       [:button {:on-click on-close
                 :style {:background "none" :border "none" :cursor "pointer"
-                        :fontSize "18px" :lineHeight "1" :opacity "0.6"}}
+                        :opacity "0.5" :fontSize "16px" :padding "0 2px"}}
        "×"]]
-     ;; search input
-     [:input.wb-picker-input
-      {:type        "text"
-       :placeholder "搜索块或页面名称…"
-       :value       query
-       :style       {:display     "block"
-                     :width       "100%"
-                     :padding     "7px 10px"
-                     :borderRadius "6px"
-                     :border      "1px solid var(--lx-gray-07, #d1d5db)"
-                     :outline     "none"
-                     :fontSize    "13px"
-                     :boxSizing   "border-box"}
-       :on-change
-       (fn [^js e]
-         (let [q (.. e -target -value)]
-           (reset! *q q)
-           (if (string/blank? q)
-             (reset! *res [])
-             (do
-               (reset! *busy? true)
-               (p/let [res (search/block-search
-                            (state/get-current-repo) q
-                            {:built-in? false :enable-snippet? false})]
-                 (reset! *res (vec (take 25 (or res []))))
-                 (reset! *busy? false))))))}]
-     ;; custom label input
-     [:div {:style {:marginTop "10px"}}
-      [:div {:style {:fontSize "11px" :opacity "0.55" :marginBottom "4px"}} "自定义标签（第一行显示内容，可选）"]
-      [:input
-       {:type        "text"
-        :placeholder "描述这个块的用途，如：待办、重要决策…"
-        :value       @*label
-        :style       {:display     "block"
-                      :width       "100%"
-                      :padding     "6px 10px"
-                      :borderRadius "6px"
-                      :border      "1px solid var(--lx-gray-07, #d1d5db)"
-                      :outline     "none"
-                      :fontSize    "12px"
-                      :boxSizing   "border-box"}
-        :on-change   #(reset! *label (.. % -target -value))}]]
-     ;; results
-     (cond
-       @*busy?
-       [:div.text-center.py-3.text-sm.opacity-60 "搜索中…"]
 
-       (and (seq query) (empty? results))
-       [:div.text-center.py-3.text-sm.opacity-50 "未找到结果"]
+     ;; ── Linked blocks ────────────────────────────────────────────────────────
+     [:div {:style {:marginBottom "10px"}}
+      [:div {:style section-label} "关联块"]
+      (if (seq linked-ids)
+        (doall
+         (for [uid linked-ids]
+           [:div {:key uid :style row-style}
+            [:span {:style {:flex "1" :fontSize "12px" :overflow "hidden"
+                            :textOverflow "ellipsis" :whiteSpace "nowrap"}}
+             (title-for-uid uid)]
+            [:button {:title "在侧边栏打开"
+                      :on-click (fn [^js e] (.stopPropagation e) (open-block! uid))
+                      :style icon-btn-style}
+             "↗"]
+            [:button {:title "移除关联（不删除原块）"
+                      :on-click (fn [^js e] (.stopPropagation e) (do-remove-linked! uid))
+                      :style (assoc icon-btn-style :color "#ef4444")}
+             "×"]]))
+        [:div {:style {:fontSize "12px" :opacity "0.4" :padding "4px 0"}} "暂无关联块"])
 
-       (seq results)
-       [:div.mt-2 {:style {:maxHeight "300px" :overflowY "auto"}}
-        (for [block results
-              :let [title (or (:block/title block) "(无标题)")
-                    page  (some-> (db/entity (:db/id (:block/page block)))
-                                  :block/title)
-                    uuid  (:block/uuid block)]]
-          [:div
-           {:key (str uuid)
-            :style {:padding "7px 9px" :cursor "pointer"
-                    :borderRadius "6px" :marginBottom "2px"
-                    :transition "background 0.1s"}
-            :on-mouse-enter
-            #(set! (.. % -currentTarget -style -background)
-                   "var(--lx-gray-04, #f3f4f6)")
-            :on-mouse-leave
-            #(set! (.. % -currentTarget -style -background) "transparent")
-            :on-click
-            (fn []
-              (on-insert {:block-id     (str uuid)
-                          :block-title  title
-                          :page-title   (or page "")
-                          :custom-label @*label})
-              (on-close))}
-           [:div.text-sm.font-medium
-            {:style {:overflow "hidden" :textOverflow "ellipsis"
-                     :whiteSpace "nowrap" :lineHeight "1.4"}}
-            title]
-           (when page
-             [:div {:style {:fontSize "11px" :opacity "0.55" :marginTop "1px"}}
-              page])])])]))
+      ;; Inline block search or add button
+      (if show-search?
+        [:div {:style {:marginTop "8px"}}
+         [:div {:style {:display "flex" :gap "4px" :marginBottom "6px"}}
+          [:input {:type        "text"
+                   :auto-focus  true
+                   :placeholder "搜索块名称…"
+                   :value       @*search-q
+                   :style       {:flex "1" :fontSize "12px" :padding "5px 8px"
+                                 :borderRadius "6px"
+                                 :border "1px solid var(--lx-gray-07,#d1d5db)"
+                                 :outline "none"}
+                   :on-change   (fn [^js e]
+                                  (let [q (.. e -target -value)]
+                                    (reset! *search-q q)
+                                    (if (string/blank? q)
+                                      (reset! *search-res [])
+                                      (do (reset! *searching? true)
+                                          (p/let [res (search/block-search
+                                                       (state/get-current-repo) q
+                                                       {:built-in? false :enable-snippet? false})]
+                                            (reset! *search-res (vec (take 15 (or res []))))
+                                            (reset! *searching? false))))))
+                   :on-key-down (fn [^js e]
+                                  (when (= "Escape" (.-key e)) (close-search!)))}]
+          [:button {:on-click close-search!
+                    :style {:background "none" :border "none" :cursor "pointer"
+                            :opacity "0.5" :fontSize "14px"}}
+           "×"]]
+         (when @*searching?
+           [:div {:style {:fontSize "12px" :opacity "0.5" :padding "2px 0"}} "搜索中…"])
+         (when (seq @*search-res)
+           [:div {:style {:maxHeight "200px" :overflowY "auto"}}
+            (doall
+             (for [block @*search-res
+                   :let [title (or (:block/title block) "(无标题)")
+                         buid  (str (:block/uuid block))
+                         page  (some-> (db/entity (:db/id (:block/page block))) :block/title)]]
+               [:div {:key   buid
+                      :style {:padding "5px 8px" :cursor "pointer" :borderRadius "5px"
+                              :fontSize "12px" :marginBottom "2px"}
+                      :on-mouse-enter #(set! (.. % -currentTarget -style -background)
+                                             "var(--lx-gray-04,#f3f4f6)")
+                      :on-mouse-leave #(set! (.. % -currentTarget -style -background) "transparent")
+                      :on-click       (fn [] (do-add-linked! buid))}
+                [:div {:style {:fontWeight "500" :overflow "hidden"
+                               :textOverflow "ellipsis" :whiteSpace "nowrap"}} title]
+                (when page
+                  [:div {:style {:opacity "0.5" :fontSize "11px" :marginTop "1px"}} page])]))])]
+        [:button {:on-click #(reset! *show-search? true)
+                  :style {:marginTop "6px" :background "none" :border "none"
+                          :cursor "pointer" :fontSize "12px" :color "#6366f1"
+                          :padding "2px 0" :opacity "0.8"}}
+         "+ 添加关联块"])]
+
+     [:hr {:style {:border "none" :borderTop "1px solid var(--lx-gray-05,#e5e7eb)"
+                   :margin "10px 0"}}]
+
+     ;; ── Note blocks ──────────────────────────────────────────────────────────
+     [:div
+      [:div {:style section-label} "备注块"]
+      (if (seq note-ids)
+        (doall
+         (for [uid note-ids]
+           [:div {:key uid :style row-style}
+            [:span {:style {:flex "1" :fontSize "12px" :overflow "hidden"
+                            :textOverflow "ellipsis" :whiteSpace "nowrap"}}
+             (title-for-uid uid)]
+            [:button {:title "在侧边栏打开"
+                      :on-click (fn [^js e] (.stopPropagation e) (open-block! uid))
+                      :style icon-btn-style}
+             "↗"]
+            [:button {:title "移除备注引用（不删除原块）"
+                      :on-click (fn [^js e] (.stopPropagation e) (do-remove-note! uid))
+                      :style (assoc icon-btn-style :color "#ef4444")}
+             "×"]]))
+        [:div {:style {:fontSize "12px" :opacity "0.4" :padding "4px 0"}} "暂无备注块"])
+      [:button
+       {:on-click (fn []
+                    (js/console.log "[wb-panel] add-note-block for el:" el-id "page:" page-uuid)
+                    (p/let [uid (on-add-note-block)]
+                      (when uid
+                        (js/console.log "[wb-panel] note block created uid:" uid)
+                        (ex-api/add-note-block! api el-id uid)
+                        (swap! *note-ids conj uid))))
+        :style {:marginTop "6px" :background "none" :border "none"
+                :cursor "pointer" :fontSize "12px" :color "#6366f1"
+                :padding "2px 0" :opacity "0.8"}}
+       "+ 新增备注块"]]]))
 
 ;; ── canvas ────────────────────────────────────────────────────────────────────
 
@@ -322,78 +416,112 @@
      (ensure-excalidraw-loaded!
       (fn [] (reset! (::loaded? state) true)))
      state)}
-  [state {:keys [page-uuid page-title on-back on-api-ready on-block-click on-insert-block render-tags on-rename]}]
+  [state {:keys [page-uuid page-title on-back on-api-ready
+                 on-show-linked-blocks on-selection-change render-tags on-rename]}]
   (let [loaded? (rum/react (::loaded? state))]
     [:div.wb-canvas {:style {:width "100%" :height "100%"}}
      (if loaded?
        (@lazy-excalidraw
-        {:page-uuid       page-uuid
-         :page-title      page-title
-         :on-back         on-back
-         :on-api-ready    on-api-ready
-         :on-block-click  on-block-click
-         :on-insert-block on-insert-block
-         :on-rename       on-rename
-         :render-tags     render-tags
+        {:page-uuid              page-uuid
+         :page-title             page-title
+         :on-back                on-back
+         :on-api-ready           on-api-ready
+         :on-show-linked-blocks  on-show-linked-blocks
+         :on-selection-change    on-selection-change
+         :on-rename              on-rename
+         :render-tags            render-tags
          ;; DB persistence callbacks (main bundle → lazy bundle boundary)
-         :on-load-data    whiteboard-handler/load-canvas-from-db
-         :on-save-data    whiteboard-handler/save-canvas-to-db!})
+         :on-load-data           whiteboard-handler/load-canvas-from-db
+         :on-save-data           whiteboard-handler/save-canvas-to-db!})
        [:div.flex.items-center.justify-center.h-full
         [:div.text-sm.opacity-60 "正在加载白板编辑器…"]])]))
 
 ;; ── full whiteboard page ──────────────────────────────────────────────────────
 
 (rum/defcs whiteboard-page
-  "Full-page whiteboard. Canvas fills the entire viewport.
-   Back button, title and insert-block are inside Excalidraw's renderTopRightUI.
-   A small floating tags bar sits at bottom-left of the canvas."
+  "Full-page whiteboard editor.
+   Canvas fills the entire viewport; a collapsible toolbar sits top-right.
+   Selecting any element reveals the '🔗 链接块' toolbar button; clicking it
+   opens a right-side panel to manage linked blocks and note blocks for that element."
   < rum/reactive
-  (rum/local false ::show-picker?)
-  (rum/local nil   ::canvas-api)
+  (rum/local nil ::canvas-api)
+  (rum/local nil ::linked-panel-el-id)  ; element ID whose panel is open, or nil
   [state {:keys [page-entity]}]
-  (let [*show-picker (::show-picker? state)
-        *canvas-api  (::canvas-api state)
-        show-picker  (rum/react *show-picker)
-        page-uuid    (str (:block/uuid page-entity))
-        page-title   (or (:block/title page-entity) "Untitled Whiteboard")
-        ;; on-back: called by excalidraw/core AFTER save; shows toast then navigates
-        on-back      (fn []
-                       (notification/show! "白板已保存" :success)
-                       (route-handler/redirect! {:to :all-whiteboards}))]
-    ;; No overflow:hidden on outer div — allows Excalidraw dropdown menus to show
-    ;; height: 100% works because container.css ensures the full parent chain has height: 100%
-    ;; for margin-less pages (whiteboard / graph) with all padding stripped.
+  (let [*canvas-api        (::canvas-api state)
+        *linked-panel-el-id (::linked-panel-el-id state)
+        linked-panel-el-id (rum/react *linked-panel-el-id)
+        page-uuid          (str (:block/uuid page-entity))
+        page-title         (or (:block/title page-entity) "Untitled Whiteboard")
+        repo               (state/get-current-repo)
+
+        on-back (fn []
+                  (notification/show! "白板已保存" :success)
+                  (route-handler/redirect! {:to :all-whiteboards}))
+
+        ;; Open a block (by UUID string) in the right sidebar.
+        ;; Uses db-async/<get-block to ensure the block entity is loaded into the
+        ;; main-thread DataScript replica before calling open-block-in-sidebar!
+        ;; (same lazy-DB pattern as the whiteboard and mind-map editors).
+        open-block-in-sidebar!
+        (fn [uid-str]
+          (js/console.log "[wb] open-block-in-sidebar!" uid-str)
+          (when (seq uid-str)
+            (let [uid (try (uuid uid-str) (catch :default e
+                             (js/console.error "[wb] invalid uuid:" uid-str e) nil))]
+              (when uid
+                (p/let [_ (db-async/<get-block repo uid :children? false)]
+                  (whiteboard-handler/open-block-in-sidebar! uid-str))))))
+
+        ;; Create a new note block under this whiteboard page.
+        ;; Returns a Promise resolving to the new block's UUID string.
+        add-note-block!
+        (fn []
+          (js/console.log "[wb] add-note-block! page:" page-uuid)
+          (p/let [result (editor-handler/api-insert-new-block!
+                          ""
+                          {:page         (uuid page-uuid)
+                           :edit-block?  false
+                           :end?         true
+                           :container-id :unknown-container})]
+            (js/console.log "[wb] note block result:" (clj->js result))
+            (when result
+              (state/sidebar-add-block! repo (:db/id result) :block)
+              (str (:block/uuid result)))))]
+
     [:div.whiteboard-page
      {:style {:position "relative" :width "100%" :height "100%"}}
 
-     ;; canvas fills entire viewport; tags are rendered inside renderTopRightUI
+     ;; Canvas fills entire viewport
      [:div {:style {:position "absolute" :inset 0 :overflow "hidden"}}
       (whiteboard-canvas
-       {:page-uuid       page-uuid
-        :page-title      page-title
-        :on-back         on-back
-        :on-api-ready    (fn [api] (reset! *canvas-api api))
-        ;; Pre-load block from DB worker (local replica may not have it yet),
-        ;; then open in sidebar once the entity is available.
-        :on-block-click  (fn [bid]
-                           (p/let [_ (db-async/<get-block (state/get-current-repo)
-                                                          (uuid bid)
-                                                          :children? false)]
-                             (whiteboard-handler/open-block-in-sidebar! bid)))
-        :on-insert-block #(swap! *show-picker not)
-        :on-rename       (fn [new-title]
-                           (whiteboard-handler/<rename-whiteboard! page-uuid new-title))
-        ;; Pass tags as a render fn – Rum components return React elements when called
-        :render-tags     (fn [] (tags-bar page-uuid page-entity))})]
+       {:page-uuid             page-uuid
+        :page-title            page-title
+        :on-back               on-back
+        :on-api-ready          (fn [api]
+                                 (js/console.log "[wb] API ready")
+                                 (reset! *canvas-api api))
+        ;; When user clicks 🔗 in toolbar: open panel for that element
+        :on-show-linked-blocks (fn [el-id]
+                                 (js/console.log "[wb] show-linked-blocks el-id:" el-id)
+                                 (reset! *linked-panel-el-id el-id))
+        ;; When selection is cleared (deselect all): close the panel
+        :on-selection-change   (fn [el-id]
+                                 (js/console.log "[wb] selection-change el-id:" el-id)
+                                 (when (nil? el-id)
+                                   (reset! *linked-panel-el-id nil)))
+        :on-rename             (fn [new-title]
+                                 (whiteboard-handler/<rename-whiteboard! page-uuid new-title))
+        :render-tags           (fn [] (tags-bar page-uuid page-entity))})]
 
-     ;; block-picker overlay
-     (when show-picker
-       (block-picker
-        {:on-close  #(reset! *show-picker false)
-         :on-insert (fn [{:keys [block-id block-title page-title custom-label]}]
-                      (when-let [api @*canvas-api]
-                        (ex-api/insert-block-elements!
-                         api block-id block-title page-title custom-label)))}))]))
+     ;; Linked-blocks panel (shown when linked-panel-el-id is set)
+     (when (and linked-panel-el-id @*canvas-api)
+       (linked-blocks-panel
+        {:api              @*canvas-api
+         :el-id            linked-panel-el-id
+         :page-uuid        page-uuid
+         :on-close         (fn [] (reset! *linked-panel-el-id nil))
+         :on-open-block    open-block-in-sidebar!
+         :on-add-note-block add-note-block!}))]))
 
 ;; ── whiteboard gallery ────────────────────────────────────────────────────────
 
