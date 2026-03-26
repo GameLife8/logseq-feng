@@ -913,9 +913,8 @@
   (rum/local false ::unsaved?)
   ;; context menu
   (rum/local nil   ::ctx-menu)
-  (rum/local nil   ::ctx-handler)
-  (rum/local nil   ::ctx-md-handler)   ; mousedown capture handler (snapshot before SMM clears)
-  (rum/local {}    ::ctx-snapshot)     ; {:active? bool :root? bool} snapped on right-mousedown
+  (rum/local nil   ::ctx-handler)     ; contextmenu listener (document capture)
+  (rum/local nil   ::ctx-md-handler)  ; mousedown capture listener (snapshot before SMM clears)
   ;; style panel
   (rum/local false ::show-style-panel?)
   (rum/local {}    ::node-styles)
@@ -1184,32 +1183,41 @@
              (reset! (::focusin-handler state)  focusin-handler)
              (reset! (::focusout-handler state) focusout-handler))
            ;; ── right-click context menu ─────────────────────────────────────
-          ;; simple-mind-map fires node_active (clearing selection) on mousedown,
-          ;; BEFORE the browser dispatches contextmenu.  So we must snapshot the
-          ;; active-node state in a mousedown CAPTURE listener (fires earlier than
-          ;; any bubble-phase handler, including SMM's own).
-           (let [md-handler
+          ;; Problem: SMM fires node_active (clearing activeNodeList) on mousedown,
+          ;; which finishes BEFORE the browser dispatches contextmenu.
+          ;;
+          ;; Fix strategy:
+          ;;  1. Snapshot activeNodeList in a mousedown CAPTURE listener on the
+          ;;     container (capture fires before SMM's own mousedown bubble handler).
+          ;;     Use a plain JS object – NOT a rum/local atom – to avoid triggering
+          ;;     a re-render that could interrupt the mousedown→contextmenu chain.
+          ;;  2. Register contextmenu in CAPTURE phase on js/document so we fire
+          ;;     before any child element's stopPropagation can block us.
+           (let [snap       #js {:active false :root false}  ; plain JS, no Rum reactivity
+                 md-handler
                  (fn [^js e]
-                   (when (= 2 (.-button e))          ; right button only
+                   (when (= 2 (.-button e))        ; right button only
                      (let [inst @(::instance state)
                            al   (when inst (.. ^js inst -renderer -activeNodeList))
                            node (when (and al (pos? (.-length al))) (aget al 0))]
-                       (reset! (::ctx-snapshot state)
-                               {:active? (boolean node)
-                                :root?   (boolean (when node (.-isRoot node)))}))))
+                       (js/console.log "[mind-map] mousedown-capture node?" (boolean node) "al-len" (when al (.-length al)))
+                       (set! (.-active snap) (boolean node))
+                       (set! (.-root   snap) (boolean (when node (.-isRoot node)))))))
                  ctx-handler
                  (fn [^js e]
-                   (.preventDefault e)
-                   (.stopPropagation e)
-                   (let [{:keys [active? root?]} @(::ctx-snapshot state)]
-                     (js/console.log "[mind-map] contextmenu node-active?" active? "is-root?" root?)
-                     (reset! (::ctx-menu state)
-                             {:x            (.-clientX e)
-                              :y            (.-clientY e)
-                              :node-active? active?
-                              :is-root?     root?})))]
-             (.addEventListener container "mousedown"   md-handler  true)   ; capture!
-             (.addEventListener container "contextmenu" ctx-handler false)
+                   (when (.contains container (.-target e))  ; only our canvas
+                     (.preventDefault e)
+                     (.stopPropagation e)
+                     (let [active? (.-active snap)
+                           root?   (.-root   snap)]
+                       (js/console.log "[mind-map] contextmenu node-active?" active? "is-root?" root?)
+                       (reset! (::ctx-menu state)
+                               {:x            (.-clientX e)
+                                :y            (.-clientY e)
+                                :node-active? active?
+                                :is-root?     root?}))))]
+             (.addEventListener container   "mousedown"   md-handler  true)  ; capture
+             (.addEventListener js/document "contextmenu" ctx-handler true)  ; document capture!
              (reset! (::ctx-md-handler state) md-handler)
              (reset! (::ctx-handler state)    ctx-handler)))))
      state)
@@ -1232,7 +1240,7 @@
          (.removeEventListener container "focusin"  fi-handler       false)
          (.removeEventListener container "focusout" fo-handler       false)
          (when-let [ctx-h @(::ctx-handler state)]
-           (.removeEventListener container "contextmenu" ctx-h false))
+           (.removeEventListener js/document "contextmenu" ctx-h true))
          (when-let [md-h @(::ctx-md-handler state)]
            (.removeEventListener container "mousedown" md-h true)))
        (state/set-block-component-editing-mode! false)
