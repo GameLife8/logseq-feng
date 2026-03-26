@@ -160,9 +160,7 @@
            (js/React.createElement
             "button"
             #js {:title   "管理此元素的关联块和备注"
-                 :onClick (fn []
-                            (js/console.log "[wb-toolbar] 🔗 clicked for el:" sel-el-id)
-                            (on-show-linked sel-el-id))
+                 :onClick (fn [] (on-show-linked sel-el-id))
                  :style   #js {:display "flex" :alignItems "center" :gap "4px"
                                :padding "5px 10px"
                                :background "#6366f1" :color "#fff"
@@ -342,13 +340,15 @@
                                          (js/JSON.stringify items)))
            :onChange         (fn [_elements ^js app-state _files]
                                (reset! *dirty? true)
-                               ;; Track selected element ID for the 🔗 toolbar button
+                               ;; Track selected element ID for the 🔗 toolbar button.
+                               ;; Guard: only fire on-selection-change when value actually
+                               ;; changes, not on every animation frame that triggers onChange.
                                (let [sel-ids (js/Object.keys
                                               (or (gobj/get app-state "selectedElementIds") #js {}))
                                      sel-id  (when (= 1 (.-length sel-ids)) (aget sel-ids 0))]
-                                 (js/console.log "[wb] onChange sel-el-id:" sel-id)
-                                 (reset! *sel-el-id sel-id)
-                                 (when on-selection-change (on-selection-change sel-id))))
+                                 (when (not= sel-id @*sel-el-id)
+                                   (reset! *sel-el-id sel-id)
+                                   (when on-selection-change (on-selection-change sel-id)))))
            ;; Top-right: collapsible toolbar (collapsed by default → click "☰ 工具" to expand)
            :renderTopRightUI
            (fn []

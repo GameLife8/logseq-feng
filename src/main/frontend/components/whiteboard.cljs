@@ -459,9 +459,16 @@
         page-title         (or (:block/title page-entity) "Untitled Whiteboard")
         repo               (state/get-current-repo)
 
-        ;; Read Excalidraw settings (embed whitelist + custom font paths)
+        ;; Read Excalidraw settings once per component instance (stable references).
+        ;; make-validate-embeddable returns false/true/fn; wrap in an atom so
+        ;; Excalidraw doesn't see a brand-new fn object on every re-render,
+        ;; which would trigger spurious onChange calls.
         ex-config          (ex-cfg/get-config)
-        validate-embed     (ex-cfg/make-validate-embeddable (:embed-whitelist ex-config))
+        ;; Derive validate-embed from the raw whitelist string, not calling
+        ;; make-validate-embeddable in every render.  Use the raw string as the
+        ;; stable value passed to core.cljs which converts it on did-mount.
+        embed-whitelist    (:embed-whitelist ex-config)
+        validate-embed     (ex-cfg/make-validate-embeddable embed-whitelist)
         custom-fonts       {:virgil    (:font-path-virgil ex-config)
                             :helvetica (:font-path-helvetica ex-config)
                             :cascadia  (:font-path-cascadia ex-config)}
@@ -514,11 +521,9 @@
                                  (reset! *canvas-api api))
         ;; When user clicks 🔗 in toolbar: open panel for that element
         :on-show-linked-blocks (fn [el-id]
-                                 (js/console.log "[wb] show-linked-blocks el-id:" el-id)
                                  (reset! *linked-panel-el-id el-id))
         ;; When selection is cleared (deselect all): close the panel
         :on-selection-change   (fn [el-id]
-                                 (js/console.log "[wb] selection-change el-id:" el-id)
                                  (when (nil? el-id)
                                    (reset! *linked-panel-el-id nil)))
         :on-rename             (fn [new-title]
