@@ -285,7 +285,19 @@
                         "margin:0 auto!important;padding:1.5rem!important;"
                         "border:none!important;border-radius:0!important;"
                         "box-shadow:none!important}"
-                        ;; 代码块：仅修正溢出和换行，颜色由内联 CSS 变量决定
+                        ;; ── 代码块换行修复 ──────────────────────────────────────
+                        ;; 问题根因：cm-gutters 使用 position:sticky;left:0，在
+                        ;; overflow:visible 的 scroller 中位置错乱，导致行号列
+                        ;; 出现在折行内容中间。
+                        ;; 解法：打印时隐藏行号列（PDF 中无用），让内容列占满宽度。
+                        ".CodeMirror-gutters,.cm-gutters{display:none!important}"
+                        ;; cm-content 默认 contain:strict 阻止溢出，打印时需禁用
+                        ".cm-content{"
+                        "contain:none!important;"
+                        "white-space:pre-wrap!important;"
+                        "word-break:break-word!important;"
+                        "overflow-wrap:break-word!important;"
+                        "max-width:100%!important}"
                         ".CodeMirror,.cm-editor{"
                         "overflow:visible!important;"
                         "break-inside:avoid!important}"
@@ -293,7 +305,7 @@
                         "overflow:visible!important}"
                         ".CodeMirror-line,.cm-line{"
                         "white-space:pre-wrap!important;"
-                        "word-break:break-word!important;"   ; break-word 而非 break-all
+                        "word-break:break-word!important;"
                         "overflow-wrap:break-word!important}"
                         ;; 隐藏交互 UI
                         ".block-control,.bullet-container,.open-block-ref-link,"
@@ -304,6 +316,11 @@
                         "*{-webkit-print-color-adjust:exact!important;"
                         "color-adjust:exact!important;"
                         "print-color-adjust:exact!important}"
+                        ".CodeMirror-gutters,.cm-gutters{display:none!important}"
+                        ".cm-content{contain:none!important;"
+                        "white-space:pre-wrap!important;"
+                        "word-break:break-word!important;"
+                        "overflow-wrap:break-word!important}"
                         ".CodeMirror,.cm-editor{overflow:visible!important;"
                         "break-inside:avoid!important}"
                         ".CodeMirror-line,.cm-line{white-space:pre-wrap!important;"
