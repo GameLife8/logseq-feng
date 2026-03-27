@@ -256,10 +256,38 @@
 
         ;; 移除不需要打印的区域（关联引用、侧边栏提示等）
         _          (when main-clone
+                     ;; 1. DOM 移除：不需要打印的区域
                      (doseq [sel [".references-blocks-wrap"  ; 「关联引用」区块
-                                  ".sidebar-drop-indicator"]]
+                                  ".sidebar-drop-indicator"
+                                  ;; CodeMirror 行号列：
+                                  ;; CSS display:none 常因优先级败给内联 style 失效；
+                                  ;; 直接 removeChild 更可靠。
+                                  ".cm-gutters"
+                                  ".CodeMirror-gutters"]]
                        (doseq [^js el (array-seq (.querySelectorAll main-clone sel))]
-                         (some-> (.-parentNode el) (.removeChild el)))))
+                         (some-> (.-parentNode el) (.removeChild el))))
+                     ;; 2. 修正 CM6 flex scroller → block，解决内容截断问题
+                     ;;    cm-scroller 默认 display:flex;overflow:auto，
+                     ;;    打印时必须切换为 block + overflow:visible
+                     (doseq [^js el (array-seq (.querySelectorAll main-clone ".cm-scroller"))]
+                       (let [^js s (.-style el)]
+                         (set! (.-display s) "block")
+                         (set! (.-overflow s) "visible")))
+                     ;; 3. 解除 cm-content 的 contain:strict（阻止折行的根因）
+                     ;;    同时清除 min-width，让内容列自动撑宽
+                     (doseq [^js el (array-seq (.querySelectorAll main-clone ".cm-content"))]
+                       (let [^js s (.-style el)]
+                         (set! (.-contain s) "none")
+                         (set! (.-minWidth s) "0")
+                         (set! (.-whiteSpace s) "pre-wrap")
+                         (set! (.-wordBreak s) "break-word")
+                         (set! (.-overflowWrap s) "break-word")))
+                     ;; 4. 每行同样强制折行
+                     (doseq [^js el (array-seq (.querySelectorAll main-clone ".cm-line"))]
+                       (let [^js s (.-style el)]
+                         (set! (.-whiteSpace s) "pre-wrap")
+                         (set! (.-wordBreak s) "break-word")
+                         (set! (.-overflowWrap s) "break-word"))))
 
         main-html  (if main-clone
                      (.replaceAll (.-outerHTML main-clone) "assets://" "file://")
@@ -285,26 +313,20 @@
                         "margin:0 auto!important;padding:1.5rem!important;"
                         "border:none!important;border-radius:0!important;"
                         "box-shadow:none!important}"
-                        ;; ── 代码块换行修复 ──────────────────────────────────────
-                        ;; 问题根因：cm-gutters 使用 position:sticky;left:0，在
-                        ;; overflow:visible 的 scroller 中位置错乱，导致行号列
-                        ;; 出现在折行内容中间。
-                        ;; 解法：打印时隐藏行号列（PDF 中无用），让内容列占满宽度。
+                        ;; ── 代码块换行修复（CSS 层兜底，DOM 层已处理主要问题）──
+                        ;; DOM 操作已移除 .cm-gutters 并设置了 scroller/content 样式；
+                        ;; 以下规则作为 CSS 层兜底，覆盖未被克隆捕获的动态元素。
                         ".CodeMirror-gutters,.cm-gutters{display:none!important}"
-                        ;; cm-content 默认 contain:strict 阻止溢出，打印时需禁用
-                        ".cm-content{"
-                        "contain:none!important;"
+                        ".cm-scroller{display:block!important;overflow:visible!important}"
+                        ".cm-content{contain:none!important;"
                         "white-space:pre-wrap!important;"
                         "word-break:break-word!important;"
                         "overflow-wrap:break-word!important;"
-                        "max-width:100%!important}"
-                        ".CodeMirror,.cm-editor{"
-                        "overflow:visible!important;"
+                        "min-width:0!important}"
+                        ".CodeMirror,.cm-editor{overflow:visible!important;"
                         "break-inside:avoid!important}"
-                        ".CodeMirror-scroll,.cm-scroller{"
-                        "overflow:visible!important}"
-                        ".CodeMirror-line,.cm-line{"
-                        "white-space:pre-wrap!important;"
+                        ".CodeMirror-scroll{overflow:visible!important}"
+                        ".CodeMirror-line,.cm-line{white-space:pre-wrap!important;"
                         "word-break:break-word!important;"
                         "overflow-wrap:break-word!important}"
                         ;; 隐藏交互 UI
@@ -317,6 +339,7 @@
                         "color-adjust:exact!important;"
                         "print-color-adjust:exact!important}"
                         ".CodeMirror-gutters,.cm-gutters{display:none!important}"
+                        ".cm-scroller{display:block!important;overflow:visible!important}"
                         ".cm-content{contain:none!important;"
                         "white-space:pre-wrap!important;"
                         "word-break:break-word!important;"
