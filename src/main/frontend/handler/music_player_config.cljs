@@ -49,14 +49,22 @@
   "异步读取，直接查询 worker DB，绕过 lazy 主线程 replica。"
   []
   (let [repo (state/get-current-repo)]
+    (js/console.log "[mp-cfg] <get-config repo=" repo "page=" config-page-title "attr=" (name config-attr))
     (p/let [result (db-async/<pull repo
                                    [:db/id :block/name config-attr]
                                    [:block/name config-page-title])]
+      (js/console.log "[mp-cfg] pull result:" (clj->js result))
       (if-let [raw (and result (get result config-attr))]
-        (try (merge default-config
-                    (js->clj (js/JSON.parse raw) :keywordize-keys true))
-             (catch :default _ default-config))
-        default-config))))
+        (do
+          (js/console.log "[mp-cfg] raw JSON string:" raw)
+          (try (merge default-config
+                      (js->clj (js/JSON.parse raw) :keywordize-keys true))
+               (catch :default e
+                 (js/console.error "[mp-cfg] JSON parse error:" e)
+                 default-config)))
+        (do
+          (js/console.warn "[mp-cfg] config attr not found in page entity, returning default")
+          default-config)))))
 
 ;; ── 写入 ─────────────────────────────────────────────────────────────────────
 

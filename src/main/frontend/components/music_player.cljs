@@ -10,9 +10,12 @@
 ;; ── Electron IPC ────────────────────────────────────────────────────────────
 
 (defn- mpv-invoke! [action & [args]]
+  (js/console.log "[music-player] mpv-invoke!" action (clj->js (or args {})))
   (when (util/electron?)
-    (js/window.apis.invoke "mpv-control"
-                           (clj->js (merge {:action action} args)))))
+    (-> (js/window.apis.invoke "mpv-control"
+                               (clj->js (merge {:action action} args)))
+        (.then (fn [r] (js/console.log "[music-player] mpv reply" action r) r))
+        (.catch (fn [e] (js/console.error "[music-player] mpv error" action e) (js/Promise.reject e))))))
 
 ;; ── 全局状态（defonce 保证跨路由不丢失）────────────────────────────────────────
 
@@ -141,14 +144,18 @@
   (mpv-invoke! "seek" {:pos pos}))
 
 (defn load-folder! [folder]
+  (js/console.log "[music-player] load-folder! called, folder=" folder)
   (p/let [reply (mpv-invoke! "list-music" {:folder folder})]
+    (js/console.log "[music-player] list-music reply:" reply)
     (when reply
       (let [files (js->clj reply :keywordize-keys true)
+            _     (js/console.log "[music-player] files count:" (count files) "sample:" (clj->js (take 3 files)))
             tracks (mapv (fn [f]
                            {:path   (:path f)
                             :name   (strip-ext (file-name (:path f)))
                             :folder (parent-folder (:path f))})
                          files)]
+        (js/console.log "[music-player] tracks count:" (count tracks))
         (swap! *player-state assoc :playlist tracks)
         tracks))))
 
@@ -369,15 +376,23 @@
   (rum/local nil   ::scan-err)
   {:did-mount
    (fn [state]
+     (js/console.log "[music-player] did-mount: loading config...")
      (p/let [cfg (mp-cfg/<get-config)]
+       (js/console.log "[music-player] raw config from DB:" (clj->js cfg))
        (let [merged (merge mp-cfg/default-config cfg)]
+         (js/console.log "[music-player] merged config:" (clj->js merged))
          (reset! (::cfg state) merged)
-         (when (not (string/blank? (:music-folder merged)))
-           (reset! (::scanning? state) true)
-           (-> (load-folder! (:music-folder merged))
-               (.then  #(reset! (::scanning? state) false))
-               (.catch #(do (reset! (::scanning? state) false)
-                            (reset! (::scan-err state) (.-message %))))))))
+         (if (string/blank? (:music-folder merged))
+           (js/console.warn "[music-player] music-folder is blank, skip scan")
+           (do
+             (js/console.log "[music-player] starting scan of:" (:music-folder merged))
+             (reset! (::scanning? state) true)
+             (-> (load-folder! (:music-folder merged))
+                 (.then  #(do (js/console.log "[music-player] scan done, tracks:" (count %))
+                              (reset! (::scanning? state) false)))
+                 (.catch #(do (js/console.error "[music-player] scan error:" %)
+                              (reset! (::scanning? state) false)
+                              (reset! (::scan-err state) (.-message %)))))))))
      state)
    :will-unmount
    (fn [state] (stop-poll!) state)}
