@@ -256,30 +256,56 @@
 
         ;; 移除不需要打印的区域（关联引用、侧边栏提示等）
         _          (when main-clone
-                     ;; 1. DOM 移除：行号列、光标层等无用节点
-                     (let [gutters (.querySelectorAll main-clone ".cm-gutters,.CodeMirror-gutters")
-                           layers  (.querySelectorAll main-clone ".cm-layer,.cm-announced")]
-                       (js/console.log "[pdf] cm-gutters found:" (.-length gutters)
-                                       "cm-layer found:" (.-length layers))
-                       (doseq [^js el (array-seq gutters)]
-                         (some-> (.-parentNode el) (.removeChild el)))
-                       (doseq [^js el (array-seq layers)]
-                         (some-> (.-parentNode el) (.removeChild el))))
-                     ;; 移除其他无用区域
-                     (doseq [sel [".references-blocks-wrap" ".sidebar-drop-indicator"]]
-                       (doseq [^js el (array-seq (.querySelectorAll main-clone sel))]
-                         (some-> (.-parentNode el) (.removeChild el))))
-                     ;; 2. cm-scroller → display:block 解决 flex-shrink:0 导致的内容截断
-                     ;;    cm-content 的 flex-shrink:0 使其不会自动缩至容器宽度；
-                     ;;    切换为 block 布局后内容列自然撑满并折行。
-                     (let [scrollers (.querySelectorAll main-clone ".cm-scroller")]
-                       (js/console.log "[pdf] cm-scroller found:" (.-length scrollers))
-                       (doseq [^js el (array-seq scrollers)]
+                     ;; ── 调试：打印代码块结构 ─────────────────────────────────
+                     (let [cm-els (.querySelectorAll main-clone ".CodeMirror")]
+                       (js/console.log "[pdf] CodeMirror (CM5) editors found:" (.-length cm-els))
+                       (when (pos? (.-length cm-els))
+                         (js/console.log "[pdf] First CM5 editor outerHTML (first 500):"
+                                         (.slice (.-outerHTML (aget cm-els 0)) 0 500))))
+                     ;; ── 1. DOM 移除 ───────────────────────────────────────────
+                     (let [rm-sels [".references-blocks-wrap"
+                                    ".sidebar-drop-indicator"
+                                    ;; CM5 行号列
+                                    ".CodeMirror-gutters"
+                                    ".CodeMirror-linenumber"
+                                    ;; CM6 行号列 / 叠加层
+                                    ".cm-gutters"
+                                    ".cm-layer"
+                                    ".cm-announced"]]
+                       (doseq [sel rm-sels]
+                         (let [els (.querySelectorAll main-clone sel)]
+                           (when (pos? (.-length els))
+                             (js/console.log "[pdf] removing" (.-length els) sel))
+                           (doseq [^js el (array-seq els)]
+                             (some-> (.-parentNode el) (.removeChild el))))))
+                     ;; ── 2. CM5：修复 scroll 容器溢出 + 行内容折行 ─────────────
+                     (let [cm5-scroll (.querySelectorAll main-clone ".CodeMirror-scroll")]
+                       (js/console.log "[pdf] CM5 .CodeMirror-scroll found:" (.-length cm5-scroll))
+                       (doseq [^js el (array-seq cm5-scroll)]
+                         (let [^js s (.-style el)]
+                           (set! (.-overflow s) "visible")
+                           (set! (.-height s) "auto")
+                           (set! (.-marginBottom s) "0")
+                           (set! (.-paddingBottom s) "0"))))
+                     ;; CM5 code lines
+                     (doseq [^js el (array-seq (.querySelectorAll main-clone ".CodeMirror-line,.CodeMirror-line>span"))]
+                       (let [^js s (.-style el)]
+                         (set! (.-whiteSpace s) "pre-wrap")
+                         (set! (.-wordBreak s) "break-word")
+                         (set! (.-overflowWrap s) "anywhere")))
+                     ;; CM5 outer wrapper - clear horizontal overflow
+                     (doseq [^js el (array-seq (.querySelectorAll main-clone ".CodeMirror"))]
+                       (let [^js s (.-style el)]
+                         (set! (.-overflow s) "visible")
+                         (set! (.-height s) "auto")))
+                     ;; ── 3. CM6：修复 scroller + content（若有）────────────────
+                     (let [cm6-scroll (.querySelectorAll main-clone ".cm-scroller")]
+                       (js/console.log "[pdf] CM6 .cm-scroller found:" (.-length cm6-scroll))
+                       (doseq [^js el (array-seq cm6-scroll)]
                          (let [^js s (.-style el)]
                            (set! (.-display s) "block")
                            (set! (.-overflow s) "visible")
                            (set! (.-height s) "auto"))))
-                     ;; 3. cm-content：强制折行
                      (doseq [^js el (array-seq (.querySelectorAll main-clone ".cm-content"))]
                        (let [^js s (.-style el)]
                          (set! (.-whiteSpace s) "pre-wrap")
@@ -287,7 +313,6 @@
                          (set! (.-overflowWrap s) "anywhere")
                          (set! (.-minWidth s) "0")
                          (set! (.-width s) "100%")))
-                     ;; 4. 每行及行内 span 同样折行
                      (doseq [^js el (array-seq (.querySelectorAll main-clone ".cm-line,.cm-line>span"))]
                        (let [^js s (.-style el)]
                          (set! (.-whiteSpace s) "pre-wrap")
@@ -335,11 +360,17 @@
                         "white-space:pre-wrap!important;"
                         "overflow-wrap:anywhere!important;"
                         "word-break:break-word!important}"
-                        ;; CM5 兜底
-                        ".CodeMirror{overflow:visible!important}"
-                        ".CodeMirror-gutters{display:none!important}"
-                        ".CodeMirror-scroll{overflow:visible!important}"
-                        ".CodeMirror-line{white-space:pre-wrap!important;word-break:break-word!important}"
+                        ;; CM5 兜底（Logseq 目前实际使用 CM5 渲染代码块）
+                        ".CodeMirror{overflow:visible!important;height:auto!important}"
+                        ".CodeMirror-gutters,.CodeMirror-linenumber{display:none!important}"
+                        ".CodeMirror-scroll{overflow:visible!important;height:auto!important;"
+                        "margin-bottom:0!important;padding-bottom:0!important}"
+                        ".CodeMirror-sizer{margin-left:0!important}"
+                        ".CodeMirror-lines{padding:0!important}"
+                        ".CodeMirror-line,.CodeMirror-line>span{"
+                        "white-space:pre-wrap!important;"
+                        "word-break:break-word!important;"
+                        "overflow-wrap:anywhere!important}"
                         ;; 隐藏交互 UI
                         ".block-control,.bullet-container,.open-block-ref-link,"
                         ".block-children-left-border,.ls-block-right-toolbar,"
@@ -356,6 +387,12 @@
                         "word-break:break-word!important;overflow-wrap:anywhere!important;"
                         "min-width:0!important;width:100%!important}"
                         ".cm-editor .cm-line{white-space:pre-wrap!important;word-break:break-word!important}"
+                        ".CodeMirror{overflow:visible!important;height:auto!important}"
+                        ".CodeMirror-gutters,.CodeMirror-linenumber{display:none!important}"
+                        ".CodeMirror-scroll{overflow:visible!important;height:auto!important}"
+                        ".CodeMirror-sizer{margin-left:0!important}"
+                        ".CodeMirror-line,.CodeMirror-line>span{white-space:pre-wrap!important;"
+                        "word-break:break-word!important;overflow-wrap:anywhere!important}"
                         "}"
                         "</style>")
 
