@@ -293,11 +293,20 @@
                          (set! (.-whiteSpace s) "pre-wrap")
                          (set! (.-wordBreak s) "break-word")
                          (set! (.-overflowWrap s) "anywhere")))
-                     ;; CM5 outer wrapper - clear horizontal overflow
+                     ;; CM5 outer wrapper：
+                     ;; clip-path:inset(0px) 是内容截断的根本原因——即使 overflow:visible
+                     ;; 也会被裁剪到元素边界。必须清除。同时清除 overflow 和 height。
                      (doseq [^js el (array-seq (.querySelectorAll main-clone ".CodeMirror"))]
                        (let [^js s (.-style el)]
+                         (set! (.-clipPath s) "none")
                          (set! (.-overflow s) "visible")
                          (set! (.-height s) "auto")))
+                     ;; .CodeMirror-sizer 的 margin-left 是为行号列预留的空间，
+                     ;; 行号列已移除，需归零避免出现左侧空白
+                     (doseq [^js el (array-seq (.querySelectorAll main-clone ".CodeMirror-sizer"))]
+                       (let [^js s (.-style el)]
+                         (set! (.-marginLeft s) "0")
+                         (set! (.-minWidth s) "0")))
                      ;; ── 3. CM6：修复 scroller + content（若有）────────────────
                      (let [cm6-scroll (.querySelectorAll main-clone ".cm-scroller")]
                        (js/console.log "[pdf] CM6 .cm-scroller found:" (.-length cm6-scroll))
@@ -361,7 +370,7 @@
                         "overflow-wrap:anywhere!important;"
                         "word-break:break-word!important}"
                         ;; CM5 兜底（Logseq 目前实际使用 CM5 渲染代码块）
-                        ".CodeMirror{overflow:visible!important;height:auto!important}"
+                        ".CodeMirror{clip-path:none!important;overflow:visible!important;height:auto!important}"
                         ".CodeMirror-gutters,.CodeMirror-linenumber{display:none!important}"
                         ".CodeMirror-scroll{overflow:visible!important;height:auto!important;"
                         "margin-bottom:0!important;padding-bottom:0!important}"
@@ -387,7 +396,7 @@
                         "word-break:break-word!important;overflow-wrap:anywhere!important;"
                         "min-width:0!important;width:100%!important}"
                         ".cm-editor .cm-line{white-space:pre-wrap!important;word-break:break-word!important}"
-                        ".CodeMirror{overflow:visible!important;height:auto!important}"
+                        ".CodeMirror{clip-path:none!important;overflow:visible!important;height:auto!important}"
                         ".CodeMirror-gutters,.CodeMirror-linenumber{display:none!important}"
                         ".CodeMirror-scroll{overflow:visible!important;height:auto!important}"
                         ".CodeMirror-sizer{margin-left:0!important}"
