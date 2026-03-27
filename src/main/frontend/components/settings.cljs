@@ -17,6 +17,7 @@
             [frontend.handler.db-based.vector-search-flows :as vector-search-flows]
             [frontend.handler.global-config :as global-config-handler]
             [frontend.handler.excalidraw-config :as ex-cfg]
+            [frontend.handler.music-player-config :as mp-cfg]
             [frontend.handler.notification :as notification]
             [frontend.handler.plugin :as plugin-handler]
             [frontend.handler.property :as property-handler]
@@ -1366,6 +1367,132 @@
       [:code "excalidraw-config"]
       " 属性（JSON 格式）。"]]))
 
+;; ── 音乐播放器设置面板 ──────────────────────────────────────────────────────────
+
+(rum/defcs settings-music-player
+  < rum/reactive
+  (rum/local nil   ::config)
+  (rum/local false ::saved?)
+  {:did-mount
+   (fn [state]
+     (p/let [cfg (mp-cfg/<get-config)]
+       (reset! (::config state) cfg))
+     state)}
+  [state]
+  (let [*cfg    (::config state)
+        *saved? (::saved? state)
+        cfg     (rum/react *cfg)
+        saved?  (rum/react *saved?)
+        row-cls    "it sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start"
+        label-cls  "block text-sm font-medium leading-5 opacity-70"
+        input-style {:display "block" :width "100%" :padding "5px 8px"
+                     :borderRadius "6px"
+                     :border "1px solid var(--lx-gray-07,#d1d5db)"
+                     :outline "none" :fontSize "13px"
+                     :fontFamily "var(--mono-font, monospace)"
+                     :boxSizing "border-box"}
+        set-field!  (fn [k v] (reset! *cfg (assoc cfg k v)))
+        save!       (fn []
+                      (mp-cfg/save-config! cfg)
+                      (reset! *saved? true)
+                      (js/setTimeout #(reset! *saved? false) 2000))
+        ;; 用 showOpenDialog 选择路径（仅 Electron）
+        pick-dir!   (fn [field]
+                      (p/let [result (ipc/ipc :showOpenDialog
+                                              (clj->js {:properties ["openDirectory"]}))]
+                        (when-let [p (first (.-filePaths result))]
+                          (set-field! field p))))
+        pick-file!  (fn [field filters]
+                      (p/let [result (ipc/ipc :showOpenDialog
+                                              (clj->js {:properties ["openFile"]
+                                                        :filters filters}))]
+                        (when-let [p (first (.-filePaths result))]
+                          (set-field! field p))))]
+    [:div.panel-wrap.is-music-player.mb-8
+
+     ;; ── 说明 ──────────────────────────────────────────────────────────────
+     [:div {:style {:padding "10px 14px" :marginBottom "16px"
+                    :background "var(--lx-gray-02,#f9fafb)"
+                    :border "1px solid var(--lx-gray-05,#e5e7eb)"
+                    :borderRadius "8px" :fontSize "13px" :lineHeight "1.6"}}
+      [:p {:style {:margin "0 0 6px" :font-weight "600"}} "🎵 本地音乐播放器"]
+      [:p {:style {:margin 0 :opacity 0.6}}
+       "通过外部 mpv 播放本地音乐文件。mpv 不会被打包进应用，请自行安装后在下方配置路径。"]]
+
+     ;; ── 音乐文件夹 ──────────────────────────────────────────────────────────
+     [:div {:class row-cls}
+      [:div.flex.flex-col
+       [:label {:class label-cls} "音乐文件夹"]
+       [:div.text-xs.opacity-50.mt-1 "本地音乐文件的根目录"]]
+      [:div.mt-1.sm:mt-0.sm:col-span-2
+       [:div {:style {:display "flex" :gap "6px"}}
+        [:input
+         {:type        "text"
+          :value       (or (:music-folder cfg) "")
+          :placeholder "例如：/Users/xxx/Music"
+          :style       input-style
+          :on-change   (fn [^js e] (set-field! :music-folder (.. e -target -value)))}]
+        (when (util/electron?)
+          [:button
+           {:on-click  #(pick-dir! :music-folder)
+            :style {:padding "5px 12px" :borderRadius "6px" :font-size "12px"
+                    :border "1px solid var(--lx-gray-07,#d1d5db)"
+                    :cursor "pointer" :white-space "nowrap"
+                    :background "var(--lx-gray-02,#f9fafb)"}}
+           "浏览…"])]]]
+
+     [:hr {:style {:border "none" :border-top "1px solid var(--lx-gray-05,#e5e7eb)" :margin "16px 0"}}]
+
+     ;; ── mpv 路径 ─────────────────────────────────────────────────────────────
+     [:div {:class row-cls}
+      [:div.flex.flex-col
+       [:label {:class label-cls} "mpv 可执行文件路径"]
+       [:div.text-xs.opacity-50.mt-1 "mpv 二进制文件的绝对路径"]]
+      [:div.mt-1.sm:mt-0.sm:col-span-2
+       [:div {:style {:display "flex" :gap "6px"}}
+        [:input
+         {:type        "text"
+          :value       (or (:mpv-path cfg) "")
+          :placeholder (case (.-platform js/process)
+                         "win32"  "例如：C:\\\\mpv\\\\mpv.exe"
+                         "darwin" "例如：/opt/homebrew/bin/mpv"
+                         "例如：/usr/bin/mpv")
+          :style       input-style
+          :on-change   (fn [^js e] (set-field! :mpv-path (.. e -target -value)))}]
+        (when (util/electron?)
+          [:button
+           {:on-click  #(pick-file! :mpv-path
+                                    (clj->js [{:name "mpv" :extensions ["exe" "*"]}]))
+            :style {:padding "5px 12px" :borderRadius "6px" :font-size "12px"
+                    :border "1px solid var(--lx-gray-07,#d1d5db)"
+                    :cursor "pointer" :white-space "nowrap"
+                    :background "var(--lx-gray-02,#f9fafb)"}}
+           "浏览…"])]
+       [:div.text-xs.opacity-40.mt-1
+        "macOS 可通过 "
+        [:code "brew install mpv"]
+        " 安装，Linux 使用发行版包管理器，Windows 从 mpv.io 下载。"]]]
+
+     [:hr {:style {:border "none" :border-top "1px solid var(--lx-gray-05,#e5e7eb)" :margin "16px 0"}}]
+
+     ;; ── 保存 ──────────────────────────────────────────────────────────────────
+     [:div.flex.items-center.gap-3
+      [:button
+       {:on-click save!
+        :style {:padding "7px 20px" :borderRadius "6px" :border "none"
+                :background "#6366f1" :color "#fff"
+                :fontSize "13px" :fontWeight "600" :cursor "pointer"}}
+       "保存设置"]
+      (when saved?
+        [:span.text-xs {:style {:color "#22c55e" :fontWeight "600"}} "✓ 已保存"])]
+
+     [:hr {:style {:border "none" :border-top "1px solid var(--lx-gray-05,#e5e7eb)" :margin "16px 0"}}]
+
+     [:div.text-xs.opacity-40
+      "配置存储于页面 "
+      [:code "music-player-config"]
+      "，标签 #ConfigPage。"]]))
+
 (rum/defcs ^:large-vars/cleanup-todo settings
   < (rum/local DEFAULT-ACTIVE-TAB-STATE ::active)
   {:will-mount
@@ -1408,6 +1535,7 @@
                [:ai (t :settings-page/tab-ai) (t :settings-page/ai) (ui/icon "wand")]
 
                [:excalidraw "excalidraw" "白板" (ui/icon "layout-board")]
+               [:music-player "music-player" "音乐播放器" (ui/icon "music")]
                [:advanced "advanced" (t :settings-page/tab-advanced) (ui/icon "bulb")]
                [:features "features" (t :settings-page/tab-features) (ui/icon "app-feature")]
                (when logged-in?
@@ -1460,6 +1588,9 @@
 
          :excalidraw
          (settings-excalidraw)
+
+         :music-player
+         (settings-music-player)
 
          :advanced
          (settings-advanced)

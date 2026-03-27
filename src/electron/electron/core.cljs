@@ -10,6 +10,7 @@
             [electron.exceptions :as exceptions]
             [electron.handler :as handler]
             [electron.logger :as logger]
+            [electron.mpv :as mpv]
             [electron.server :as server]
             [electron.updater :refer [init-updater] :as updater]
             [electron.url :refer [logseq-url-handler]]
@@ -153,14 +154,53 @@
                    (try
                      (js-invoke win type args)
                      (catch :default e
-                       (logger/error (str call-win-channel " " e))))))))
+                       (logger/error (str call-win-channel " " e)))))))
+
+      ;; ── MPV 音乐播放器控制 ─────────────────────────────────────────────────
+      (.handle "mpv-control"
+               (fn [_ ^js args-js]
+                 (let [req (js->clj args-js :keywordize-keys true)
+                       action (:action req)]
+                   (p/let [result
+                           (cond
+                             (= action "start")
+                             (mpv/start! (:mpv-path req) (or (:volume req) 80))
+
+                             (= action "play")
+                             (mpv/play! (:path req))
+
+                             (= action "pause")
+                             (mpv/pause!)
+
+                             (= action "resume")
+                             (mpv/resume!)
+
+                             (= action "seek")
+                             (mpv/seek! (:pos req))
+
+                             (= action "set-volume")
+                             (mpv/set-volume! (:value req))
+
+                             (= action "status")
+                             (clj->js (mpv/status))
+
+                             (= action "list-music")
+                             (mpv/list-music! (:folder req))
+
+                             (= action "kill")
+                             (do (mpv/kill!) nil)
+
+                             :else nil)]
+                     (bean/->js result))))))
 
     #(do (clear-win-effects!)
          (.removeHandler ipcMain toggle-win-channel)
          (.removeHandler ipcMain export-publish-assets)
          (.removeHandler ipcMain quit-dirty-state)
          (.removeHandler ipcMain call-app-channel)
-         (.removeHandler ipcMain call-win-channel))))
+         (.removeHandler ipcMain call-win-channel)
+         (.removeHandler ipcMain "mpv-control")
+         (mpv/kill!))))
 
 (defn- set-app-menu! []
   (let [about-fn (fn []
