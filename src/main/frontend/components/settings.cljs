@@ -1453,10 +1453,7 @@
         [:input
          {:type        "text"
           :value       (or (:mpv-path cfg) "")
-          :placeholder (case (.-platform js/process)
-                         "win32"  "例如：C:\\\\mpv\\\\mpv.exe"
-                         "darwin" "例如：/opt/homebrew/bin/mpv"
-                         "例如：/usr/bin/mpv")
+          :placeholder "例如：/usr/bin/mpv 或 /opt/homebrew/bin/mpv"
           :style       input-style
           :on-change   (fn [^js e] (set-field! :mpv-path (.. e -target -value)))}]
         (when (util/electron?)
