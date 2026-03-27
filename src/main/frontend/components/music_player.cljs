@@ -252,29 +252,37 @@
 
 (rum/defcs music-player-page
   < rum/reactive
-  (rum/local nil ::cfg)
-  (rum/local false ::loading?)
+  (rum/local nil   ::cfg)
+  (rum/local false ::scanning?)
+  (rum/local nil   ::scan-error)
   {:did-mount
    (fn [state]
      (p/let [cfg (mp-cfg/<get-config)]
-       (reset! (::cfg state) cfg)
-       (when (and cfg (not (string/blank? (:music-folder cfg))))
-         (load-folder! (:music-folder cfg))))
+       (let [merged (merge mp-cfg/default-config cfg)]
+         (reset! (::cfg state) merged)
+         ;; 只要有文件夹配置就立即扫描，不依赖 mpv 是否就绪
+         (when (not (string/blank? (:music-folder merged)))
+           (reset! (::scanning? state) true)
+           (-> (load-folder! (:music-folder merged))
+               (.then (fn [_] (reset! (::scanning? state) false)))
+               (.catch (fn [e]
+                         (reset! (::scanning? state) false)
+                         (reset! (::scan-error state) (.-message e))))))))
      state)
    :will-unmount
    (fn [state]
      (stop-poll!)
      state)}
   [state]
-  (let [ps        (rum/react *player-state)
-        cfg       (rum/react (::cfg state))
-        loading?  (rum/react (::loading? state))
+  (let [ps          (rum/react *player-state)
+        cfg         (rum/react (::cfg state))
+        scanning?   (rum/react (::scanning? state))
+        scan-error  (rum/react (::scan-error state))
         {:keys [status current playlist position duration volume error]} ps
-        no-folder? (string/blank? (:music-folder cfg ""))
-        no-mpv?    (string/blank? (:mpv-path cfg ""))]
+        no-folder?  (string/blank? (:music-folder cfg ""))
+        no-mpv?     (string/blank? (:mpv-path cfg ""))]
     [:div.music-player-page
-     {:style {:display "flex" :flex-direction "column" :height "100%"
-              :min-height 0}}
+     {:style {:display "flex" :flex-direction "column" :height "100%" :min-height 0}}
 
      ;; ── 顶部标题栏 ──
      [:div {:style {:padding "16px 20px 12px"
@@ -282,30 +290,31 @@
                     :display "flex" :align-items "center" :gap "10px"}}
       [:span {:style {:font-size "18px"}} "🎵"]
       [:h1 {:style {:margin 0 :font-size "16px" :font-weight "700"}} "音乐播放器"]
-      (when (not (:mpv-ready? ps))
-        [:span {:style {:font-size "11px" :opacity 0.4 :margin-left "auto"}}
-         "mpv 未启动"])]
+      [:span {:style {:font-size "11px" :opacity 0.35 :margin-left "auto"
+                      :display "flex" :align-items "center" :gap "6px"}}
+       (cond
+         scanning?             "正在扫描…"
+         (:mpv-ready? ps)      "● mpv 已就绪"
+         (not no-mpv?)         "○ mpv 未启动"
+         :else                 nil)
+       (when (pos? (count playlist))
+         (str (count playlist) " 首"))]]
 
      ;; ── 错误提示 ──
-     (when error
+     (when (or error scan-error)
        [:div {:style {:margin "8px 16px" :padding "8px 12px"
                       :background "#fee2e2" :color "#991b1b"
                       :border-radius "6px" :font-size "12px"}}
-        error])
+        (or error scan-error)])
 
-     ;; ── 配置提示 ──
-     (when (or no-folder? no-mpv?)
-       [:div {:style {:margin "12px 16px" :padding "12px 16px"
-                      :background "var(--lx-gray-02,#f9fafb)"
-                      :border "1px dashed var(--lx-gray-06,#d1d5db)"
-                      :border-radius "8px" :font-size "13px"}}
-        [:p {:style {:margin "0 0 8px" :font-weight "600"}} "⚙️ 请先完成配置"]
-        (when no-mpv?
-          [:p {:style {:margin "0 0 4px" :opacity 0.7}} "• 设置 → 音乐播放器 → 配置 mpv 路径"])
-        (when no-folder?
-          [:p {:style {:margin 0 :opacity 0.7}} "• 设置 → 音乐播放器 → 选择音乐文件夹"])])
+     ;; ── 仅 mpv 路径缺失时提示（文件夹单独提示在列表区）──
+     (when no-mpv?
+       [:div {:style {:margin "8px 16px 0" :padding "8px 12px"
+                      :background "#fef9c3" :color "#854d0e"
+                      :border-radius "6px" :font-size "12px"}}
+        "⚠️ 未配置 mpv 路径，无法播放。请前往 设置 → 音乐播放器 配置。"])
 
-     ;; ── 播放器控制区 ──
+     ;; ── 播放器控制区（始终显示）──
      (now-playing-bar
       {:current     current
        :status      status
@@ -319,12 +328,27 @@
        :on-volume   set-volume!})
 
      ;; ── 曲目列表 ──
-     (if (empty? playlist)
+     (cond
+       scanning?
+       [:div {:style {:flex 1 :display "flex" :align-items "center"
+                      :justify-content "center" :gap "8px" :opacity 0.5 :font-size "14px"}}
+        "⏳ 正在扫描音乐文件夹…"]
+
+       no-folder?
+       [:div {:style {:flex 1 :display "flex" :flex-direction "column"
+                      :align-items "center" :justify-content "center" :gap "8px"}}
+        [:span {:style {:font-size "32px"}} "🎵"]
+        [:p {:style {:font-size "14px" :font-weight "600" :margin 0}} "还没有配置音乐文件夹"]
+        [:p {:style {:font-size "12px" :opacity 0.5 :margin 0}} "前往 设置 → 音乐播放器 → 音乐文件夹"]]
+
+       (empty? playlist)
        [:div {:style {:flex 1 :display "flex" :align-items "center"
                       :justify-content "center" :opacity 0.4 :font-size "14px"}}
-        (if no-folder? "未配置音乐文件夹" "文件夹中没有音乐文件")]
+        "文件夹中没有找到音乐文件（支持 mp3 / flac / ogg / wav / aac / m4a / opus / wma）"]
+
+       :else
        [:div.mp-track-list
-        {:style {:flex 1 :overflow-y "auto" :padding "8px 8px"}}
+        {:style {:flex 1 :overflow-y "auto" :padding "4px 8px"}}
         (map-indexed
          (fn [i track]
            (track-item {:key i :track track :index i

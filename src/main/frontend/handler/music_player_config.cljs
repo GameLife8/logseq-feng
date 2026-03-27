@@ -24,9 +24,13 @@
 (def ^:private tag-title         "ConfigPage")
 
 (def default-config
-  {:music-folder ""
-   :mpv-path     ""
-   :volume       80})
+  {:music-folder      ""
+   :mpv-path          ""
+   :volume            80
+   :audio-normalize   "no"
+   :speed             "1.0"
+   :audio-channels    "auto"
+   :extra-args        ""})
 
 ;; ── 读取 ─────────────────────────────────────────────────────────────────────
 
