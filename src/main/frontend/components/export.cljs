@@ -218,105 +218,116 @@
   (->> (block-handler/get-top-level-blocks (map #(db/entity [:block/uuid %]) selection-ids))
        (map :block/uuid)))
 
+(defn- collect-inline-css
+  "读取当前页面所有已加载样式表的 CSS 文本（通过 CSSOM，无需网络请求）。
+   用于在打印窗口中内联所有样式，避免 blob 窗口加载外部 stylesheet 时的
+   时序问题（stylesheet 未加载完就触发 window.print()）或 CSP 限制。"
+  []
+  (->> (array-seq js/document.styleSheets)
+       (map (fn [^js sheet]
+              (try
+                (->> (array-seq (.-cssRules sheet))
+                     (map #(.-cssText %))
+                     (clojure.string/join "\n"))
+                (catch :default _
+                  ;; 跨域 sheet 无法访问 cssRules，跳过
+                  ""))))
+       (clojure.string/join "\n")))
+
 (defn- export-as-pdf!
-  "克隆当前页面实际渲染的 DOM（含 Logseq 样式），在新窗口触发打印对话框保存为 PDF。
-   参考 kef-doc 插件的 prepareDoc() 方案，直接使用 #main-content-container 而非
-   stripped-down 的 HTML export，以保留完整的块结构与样式。"
+  "克隆当前页面实际渲染的 DOM，在新窗口触发打印对话框保存为 PDF。
+
+   核心改进（相对于 link-stylesheet 方案）：
+   1. 通过 CSSOM 内联全部 CSS（collect-inline-css），保证 CSS 变量、代码块
+      背景色等在 blob 窗口中完整可用，不依赖外部文件加载。
+   2. 在克隆前从 DOM 中移除「关联引用」等打印无关区域。
+   3. 注入 print-color-adjust:exact，让浏览器保留背景色/图片。
+   4. 用 break-word 代替 break-all，代码行仅在词边界换行。"
   [_top-level-uuids]
-  (let [doc         js/document
-        html-el     (.-documentElement doc)
-        ;; 克隆 <head>，修正相对/特殊协议的样式表 URL
-        head-clone  (.cloneNode (.-head doc) true)
-        _           (doseq [^js node (array-seq (.-children head-clone))]
-                      (when (= (.-rel node) "stylesheet")
-                        (when-let [^js attr (.. node -attributes -href)]
-                          (let [v (.-value attr)]
-                            (cond
-                              (.startsWith v ".") (set! (.-value attr) (.-href node))
-                              (.startsWith v "assets://")
-                              (set! (.-value attr) (.replace v "assets://" "file://")))))))
-        head-html   (.-innerHTML head-clone)
-        ;; 克隆主内容区域（保留完整 Logseq DOM 结构和渲染内容）
-        main-el     (.getElementById doc "main-content-container")
-        main-html   (if main-el (.-outerHTML (.cloneNode main-el true)) "")
-        ;; 修正可能的图片 assets URL（克隆后直接操作 outerHTML 字符串即可）
-        main-html   (.replaceAll main-html "assets://" "file://")
-        ;; 打印专用样式：重置布局 CSS 变量（无侧边栏时宽度计算会塌陷），隐藏交互 UI
-        ;; 关键：覆盖 --ls-left/right-sidebar-width，让 #main-content-container 正常撑开
-        print-css   (str "<style>"
-                         ":root{"
-                         "--ls-left-sidebar-width:0px!important;"
-                         "--ls-right-sidebar-width:0px!important;"
-                         "--ls-page-max-width:860px!important;"
-                         "}"
-                         "html,body{writing-mode:horizontal-tb!important;"
-                         "margin:0;padding:0;background:#fff}"
-                         "#app-container{display:block!important}"
-                         "#main-container{display:block!important;"
-                         "width:100%!important;max-width:100%!important}"
-                         "#main-content-container{display:block!important;"
-                         "width:100%!important;max-width:860px!important;"
-                         "margin:0 auto!important;padding:1.5rem!important;"
-                         "border:none!important;border-radius:0!important;"
-                         "box-shadow:none!important}"
-                         ;; ── 代码块：静态化样式（不依赖 CSS 变量）────────
-                         ;; CodeMirror 5（.CodeMirror）和 6（.cm-editor）容器
-                         ".CodeMirror,.cm-editor{"
-                         "background:#f8f9fa!important;"
-                         "border:1px solid #dee2e6!important;"
-                         "border-radius:6px!important;"
-                         "padding:0!important;"
-                         "overflow:visible!important;"
-                         "font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace!important;"
-                         "font-size:13px!important;line-height:1.5!important}"
-                         ".CodeMirror-scroll,.cm-scroller{"
-                         "overflow:visible!important;"
-                         "padding:10px 14px!important}"
-                         ;; 代码行
-                         ".CodeMirror-line,.cm-line{"
-                         "white-space:pre-wrap!important;"
-                         "word-break:break-all!important;"
-                         "overflow-wrap:break-word!important;"
-                         "color:#24292e!important}"
-                         ;; 行号列（如有）
-                         ".CodeMirror-gutter,.CodeMirror-gutter-elt{"
-                         "background:#f8f9fa!important;"
-                         "color:#6e7781!important;"
-                         "border-right:1px solid #dee2e6!important}"
-                         ;; 语法高亮色（覆盖可能失效的 CSS 变量引用）
-                         ".cm-content,.CodeMirror-code{color:#24292e!important}"
-                         ;; 行内 code（非编辑器）
-                         "code:not(.cm-line){background:#f0f1f3!important;"
-                         "border:1px solid #dee2e6!important;"
-                         "border-radius:3px!important;padding:1px 5px!important;"
-                         "font-family:monospace!important;font-size:0.9em!important}"
-                         "@media print{"
-                         ".block-control,.bullet-container,.open-block-ref-link,"
-                         ".block-children-left-border,.ls-block-right-toolbar,"
-                         ".cp__sidebar-help-btn{display:none!important}"
-                         ".CodeMirror,.cm-editor{background:#f8f9fa!important;"
-                         "overflow:visible!important;break-inside:avoid!important}"
-                         ".CodeMirror-scroll,.cm-scroller{overflow:visible!important}"
-                         ".CodeMirror-line,.cm-line{white-space:pre-wrap!important;word-break:break-all!important}"
-                         "}"
-                         "</style>")
-        ;; 保留 html 元素上动态设置的 CSS 变量（--ls-* 等）
-        html-style  (.. html-el -style -cssText)
-        full-html   (str "<!DOCTYPE html>"
-                         "<html class='" (.-className html-el) "'"
-                         (when (seq html-style) (str " style='" html-style "'"))
-                         ">"
-                         "<head><meta charset='UTF-8'>"
-                         head-html
-                         print-css
-                         "</head><body>"
-                         "<div id='app-container'><div id='main-container'>"
-                         main-html
-                         "</div></div>"
-                         "<script>window.onload=function(){window.print();}</script>"
-                         "</body></html>")
-        blob        (js/Blob. #js [full-html] #js {:type "text/html"})
-        url         (js/URL.createObjectURL blob)]
+  (let [doc        js/document
+        html-el    (.-documentElement doc)
+
+        ;; ── 内联 CSS（CSSOM 读取，无网络依赖）───────────────────────────
+        all-css    (collect-inline-css)
+
+        ;; ── 克隆主内容区域 ──────────────────────────────────────────────
+        main-el    (.getElementById doc "main-content-container")
+        main-clone (when main-el (.cloneNode main-el true))
+
+        ;; 移除不需要打印的区域（关联引用、侧边栏提示等）
+        _          (when main-clone
+                     (doseq [sel [".references-blocks-wrap"  ; 「关联引用」区块
+                                  ".sidebar-drop-indicator"]]
+                       (doseq [^js el (array-seq (.querySelectorAll main-clone sel))]
+                         (some-> (.-parentNode el) (.removeChild el)))))
+
+        main-html  (if main-clone
+                     (.replaceAll (.-outerHTML main-clone) "assets://" "file://")
+                     "")
+
+        ;; ── 打印专用覆盖样式 ────────────────────────────────────────────
+        ;; 放在内联 CSS *之后*，以最高优先级覆盖布局变量和交互元素
+        print-css  (str "<style>"
+                        all-css  ; 全量应用 app 样式（含 CSS 变量 / :root 块）
+                        ;; 重置侧边栏宽度变量，防止布局塌陷
+                        ":root{"
+                        "--ls-left-sidebar-width:0px!important;"
+                        "--ls-right-sidebar-width:0px!important;"
+                        "--ls-page-max-width:860px!important;"
+                        "}"
+                        "html,body{writing-mode:horizontal-tb!important;"
+                        "margin:0;padding:0;background:#fff}"
+                        "#app-container{display:block!important}"
+                        "#main-container{display:block!important;"
+                        "width:100%!important;max-width:100%!important}"
+                        "#main-content-container{display:block!important;"
+                        "width:100%!important;max-width:860px!important;"
+                        "margin:0 auto!important;padding:1.5rem!important;"
+                        "border:none!important;border-radius:0!important;"
+                        "box-shadow:none!important}"
+                        ;; 代码块：仅修正溢出和换行，颜色由内联 CSS 变量决定
+                        ".CodeMirror,.cm-editor{"
+                        "overflow:visible!important;"
+                        "break-inside:avoid!important}"
+                        ".CodeMirror-scroll,.cm-scroller{"
+                        "overflow:visible!important}"
+                        ".CodeMirror-line,.cm-line{"
+                        "white-space:pre-wrap!important;"
+                        "word-break:break-word!important;"   ; break-word 而非 break-all
+                        "overflow-wrap:break-word!important}"
+                        ;; 隐藏交互 UI
+                        ".block-control,.bullet-container,.open-block-ref-link,"
+                        ".block-children-left-border,.ls-block-right-toolbar,"
+                        ".cp__sidebar-help-btn{display:none!important}"
+                        "@media print{"
+                        ;; 保留背景色和图片（浏览器默认打印时会剥除）
+                        "*{-webkit-print-color-adjust:exact!important;"
+                        "color-adjust:exact!important;"
+                        "print-color-adjust:exact!important}"
+                        ".CodeMirror,.cm-editor{overflow:visible!important;"
+                        "break-inside:avoid!important}"
+                        ".CodeMirror-line,.cm-line{white-space:pre-wrap!important;"
+                        "word-break:break-word!important}"
+                        "}"
+                        "</style>")
+
+        ;; 保留 html 元素上动态设置的 CSS 变量（--ls-* 等内联 style）
+        html-style (.. html-el -style -cssText)
+        full-html  (str "<!DOCTYPE html>"
+                        "<html class='" (.-className html-el) "'"
+                        (when (seq html-style) (str " style='" html-style "'"))
+                        ">"
+                        "<head><meta charset='UTF-8'>"
+                        ;; 不再需要 head-clone（stylesheet 链接）：CSS 已全量内联
+                        print-css
+                        "</head><body>"
+                        "<div id='app-container'><div id='main-container'>"
+                        main-html
+                        "</div></div>"
+                        "<script>window.onload=function(){window.print();}</script>"
+                        "</body></html>")
+        blob       (js/Blob. #js [full-html] #js {:type "text/html"})
+        url        (js/URL.createObjectURL blob)]
     (js/window.open url "_blank")
     (js/setTimeout #(js/URL.revokeObjectURL url) 60000)))
 
