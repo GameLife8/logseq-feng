@@ -1,22 +1,39 @@
 (ns frontend.components.music-player
   "本地音乐播放器 — MusicBee 布局风格 + Logseq 主题配色。
    三栏布局：左栏（文件夹/艺术家）+ 中栏（曲目列表）+ 底部播放控制栏"
-  (:require [clojure.string :as string]
+  (:require [cljs-bean.core :as bean]
+            [clojure.string :as string]
             [frontend.handler.music-player-config :as mp-cfg]
-            [frontend.util :as util]
             [promesa.core :as p]
             [rum.core :as rum]))
 
 ;; ── Electron IPC ────────────────────────────────────────────────────────────
+;; window.apis.invoke(channel, argsArray) — preload 用 ...args 展开，所以要传数组
 
 (defn- mpv-invoke! [action & [args]]
-  (js/console.log "[music-player] mpv-invoke!" action (clj->js (or args {})))
-  (let [apis (.-apis js/window)]
-    (js/console.log "[music-player] apis keys:" (when apis (js/Object.keys apis)))
-    (when (and apis (.-mpvControl apis))
-      (-> (.mpvControl apis (clj->js (merge {:action action} args)))
-          (.then (fn [r] (js/console.log "[music-player] mpv reply" action r) r))
-          (.catch (fn [e] (js/console.error "[music-player] mpv error" action e) (js/Promise.reject e)))))))
+  (let [req (merge {:action action} args)
+        apis (.-apis js/window)]
+    (js/console.log "[music-player] mpv-invoke!" action
+                    "apis=" apis
+                    "keys=" (when apis (js/Object.keys apis)))
+    (when apis
+      (try
+        ;; 先尝试专用 mpvControl（新 preload）
+        (let [fn-mpv (goog.object/get apis "mpvControl")]
+          (if (fn? fn-mpv)
+            (-> (.call fn-mpv apis (clj->js req))
+                (.then (fn [r] (js/console.log "[music-player] mpv reply" action r) r))
+                (.catch (fn [e] (js/console.error "[music-player] mpv error" action e) (js/Promise.reject e))))
+            ;; 回退：用标准 invoke(channel, [req])（preload spread 展开）
+            (let [fn-inv (goog.object/get apis "invoke")]
+              (if (fn? fn-inv)
+                (-> (.call fn-inv apis "mpv-control" (bean/->js [req]))
+                    (.then (fn [r] (js/console.log "[music-player] mpv reply (invoke)" action r) r))
+                    (.catch (fn [e] (js/console.error "[music-player] mpv error (invoke)" action e) (js/Promise.reject e))))
+                (js/console.warn "[music-player] no mpvControl nor invoke on window.apis")))))
+        (catch :default e
+          (js/console.error "[music-player] mpv-invoke! exception:" e)
+          nil)))))
 
 ;; ── 全局状态（defonce 保证跨路由不丢失）────────────────────────────────────────
 

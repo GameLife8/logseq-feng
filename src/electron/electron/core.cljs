@@ -159,7 +159,9 @@
       ;; ── MPV 音乐播放器控制 ─────────────────────────────────────────────────
       (.handle "mpv-control"
                (fn [_ ^js args-js]
+                 (logger/info "[mpv-handler] raw args-js:" args-js)
                  (let [req (js->clj args-js :keywordize-keys true)
+                       _   (logger/info "[mpv-handler] req:" (pr-str req))
                        action (:action req)]
                    (p/let [result
                            (cond
