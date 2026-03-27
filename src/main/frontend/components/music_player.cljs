@@ -10,14 +10,11 @@
 ;; ── Electron IPC ────────────────────────────────────────────────────────────
 
 (defn- mpv-invoke! [action & [args]]
-  (js/console.log "[music-player] mpv-invoke!" action
-                  "electron?" (util/electron?)
-                  "window.apis?" (boolean (.-apis js/window))
-                  "invoke?" (boolean (and (.-apis js/window) (.-invoke (.-apis js/window)))))
+  (js/console.log "[music-player] mpv-invoke!" action (clj->js (or args {})))
   (let [apis (.-apis js/window)]
-    (when (and apis (.-invoke apis))
-      (-> (.invoke apis "mpv-control"
-                   (clj->js (merge {:action action} args)))
+    (js/console.log "[music-player] apis keys:" (when apis (js/Object.keys apis)))
+    (when (and apis (.-mpvControl apis))
+      (-> (.mpvControl apis (clj->js (merge {:action action} args)))
           (.then (fn [r] (js/console.log "[music-player] mpv reply" action r) r))
           (.catch (fn [e] (js/console.error "[music-player] mpv error" action e) (js/Promise.reject e)))))))
 
