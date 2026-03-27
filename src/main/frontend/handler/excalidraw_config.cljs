@@ -2,8 +2,15 @@
   "Manages Excalidraw/Whiteboard user settings stored as a dedicated page entity.
 
    Config page:  title  = \"logseq/excalidraw\"
+                 :block/name = \"logseq/excalidraw\"  (full path, NO namespace split)
                  tag    = \"ConfigPage\" class entity (find or create with :class? true)
                  attr   = :block/excalidraw-config  (JSON string)
+
+   IMPORTANT: <create! is called with :split-namespace? false so that the page
+   is stored with :block/name \"logseq/excalidraw\" (the full path, not split into
+   a \"logseq\" parent + \"excalidraw\" child). In DB graphs the default behavior
+   (split-namespace? true) would create :block/name \"excalidraw\", making all
+   lookups by the full path fail and causing a new page to be created every save.
 
    Config map keys (ClojureScript, keywordized):
      :embed-whitelist    – newline-separated domain list, e.g. \"example.com\\nyoutube.com\".
@@ -38,8 +45,9 @@
 ;; ── read ─────────────────────────────────────────────────────────────────────
 
 (defn get-config
-  "Read config from the dedicated page entity.  Returns default-config if the
-   page doesn't exist yet or the attribute is missing / malformed."
+  "Synchronous read – only works when the page is already in the main-thread
+   DataScript replica (e.g. after an async load has transacted it in).
+   Returns default-config if the page is absent or the attribute is missing."
   []
   (if-let [page (db/get-page config-page-title)]
     (if-let [raw (get page config-attr)]
@@ -52,24 +60,32 @@
     default-config))
 
 (defn <get-config
-  "Async version of get-config.
-   Uses db-async/<pull with [:block/name] to fetch the config page directly
-   from the worker DB, bypassing the lazy main-thread DataScript replica.
-   thread-api/pull explicitly handles [:block/name title] lookups, whereas
-   thread-api/get-blocks (used by <get-block) only resolves UUID strings.
+  "Async config load.  Queries the worker DB directly via thread-api/pull with
+   [:block/name config-page-title], which the worker resolves via ldb/get-page.
+   This bypasses the lazy main-thread DataScript replica so the attribute is
+   always visible regardless of broadcast timing.
    Returns a Promise resolving to the config map."
   []
   (let [repo (state/get-current-repo)]
+    (js/console.log "[ex-cfg] <get-config: pulling [:block/name" config-page-title "] repo=" repo)
     (p/let [result (db-async/<pull repo
-                                   '[:db/id :block/excalidraw-config]
+                                   '[:db/id :block/name :block/title :block/excalidraw-config]
                                    [:block/name config-page-title])]
+      (js/console.log "[ex-cfg] <pull result:"
+                      "db/id=" (when result (:db/id result))
+                      "block/name=" (when result (:block/name result))
+                      "block/title=" (when result (:block/title result))
+                      "excalidraw-config=" (when result (:block/excalidraw-config result)))
       (if-let [raw (and result (:block/excalidraw-config result))]
-        (try (merge default-config
-                    (js->clj (js/JSON.parse raw) :keywordize-keys true))
+        (try (let [cfg (merge default-config
+                              (js->clj (js/JSON.parse raw) :keywordize-keys true))]
+               (js/console.log "[ex-cfg] parsed config:" (clj->js cfg))
+               cfg)
              (catch :default e
                (js/console.warn "[ex-cfg] JSON parse error" e)
                default-config))
-        default-config))))
+        (do (js/console.log "[ex-cfg] no excalidraw-config attr found, returning default")
+            default-config)))))
 
 ;; ── write ─────────────────────────────────────────────────────────────────────
 
@@ -96,32 +112,47 @@
           (common-page-handler/<create! title {:redirect? false :class? true})))))
 
 (defn- ensure-config-page!
-  "Find or create the config page, tagging it with the 'Excalidraw' class tag.
+  "Find or create the config page, tagging it with the ConfigPage class.
+
+   Uses async worker lookup first (db-async/<pull) to bypass the lazy
+   main-thread DataScript replica — if the page exists in the worker DB it is
+   returned directly without hitting the main-thread DB.
+
+   When creating, passes :split-namespace? false so the page is stored with
+   :block/name \"logseq/excalidraw\" (the full path, not split into a \"logseq\"
+   parent + \"excalidraw\" child which is the default DB-graph behavior).
+
    Returns a Promise<page-entity>."
   []
-  (let [existing (db/get-page config-page-title)]
-    (if existing
-      ;; Page exists – ensure it still has the tag (idempotent)
-      (p/let [tag (<ensure-class-tag! tag-title)]
-        (when (and tag existing
-                   (not (some #(= (:db/id tag) (:db/id %))
-                              (:block/tags existing))))
-          (js/console.log "[ex-cfg] re-applying Excalidraw tag to existing config page")
-          (db/transact! (state/get-current-repo)
-                        [{:db/id      (:db/id existing)
-                          :block/tags #{(:db/id tag)}}]
-                        {:outliner-op :save-block}))
-        existing)
-      ;; Page doesn't exist – create page, then create/find tag, then apply
-      (p/let [page (common-page-handler/<create! config-page-title {:redirect? false})
-              tag  (<ensure-class-tag! tag-title)]
-        (when (and page tag)
-          (js/console.log "[ex-cfg] tagging new config page with" tag-title "id=" (:db/id tag))
-          (db/transact! (state/get-current-repo)
-                        [{:db/id      (:db/id page)
-                          :block/tags #{(:db/id tag)}}]
-                        {:outliner-op :save-block}))
-        page))))
+  (let [repo (state/get-current-repo)]
+    ;; Step 1: check worker DB (authoritative) for the existing config page
+    (p/let [existing (db-async/<pull repo
+                                     '[:db/id :block/name :block/title :block/tags]
+                                     [:block/name config-page-title])]
+      (js/console.log "[ex-cfg] ensure-config-page! worker lookup:"
+                      "result=" (clj->js existing)
+                      "db/id=" (when existing (:db/id existing))
+                      "block/name=" (when existing (:block/name existing)))
+      (if existing
+        ;; Page already exists in worker (and now transacted into main-thread by <pull)
+        (do (js/console.log "[ex-cfg] config page exists, reusing db/id=" (:db/id existing))
+            (db/entity (:db/id existing)))
+        ;; Step 2: page not found → create with :split-namespace? false
+        (p/let [page (common-page-handler/<create! config-page-title
+                                                   {:redirect? false
+                                                    :split-namespace? false})
+                _    (js/console.log "[ex-cfg] created config page:"
+                                     "db/id=" (when page (:db/id page))
+                                     "block/name=" (when page (:block/name page))
+                                     "block/title=" (when page (:block/title page)))
+                tag  (<ensure-class-tag! tag-title)]
+          (when (and page tag)
+            (js/console.log "[ex-cfg] tagging config page with" tag-title "id=" (:db/id tag))
+            (db/transact! repo
+                          [{:db/id      (:db/id page)
+                            :block/tags #{(:db/id tag)}}]
+                          {:outliner-op :save-block}))
+          page)))))
 
 (defn save-config!
   "Persist `config-map` to the config page entity.
@@ -132,12 +163,21 @@
     (if page
       (let [repo   (state/get-current-repo)
             merged (merge default-config config-map)]
+        (js/console.log "[ex-cfg] transacting to page db/id=" (:db/id page)
+                        "block/name=" (:block/name page))
         (db/transact! repo
                       [{:db/id             (:db/id page)
                         config-attr        (js/JSON.stringify (clj->js merged))
                         :block/updated-at  (.now js/Date)}]
                       {:outliner-op :save-block})
-        (js/console.log "[ex-cfg] saved OK"))
+        (js/console.log "[ex-cfg] saved OK. reloading to verify...")
+        ;; Verify: re-read from worker immediately after save
+        (p/let [verify (db-async/<pull repo
+                                       '[:db/id :block/excalidraw-config]
+                                       [:block/name config-page-title])]
+          (js/console.log "[ex-cfg] post-save verify:"
+                          "db/id=" (when verify (:db/id verify))
+                          "excalidraw-config=" (when verify (:block/excalidraw-config verify)))))
       (notification/show! "无法创建 Excalidraw 配置页" :error))))
 
 ;; ── embed-whitelist helpers ───────────────────────────────────────────────────
