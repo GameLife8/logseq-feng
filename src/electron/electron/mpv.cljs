@@ -214,20 +214,25 @@
   (:props @*state))
 
 (defn list-music! [folder]
-  "列出文件夹中的音乐文件，递归一层。"
-  (p/create
-   (fn [resolve _]
-     (try
-       (let [exts #{".mp3" ".flac" ".ogg" ".wav" ".aac" ".m4a" ".opus" ".wma"}
-             files (->> (js->clj (.readdirSync fs folder (clj->js {:withFileTypes true})))
-                        (filter #(.isFile %))
-                        (map #(.-name %))
-                        (filter #(exts (string/lower-case (subs % (or (string/last-index-of % ".") 0)))))
-                        (sort)
-                        (mapv #(hash-map :path (node-path/join folder %)
-                                         :name %)))]
-         (resolve (clj->js files)))
-       (catch :default e
-         (logger/warn "[mpv] list-music error" (.-message e))
-         (resolve (clj->js [])))))))
+  "递归扫描文件夹及所有子文件夹中的音乐文件。"
+  (let [exts #{".mp3" ".flac" ".ogg" ".wav" ".aac" ".m4a" ".opus" ".wma"}
+        results (atom [])]
+    (letfn [(scan! [dir]
+              (try
+                (let [entries (js->clj (.readdirSync fs dir (clj->js {:withFileTypes true})))]
+                  (doseq [entry entries]
+                    (let [name  (.-name entry)
+                          full  (node-path/join dir name)]
+                      (cond
+                        ;; 跳过隐藏文件/文件夹
+                        (string/starts-with? name ".") nil
+                        (.isDirectory entry) (scan! full)
+                        (.isFile entry)
+                        (when (exts (string/lower-case
+                                     (subs name (max 0 (or (string/last-index-of name ".") 0)))))
+                          (swap! results conj {:path full :name name}))))))
+                (catch :default e
+                  (logger/warn "[mpv] scan error in" dir ":" (.-message e)))))]
+      (scan! folder)
+      (p/resolved (clj->js (sort-by :path @results))))))
 

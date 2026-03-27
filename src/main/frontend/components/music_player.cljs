@@ -413,8 +413,27 @@
         (when (pos? (count playlist))
           [:span {:style {:font-size "12px" :color $text2}}
            (str (count playlist) " 首 · " (count groups) " 个文件夹")]))
-      ;; mpv 状态指示
-      [:div {:style {:margin-left "auto" :display "flex" :align-items "center" :gap "6px"}}
+      ;; 刷新按钮 + mpv 状态
+      [:div {:style {:margin-left "auto" :display "flex" :align-items "center" :gap "10px"}}
+       ;; 刷新列表按钮
+       (when (not no-folder?)
+         [:button
+          {:title    "重新扫描音乐文件夹"
+           :disabled scanning?
+           :on-click (fn []
+                       (when-not scanning?
+                         (swap! (::scanning? state) (constantly true))
+                         (reset! (::scan-err state) nil)
+                         (-> (load-folder! (:music-folder cfg))
+                             (.then  #(reset! (::scanning? state) false))
+                             (.catch #(do (reset! (::scanning? state) false)
+                                          (reset! (::scan-err state) (.-message %)))))))
+           :style {:background "none" :border (str "1px solid " $border)
+                   :border-radius "5px" :padding "3px 10px"
+                   :font-size "12px" :cursor "pointer" :color $text2
+                   :opacity (if scanning? 0.4 0.8)}}
+          (if scanning? "扫描中…" "↻ 刷新")])
+       ;; mpv 状态
        (if (:mpv-ready? ps)
          [:span {:style {:font-size "11px" :color "#22c55e"}} "● mpv 就绪"]
          [:span {:style {:font-size "11px" :color $text2 :opacity 0.5}}
