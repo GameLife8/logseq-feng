@@ -256,38 +256,35 @@
 
         ;; 移除不需要打印的区域（关联引用、侧边栏提示等）
         _          (when main-clone
-                     ;; 1. DOM 移除：不需要打印的区域
-                     (doseq [sel [".references-blocks-wrap"  ; 「关联引用」区块
+                     ;; 1. DOM 移除：不需要打印的区域（克隆节点是 detached DOM，
+                     ;;    CM6 的 MutationObserver 不监控它，removeChild 安全）
+                     (doseq [sel [".references-blocks-wrap"   ; 「关联引用」区块
                                   ".sidebar-drop-indicator"
-                                  ;; CodeMirror 行号列：
-                                  ;; CSS display:none 常因优先级败给内联 style 失效；
-                                  ;; 直接 removeChild 更可靠。
-                                  ".cm-gutters"
-                                  ".CodeMirror-gutters"]]
+                                  ".cm-gutters"               ; CM6 行号列
+                                  ".CodeMirror-gutters"       ; CM5 行号列
+                                  ".cm-layer"                 ; 光标/选区叠加层（含 contain:size style）
+                                  ".cm-announced"]]           ; 屏幕阅读器提示节点（CM6 bug fix）
                        (doseq [^js el (array-seq (.querySelectorAll main-clone sel))]
                          (some-> (.-parentNode el) (.removeChild el))))
-                     ;; 2. 修正 CM6 flex scroller → block，解决内容截断问题
-                     ;;    cm-scroller 默认 display:flex;overflow:auto，
-                     ;;    打印时必须切换为 block + overflow:visible
+                     ;; 2. 修正 CM6 flex scroller → overflow:visible，解决内容截断
+                     ;;    cm-scroller 默认 display:flex + overflow:auto，
+                     ;;    打印时 overflow:visible 即可（保留 flex 不破坏子元素宽度）
                      (doseq [^js el (array-seq (.querySelectorAll main-clone ".cm-scroller"))]
                        (let [^js s (.-style el)]
-                         (set! (.-display s) "block")
-                         (set! (.-overflow s) "visible")))
-                     ;; 3. 解除 cm-content 的 contain:strict（阻止折行的根因）
-                     ;;    同时清除 min-width，让内容列自动撑宽
+                         (set! (.-overflow s) "visible")
+                         (set! (.-height s) "auto")))
+                     ;; 3. cm-content：强制折行（contain 在 .cm-layer 上，不在这里）
                      (doseq [^js el (array-seq (.querySelectorAll main-clone ".cm-content"))]
                        (let [^js s (.-style el)]
-                         (set! (.-contain s) "none")
-                         (set! (.-minWidth s) "0")
                          (set! (.-whiteSpace s) "pre-wrap")
                          (set! (.-wordBreak s) "break-word")
-                         (set! (.-overflowWrap s) "break-word")))
-                     ;; 4. 每行同样强制折行
-                     (doseq [^js el (array-seq (.querySelectorAll main-clone ".cm-line"))]
+                         (set! (.-overflowWrap s) "anywhere")))
+                     ;; 4. 每行及行内 span 同样折行（语法高亮 span 可能覆盖 white-space）
+                     (doseq [^js el (array-seq (.querySelectorAll main-clone ".cm-line,.cm-line>span"))]
                        (let [^js s (.-style el)]
-                         (set! (.-whiteSpace s) "pre-wrap")
-                         (set! (.-wordBreak s) "break-word")
-                         (set! (.-overflowWrap s) "break-word"))))
+                         (set! (.-whiteSpace s) "inherit")
+                         (set! (.-overflowWrap s) "anywhere")
+                         (set! (.-wordBreak s) "break-word"))))
 
         main-html  (if main-clone
                      (.replaceAll (.-outerHTML main-clone) "assets://" "file://")
@@ -313,22 +310,27 @@
                         "margin:0 auto!important;padding:1.5rem!important;"
                         "border:none!important;border-radius:0!important;"
                         "box-shadow:none!important}"
-                        ;; ── 代码块换行修复（CSS 层兜底，DOM 层已处理主要问题）──
-                        ;; DOM 操作已移除 .cm-gutters 并设置了 scroller/content 样式；
-                        ;; 以下规则作为 CSS 层兜底，覆盖未被克隆捕获的动态元素。
-                        ".CodeMirror-gutters,.cm-gutters{display:none!important}"
-                        ".cm-scroller{display:block!important;overflow:visible!important}"
-                        ".cm-content{contain:none!important;"
-                        "white-space:pre-wrap!important;"
+                        ;; ── 代码块换行修复（CSS 兜底层）──────────────────────────
+                        ;; DOM 层已处理主要问题；CSS 层补充优先级正确的选择器。
+                        ;; 关键：CM6 注入的样式带生成类前缀（.cXXX .cm-gutters），
+                        ;; 必须用 .cm-editor 前缀才能匹配同等优先级再靠 !important 获胜。
+                        ".cm-editor{overflow:visible!important;break-inside:avoid!important}"
+                        ".cm-editor .cm-gutters{display:none!important}"
+                        ".cm-editor .cm-layer{display:none!important}"
+                        ".cm-editor .cm-announced{display:none!important}"
+                        ".cm-editor .cm-scroller{overflow:visible!important;height:auto!important}"
+                        ".cm-editor .cm-content{white-space:pre-wrap!important;"
                         "word-break:break-word!important;"
-                        "overflow-wrap:break-word!important;"
-                        "min-width:0!important}"
-                        ".CodeMirror,.cm-editor{overflow:visible!important;"
-                        "break-inside:avoid!important}"
+                        "overflow-wrap:anywhere!important}"
+                        ".cm-editor .cm-line,.cm-editor .cm-line>span{"
+                        "white-space:inherit!important;"
+                        "overflow-wrap:anywhere!important;"
+                        "word-break:break-word!important}"
+                        ;; CM5 兜底
+                        ".CodeMirror{overflow:visible!important}"
+                        ".CodeMirror-gutters{display:none!important}"
                         ".CodeMirror-scroll{overflow:visible!important}"
-                        ".CodeMirror-line,.cm-line{white-space:pre-wrap!important;"
-                        "word-break:break-word!important;"
-                        "overflow-wrap:break-word!important}"
+                        ".CodeMirror-line{white-space:pre-wrap!important;word-break:break-word!important}"
                         ;; 隐藏交互 UI
                         ".block-control,.bullet-container,.open-block-ref-link,"
                         ".block-children-left-border,.ls-block-right-toolbar,"
@@ -338,16 +340,12 @@
                         "*{-webkit-print-color-adjust:exact!important;"
                         "color-adjust:exact!important;"
                         "print-color-adjust:exact!important}"
-                        ".CodeMirror-gutters,.cm-gutters{display:none!important}"
-                        ".cm-scroller{display:block!important;overflow:visible!important}"
-                        ".cm-content{contain:none!important;"
-                        "white-space:pre-wrap!important;"
-                        "word-break:break-word!important;"
-                        "overflow-wrap:break-word!important}"
-                        ".CodeMirror,.cm-editor{overflow:visible!important;"
-                        "break-inside:avoid!important}"
-                        ".CodeMirror-line,.cm-line{white-space:pre-wrap!important;"
-                        "word-break:break-word!important}"
+                        ".cm-editor .cm-gutters{display:none!important}"
+                        ".cm-editor .cm-layer{display:none!important}"
+                        ".cm-editor .cm-scroller{overflow:visible!important;height:auto!important}"
+                        ".cm-editor .cm-content{white-space:pre-wrap!important;"
+                        "word-break:break-word!important;overflow-wrap:anywhere!important}"
+                        ".cm-editor .cm-line{white-space:pre-wrap!important;word-break:break-word!important}"
                         "}"
                         "</style>")
 
