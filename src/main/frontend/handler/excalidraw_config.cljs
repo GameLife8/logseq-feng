@@ -1,16 +1,14 @@
 (ns frontend.handler.excalidraw-config
   "Manages Excalidraw/Whiteboard user settings stored as a dedicated page entity.
 
-   Config page:  title  = \"logseq/excalidraw\"
-                 :block/name = \"logseq/excalidraw\"  (full path, NO namespace split)
+   Config page:  title  = \"excalidraw-config\"
                  tag    = \"ConfigPage\" class entity (find or create with :class? true)
                  attr   = :block/excalidraw-config  (JSON string)
 
-   IMPORTANT: <create! is called with :split-namespace? false so that the page
-   is stored with :block/name \"logseq/excalidraw\" (the full path, not split into
-   a \"logseq\" parent + \"excalidraw\" child). In DB graphs the default behavior
-   (split-namespace? true) would create :block/name \"excalidraw\", making all
-   lookups by the full path fail and causing a new page to be created every save.
+   NOTE: The page name cannot contain \"/\" — Logseq DB graphs reject such names.
+   Using \"excalidraw-config\" (hyphen) avoids namespace splitting and the
+   worker-side validation error.  The page is tagged #ConfigPage so it is
+   clearly identifiable as a system settings page.
 
    Config map keys (ClojureScript, keywordized):
      :embed-whitelist    – newline-separated domain list, e.g. \"example.com\\nyoutube.com\".
@@ -32,7 +30,7 @@
 
 ;; ── constants ─────────────────────────────────────────────────────────────────
 
-(def ^:private config-page-title "logseq/excalidraw")
+(def ^:private config-page-title "excalidraw-config")
 (def ^:private config-attr       :block/excalidraw-config)
 (def ^:private tag-title         "ConfigPage")
 
@@ -118,10 +116,6 @@
    main-thread DataScript replica — if the page exists in the worker DB it is
    returned directly without hitting the main-thread DB.
 
-   When creating, passes :split-namespace? false so the page is stored with
-   :block/name \"logseq/excalidraw\" (the full path, not split into a \"logseq\"
-   parent + \"excalidraw\" child which is the default DB-graph behavior).
-
    Returns a Promise<page-entity>."
   []
   (let [repo (state/get-current-repo)]
@@ -137,10 +131,9 @@
         ;; Page already exists in worker (and now transacted into main-thread by <pull)
         (do (js/console.log "[ex-cfg] config page exists, reusing db/id=" (:db/id existing))
             (db/entity (:db/id existing)))
-        ;; Step 2: page not found → create with :split-namespace? false
+        ;; Step 2: page not found → create it
         (p/let [page (common-page-handler/<create! config-page-title
-                                                   {:redirect? false
-                                                    :split-namespace? false})
+                                                   {:redirect? false})
                 _    (js/console.log "[ex-cfg] created config page:"
                                      "db/id=" (when page (:db/id page))
                                      "block/name=" (when page (:block/name page))
