@@ -256,33 +256,41 @@
 
         ;; 移除不需要打印的区域（关联引用、侧边栏提示等）
         _          (when main-clone
-                     ;; 1. DOM 移除：不需要打印的区域（克隆节点是 detached DOM，
-                     ;;    CM6 的 MutationObserver 不监控它，removeChild 安全）
-                     (doseq [sel [".references-blocks-wrap"   ; 「关联引用」区块
-                                  ".sidebar-drop-indicator"
-                                  ".cm-gutters"               ; CM6 行号列
-                                  ".CodeMirror-gutters"       ; CM5 行号列
-                                  ".cm-layer"                 ; 光标/选区叠加层（含 contain:size style）
-                                  ".cm-announced"]]           ; 屏幕阅读器提示节点（CM6 bug fix）
+                     ;; 1. DOM 移除：行号列、光标层等无用节点
+                     (let [gutters (.querySelectorAll main-clone ".cm-gutters,.CodeMirror-gutters")
+                           layers  (.querySelectorAll main-clone ".cm-layer,.cm-announced")]
+                       (js/console.log "[pdf] cm-gutters found:" (.-length gutters)
+                                       "cm-layer found:" (.-length layers))
+                       (doseq [^js el (array-seq gutters)]
+                         (some-> (.-parentNode el) (.removeChild el)))
+                       (doseq [^js el (array-seq layers)]
+                         (some-> (.-parentNode el) (.removeChild el))))
+                     ;; 移除其他无用区域
+                     (doseq [sel [".references-blocks-wrap" ".sidebar-drop-indicator"]]
                        (doseq [^js el (array-seq (.querySelectorAll main-clone sel))]
                          (some-> (.-parentNode el) (.removeChild el))))
-                     ;; 2. 修正 CM6 flex scroller → overflow:visible，解决内容截断
-                     ;;    cm-scroller 默认 display:flex + overflow:auto，
-                     ;;    打印时 overflow:visible 即可（保留 flex 不破坏子元素宽度）
-                     (doseq [^js el (array-seq (.querySelectorAll main-clone ".cm-scroller"))]
-                       (let [^js s (.-style el)]
-                         (set! (.-overflow s) "visible")
-                         (set! (.-height s) "auto")))
-                     ;; 3. cm-content：强制折行（contain 在 .cm-layer 上，不在这里）
+                     ;; 2. cm-scroller → display:block 解决 flex-shrink:0 导致的内容截断
+                     ;;    cm-content 的 flex-shrink:0 使其不会自动缩至容器宽度；
+                     ;;    切换为 block 布局后内容列自然撑满并折行。
+                     (let [scrollers (.querySelectorAll main-clone ".cm-scroller")]
+                       (js/console.log "[pdf] cm-scroller found:" (.-length scrollers))
+                       (doseq [^js el (array-seq scrollers)]
+                         (let [^js s (.-style el)]
+                           (set! (.-display s) "block")
+                           (set! (.-overflow s) "visible")
+                           (set! (.-height s) "auto"))))
+                     ;; 3. cm-content：强制折行
                      (doseq [^js el (array-seq (.querySelectorAll main-clone ".cm-content"))]
                        (let [^js s (.-style el)]
                          (set! (.-whiteSpace s) "pre-wrap")
                          (set! (.-wordBreak s) "break-word")
-                         (set! (.-overflowWrap s) "anywhere")))
-                     ;; 4. 每行及行内 span 同样折行（语法高亮 span 可能覆盖 white-space）
+                         (set! (.-overflowWrap s) "anywhere")
+                         (set! (.-minWidth s) "0")
+                         (set! (.-width s) "100%")))
+                     ;; 4. 每行及行内 span 同样折行
                      (doseq [^js el (array-seq (.querySelectorAll main-clone ".cm-line,.cm-line>span"))]
                        (let [^js s (.-style el)]
-                         (set! (.-whiteSpace s) "inherit")
+                         (set! (.-whiteSpace s) "pre-wrap")
                          (set! (.-overflowWrap s) "anywhere")
                          (set! (.-wordBreak s) "break-word"))))
 
@@ -318,12 +326,13 @@
                         ".cm-editor .cm-gutters{display:none!important}"
                         ".cm-editor .cm-layer{display:none!important}"
                         ".cm-editor .cm-announced{display:none!important}"
-                        ".cm-editor .cm-scroller{overflow:visible!important;height:auto!important}"
+                        ".cm-editor .cm-scroller{display:block!important;overflow:visible!important;height:auto!important}"
                         ".cm-editor .cm-content{white-space:pre-wrap!important;"
                         "word-break:break-word!important;"
-                        "overflow-wrap:anywhere!important}"
+                        "overflow-wrap:anywhere!important;"
+                        "min-width:0!important;width:100%!important}"
                         ".cm-editor .cm-line,.cm-editor .cm-line>span{"
-                        "white-space:inherit!important;"
+                        "white-space:pre-wrap!important;"
                         "overflow-wrap:anywhere!important;"
                         "word-break:break-word!important}"
                         ;; CM5 兜底
@@ -342,9 +351,10 @@
                         "print-color-adjust:exact!important}"
                         ".cm-editor .cm-gutters{display:none!important}"
                         ".cm-editor .cm-layer{display:none!important}"
-                        ".cm-editor .cm-scroller{overflow:visible!important;height:auto!important}"
+                        ".cm-editor .cm-scroller{display:block!important;overflow:visible!important;height:auto!important}"
                         ".cm-editor .cm-content{white-space:pre-wrap!important;"
-                        "word-break:break-word!important;overflow-wrap:anywhere!important}"
+                        "word-break:break-word!important;overflow-wrap:anywhere!important;"
+                        "min-width:0!important;width:100%!important}"
                         ".cm-editor .cm-line{white-space:pre-wrap!important;word-break:break-word!important}"
                         "}"
                         "</style>")
