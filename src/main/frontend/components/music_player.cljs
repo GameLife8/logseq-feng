@@ -1,39 +1,33 @@
 (ns frontend.components.music-player
   "本地音乐播放器 — MusicBee 布局风格 + Logseq 主题配色。
    三栏布局：左栏（文件夹/艺术家）+ 中栏（曲目列表）+ 底部播放控制栏"
-  (:require [cljs-bean.core :as bean]
-            [clojure.string :as string]
+  (:require [clojure.string :as string]
             [frontend.handler.music-player-config :as mp-cfg]
             [promesa.core :as p]
             [rum.core :as rum]))
 
 ;; ── Electron IPC ────────────────────────────────────────────────────────────
-;; window.apis.invoke(channel, argsArray) — preload 用 ...args 展开，所以要传数组
+;; contextBridge 的方法 Object.keys 不可见，但直接调用有效；用 try/catch 做回退
 
 (defn- mpv-invoke! [action & [args]]
-  (let [req (merge {:action action} args)
-        apis (.-apis js/window)]
-    (js/console.log "[music-player] mpv-invoke!" action
-                    "apis=" apis
-                    "keys=" (when apis (js/Object.keys apis)))
-    (when apis
-      (try
-        ;; 先尝试专用 mpvControl（新 preload）
-        (let [fn-mpv (goog.object/get apis "mpvControl")]
-          (if (fn? fn-mpv)
-            (-> (.call fn-mpv apis (clj->js req))
-                (.then (fn [r] (js/console.log "[music-player] mpv reply" action r) r))
-                (.catch (fn [e] (js/console.error "[music-player] mpv error" action e) (js/Promise.reject e))))
-            ;; 回退：用标准 invoke(channel, [req])（preload spread 展开）
-            (let [fn-inv (goog.object/get apis "invoke")]
-              (if (fn? fn-inv)
-                (-> (.call fn-inv apis "mpv-control" (bean/->js [req]))
-                    (.then (fn [r] (js/console.log "[music-player] mpv reply (invoke)" action r) r))
-                    (.catch (fn [e] (js/console.error "[music-player] mpv error (invoke)" action e) (js/Promise.reject e))))
-                (js/console.warn "[music-player] no mpvControl nor invoke on window.apis")))))
-        (catch :default e
-          (js/console.error "[music-player] mpv-invoke! exception:" e)
-          nil)))))
+  (let [req (clj->js (merge {:action action} args))]
+    (js/console.log "[music-player] mpv-invoke!" action req)
+    (p/create
+     (fn [resolve reject]
+       ;; 优先用 mpvControl（新 preload 专用方法，直接传对象）
+       (try
+         (-> (.mpvControl js/window.apis req)
+             (.then resolve)
+             (.catch (fn [e] (js/console.error "[music-player] mpvControl error" action e) (reject e))))
+         (catch :default _
+           ;; 回退：invoke(channel, [req]) — preload 用 ...args 展开数组
+           (try
+             (-> (.invoke js/window.apis "mpv-control" #js[req])
+                 (.then resolve)
+                 (.catch (fn [e] (js/console.error "[music-player] invoke error" action e) (reject e))))
+             (catch :default e2
+               (js/console.error "[music-player] no IPC method available:" e2)
+               (resolve nil))))))))
 
 ;; ── 全局状态（defonce 保证跨路由不丢失）────────────────────────────────────────
 
