@@ -8,7 +8,7 @@
 ## 必读参考文档
 
 - `docs/logseq-db-api.md` — Logseq DB / Block / Sidebar 完整 API 手册
-- `.claude/skills/logseq-dev.md` — 思维导图模块接口速查 + 常用 API
+- `.claude/skills/mind-map.md` — 思维导图模块接口速查 + 常用 API
 
 **每次涉及 DB / block / sidebar / 思维导图 操作，先读上述文档，不要靠猜测。**
 
