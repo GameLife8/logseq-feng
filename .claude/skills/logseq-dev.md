@@ -11,6 +11,11 @@
 - 用户在 `src/main/frontend/extensions/mind_map/` 或 `src/main/frontend/components/mind_map.cljs` 中工作
 - 用户问「怎么创建块」「怎么打开侧边栏」等 Logseq 内部 API 问题
 
+## 相关 Skill 文件
+
+- `.claude/skills/excalidraw-whiteboard.md` — Excalidraw/白板 Props、customData、配置存储、lazy 模块加载
+- `.claude/skills/logseq-patterns.md` — DataScript 查询、async DB、IPC、PDF 导出、路由、Worker 架构、常见陷阱
+
 ---
 
 ## 关键文件速查
