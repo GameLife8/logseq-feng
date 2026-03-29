@@ -42,10 +42,6 @@ contextBridge.exposeInMainWorld('apis', {
     return await ipcRenderer.invoke(channel, ...args)
   },
 
-  mpvControl: async (req) => {
-    return await ipcRenderer.invoke('mpv-control', req)
-  },
-
   addListener: ipcRenderer.on.bind(ipcRenderer),
   removeListener: ipcRenderer.removeListener.bind(ipcRenderer),
   removeAllListeners: ipcRenderer.removeAllListeners.bind(ipcRenderer),

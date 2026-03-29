@@ -134,10 +134,9 @@
 
 (def ^:private nav-labels
   "导航项显示名称（无对应 i18n key 的项）。"
-  {:whiteboard   "白板"
-   :mind-map     "思维导图"
-   :tag-manager  "标签管理"
-   :music-player "音乐播放器"})
+  {:whiteboard  "白板"
+   :mind-map    "思维导图"
+   :tag-manager "标签管理"})
 
 (rum/defc sidebar-navigations-edit-content
   [{:keys [_id navs checked-navs set-checked-navs!]}]
@@ -183,7 +182,7 @@
 
 (rum/defc ^:large-vars/cleanup-todo sidebar-navigations
   [{:keys [default-home route-match route-name srs-open?]}]
-  (let [navs [:whiteboard :mind-map :music-player :tag-manager :flashcards :all-pages :graph-view :tag/tasks :tag/assets]
+  (let [navs [:whiteboard :mind-map :tag-manager :flashcards :all-pages :graph-view :tag/tasks :tag/assets]
         [checked-navs set-checked-navs!] (rum/use-state (or (storage/get :ls-sidebar-navigations)
                                                             [:whiteboard :mind-map :tag-manager :flashcards :all-pages :graph-view]))]
 
@@ -259,14 +258,6 @@
             :title "思维导图"
             :icon "brand-apple-arcade"
             :href (rfe/href :all-mind-maps)})
-
-          (= nav :music-player)
-          (sidebar-item
-           {:class "music-player-nav"
-            :active (and (not srs-open?) (= route-name :music-player))
-            :title "音乐播放器"
-            :icon "music"
-            :href (rfe/href :music-player)})
 
           (= nav :tag-manager)
           (sidebar-item

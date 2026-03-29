@@ -2,7 +2,6 @@
   "Defines routes for use with reitit router"
   (:require [frontend.components.agenda :as agenda]
             [frontend.components.mind-map :as mind-map]
-            [frontend.components.music-player :as music-player]
             [frontend.components.tag-manager :as tag-manager]
             [frontend.components.all-pages :as all-pages]
             [frontend.components.bug-report :as bug-report]
@@ -101,10 +100,6 @@
    ["/mind-maps"
     {:name :all-mind-maps
      :view (fn [_] (mind-map/all-mind-maps))}]
-
-   ["/music-player"
-    {:name :music-player
-     :view (fn [_] (music-player/all-music-player))}]
 
    ["/tag-manager"
     {:name :tag-manager
