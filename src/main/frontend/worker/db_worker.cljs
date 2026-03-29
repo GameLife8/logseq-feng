@@ -31,7 +31,6 @@
             [frontend.worker.sync.crypt :as sync-crypt]
             [frontend.worker.sync.log-and-state :as rtc-log-and-state]
             [frontend.worker.thread-atom]
-            [frontend.worker.undo-redo :as undo-validate]
             [goog.object :as gobj]
             [lambdaisland.glogi :as log]
             [lambdaisland.glogi.console :as glogi-console]
@@ -53,11 +52,20 @@
             [logseq.db.sqlite.util :as sqlite-util]
             [logseq.outliner.core :as outliner-core]
             [logseq.outliner.op :as outliner-op]
+            [logseq.outliner.recycle :as outliner-recycle]
             [me.tonsky.persistent-sorted-set :as set :refer [BTSet]]
             [missionary.core :as m]
             [promesa.core :as p]))
 
-(.importScripts js/self "worker.js")
+(def ^:private worker-bootstrap-loaded-key "__logseq_db_worker_bootstrap_loaded__")
+
+(defn- ensure-worker-bootstrap!
+  []
+  (when-not (gobj/get js/self worker-bootstrap-loaded-key)
+    (gobj/set js/self worker-bootstrap-loaded-key true)
+    (.importScripts js/self "worker.js")))
+
+(ensure-worker-bootstrap!)
 
 (declare <build-blocks-fts!)
 
@@ -251,6 +259,20 @@
                                        :kv/value (common-util/time-ms)}]
                      {:skip-validate-db? true}))))
 
+(def ^:private recycle-gc-kv :logseq.kv/recycle-last-gc-at)
+
+(defn- maybe-run-recycle-gc!
+  [conn]
+  (let [now (common-util/time-ms)
+        last-gc-at (:kv/value (d/entity @conn recycle-gc-kv))]
+    (when (or (not (number? last-gc-at))
+              (> (- now last-gc-at) outliner-recycle/gc-interval-ms))
+      (outliner-recycle/gc! conn {:now-ms now})
+      (ldb/transact! conn [{:db/ident recycle-gc-kv
+                            :kv/value now}]
+                     {:persist-op? false
+                      :skip-validate-db? true}))))
+
 (defn- <create-or-open-db!
   [repo {:keys [config datoms sync-download-graph?] :as opts}]
   (when-not (worker-state/get-sqlite-conn repo)
@@ -309,7 +331,8 @@
                                                    {:initial-db? true})))]
           (when-not sync-download-graph?
             (db-migrate/migrate conn)
-            (gc-sqlite-dbs! db client-ops-db conn {}))
+            (gc-sqlite-dbs! db client-ops-db conn {})
+            (maybe-run-recycle-gc! conn))
 
           (when initial-tx-report
             (db-sync/handle-local-tx! repo initial-tx-report))
@@ -605,14 +628,9 @@
 
           ;; (prn :debug :transact :tx-data tx-data' :tx-meta tx-meta')
 
-          (when (and (or (:undo? tx-meta) (:redo? tx-meta))
-                     (not (undo-validate/valid-undo-redo-tx? conn tx-data')))
-            (throw (ex-info "undo/redo tx invalid"
-                            {:repo repo
-                             :undo? (:undo? tx-meta)
-                             :redo? (:redo? tx-meta)})))
           (worker-util/profile "Worker db transact"
                                (ldb/transact! conn tx-data' tx-meta')))
+        (maybe-run-recycle-gc! conn)
         nil)
       (catch :default e
         (prn :debug :worker-transact-failed :tx-meta tx-meta :tx-data tx-data)
@@ -960,7 +978,7 @@
   [repo options]
   (let [conn (worker-state/get-datascript-conn repo)]
     (try
-      (when conn (sqlite-export/build-export @conn options))
+      (sqlite-export/build-export @conn options)
       (catch :default e
         (js/console.error "export-edn error: " e)
         (js/console.error "Stack:\n" (.-stack e))
@@ -971,29 +989,29 @@
 
 (def-thread-api :thread-api/get-view-data
   [repo view-id option]
-  (when-let [conn (worker-state/get-datascript-conn repo)]
-    (db-view/get-view-data @conn view-id option)))
+  (let [db @(worker-state/get-datascript-conn repo)]
+    (db-view/get-view-data db view-id option)))
 
 (def-thread-api :thread-api/get-class-objects
   [repo class-id]
-  (when-let [conn (worker-state/get-datascript-conn repo)]
-    (->> (db-class/get-class-objects @conn class-id)
+  (let [db @(worker-state/get-datascript-conn repo)]
+    (->> (db-class/get-class-objects db class-id)
          (map entity-util/entity->map))))
 
 (def-thread-api :thread-api/get-property-values
   [repo {:keys [property-ident] :as option}]
-  (when-let [conn (worker-state/get-datascript-conn repo)]
+  (let [conn (worker-state/get-datascript-conn repo)]
     (db-view/get-property-values @conn property-ident option)))
 
 (def-thread-api :thread-api/get-bidirectional-properties
   [repo {:keys [target-id]}]
-  (when-let [conn (worker-state/get-datascript-conn repo)]
+  (let [conn (worker-state/get-datascript-conn repo)]
     (worker-util/profile "get-bidirectional-properties"
                          (ldb/get-bidirectional-properties @conn target-id))))
 
 (def-thread-api :thread-api/build-graph
   [repo option]
-  (when-let [conn (worker-state/get-datascript-conn repo)]
+  (let [conn (worker-state/get-datascript-conn repo)]
     (graph-view/build-graph @conn option)))
 
 (def ^:private *get-all-page-titles-cache (volatile! (cache/lru-cache-factory {} :threshold 32)))
@@ -1009,7 +1027,7 @@
      (when-let [conn (worker-state/get-datascript-conn repo)]
        (let [db @conn]
          [[repo (:max-tx db)] ;cache-key
-          [db]                ;f-args
+          [db]             ;f-args
           ])))
    get-all-page-titles))
 
@@ -1095,11 +1113,11 @@
       (p/all (map #(.unsafeUnlinkDB this (:name %)) dbs)))))
 
 (defn- delete-page!
-  [conn page-uuid]
+  [conn page-uuid opts]
   (let [error-handler (fn [{:keys [msg]}]
                         (worker-util/post-message :notification
                                                   [[:div [:p msg]] :error]))]
-    (worker-page/delete! conn page-uuid {:error-handler error-handler})))
+    (worker-page/delete! conn page-uuid (merge opts {:error-handler error-handler}))))
 
 (defn- create-page!
   [conn title options]
@@ -1121,8 +1139,8 @@
                      (outliner-core/save-block! conn
                                                 {:block/uuid page-uuid
                                                  :block/title new-title})))
-    :delete-page (fn [conn [page-uuid]]
-                   (delete-page! conn page-uuid))}))
+    :delete-page (fn [conn [page-uuid opts]]
+                   (delete-page! conn page-uuid opts))}))
 
 (defn- on-become-master
   [repo start-opts]
@@ -1163,6 +1181,7 @@
 (defn- notify-invalid-data
   [{:keys [tx-meta]} errors]
   ;; don't notify on production when undo/redo failed
+
   (when-not (and (or (:undo? tx-meta) (:redo? tx-meta))
                  (not worker-util/dev?))
     (shared-service/broadcast-to-clients! :notification

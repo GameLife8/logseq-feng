@@ -1278,7 +1278,7 @@
 
        [:article
         (when-not ready?
-          [:div.py-8.flex.justify-center (ui/loading "")])
+          [:p.py-8.flex.justify-center (ui/loading "")])
 
         (when (and ready? no-results?)
           [:div.shortcut-empty-state

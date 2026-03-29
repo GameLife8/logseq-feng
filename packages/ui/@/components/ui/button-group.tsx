@@ -34,7 +34,6 @@ export const ButtonGroup = ({
         const isLast = index === totalButtons - 1;
 
         return cloneElement(child, {
-          key: child.key ?? index,
           className: cn(
             {
               'rounded-l-none': isHorizontal && !isFirst,
