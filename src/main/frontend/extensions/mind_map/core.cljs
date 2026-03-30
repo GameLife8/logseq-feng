@@ -1234,7 +1234,7 @@
                            node (when (and al (pos? (.-length al))) (aget al 0))]
                        (js/console.log "[mind-map] mousedown-capture node?" (boolean node) "al-len" (when al (.-length al)))
                        (set! (.-active snap) (boolean node))
-                       (set! (.-root   snap) (boolean (when node (.-isRoot node)))))))
+                       (set! (.-root   snap) (boolean (when node (.-isRoot ^js node)))))))
                  ctx-handler
                  (fn [^js e]
                    (when (.contains container (.-target e))  ; only our canvas

@@ -439,7 +439,7 @@
            :on-save-data           whiteboard-handler/save-canvas-to-db!})
          [:div.flex.items-center.justify-center.h-full
           [:div.text-sm.opacity-60
-           (if loaded? "白板编辑器加载失败，请刷新页面" "正在加载白板编辑器…")]]]))]))
+           (if loaded? "白板编辑器加载失败，请刷新页面" "正在加载白板编辑器…")]]))])
 
 ;; ── full whiteboard page ──────────────────────────────────────────────────────
 
