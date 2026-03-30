@@ -698,7 +698,7 @@
   "Right-side panel for managing note blocks and linked blocks on the active node."
   [{:keys [note-block-ids node-linked-blocks
            on-open remove-note! remove-linked!
-           add-note! on-add-linked close-fn]}]
+           add-note! on-add-linked close-fn note-block-title-fn]}]
   (let [row-style {:display "flex" :alignItems "center" :gap "3px"
                    :padding "3px 6px" :borderRadius "4px"
                    :background "var(--lx-gray-02,#f3f4f6)"
@@ -708,7 +708,7 @@
                               :style {:background "none" :border "none" :cursor "pointer"
                                       :fontSize "12px" :color color :padding "2px 3px"}}
                      label])
-        preview   (fn [s] (if (> (count s) 5) (str (subs s 0 5) "…") s))]
+        preview   (fn [s] (if (> (count s) 20) (str (subs s 0 20) "…") s))]
     [:div.mind-map-style-panel
      {:style {:width "230px" :flexShrink "0"
               :borderLeft "1px solid var(--lx-gray-05,#e5e7eb)"
@@ -734,12 +734,16 @@
                        :marginBottom "5px"}}
          "备注块"]
         (for [[i uid] (map-indexed vector note-block-ids)]
-          [:div {:key (str "bp-note-" uid) :style row-style}
-           [:span {:style {:flex "1" :fontSize "12px" :color "var(--lx-gray-11,#374151)"
-                           :overflow "hidden" :textOverflow "ellipsis" :whiteSpace "nowrap"}}
-            (str "备注 " (inc i))]
-           (icon-btn "↗" "在侧边栏打开" "#6b7280" #(on-open uid))
-           (icon-btn "×" "移除引用" "#ef4444" #(remove-note! uid))])])
+          (let [raw-title (when note-block-title-fn (note-block-title-fn uid))
+                display   (preview (or (when (seq raw-title) raw-title)
+                                       (str "备注 " (inc i))))]
+            [:div {:key (str "bp-note-" uid) :style row-style}
+             [:span {:style {:flex "1" :fontSize "12px" :color "var(--lx-gray-11,#374151)"
+                             :overflow "hidden" :textOverflow "ellipsis" :whiteSpace "nowrap"}
+                     :title raw-title}
+              display]
+             (icon-btn "↗" "在侧边栏打开" "#6b7280" #(on-open uid))
+             (icon-btn "×" "移除引用" "#ef4444" #(remove-note! uid))]))])
      ;; Linked blocks
      (when (seq node-linked-blocks)
        [:div {:style {:marginBottom "10px"}}
@@ -1594,14 +1598,15 @@
       ;; blocks panel (right sidebar)
       (when (and show-blocks-panel? node-active? (not show-assoc?))
         (blocks-panel
-         {:note-block-ids    note-block-ids
-          :node-linked-blocks node-linked-blocks
-          :on-open           open-linked-block!
-          :remove-note!      remove-note-block!
-          :remove-linked!    remove-linked-block!
-          :add-note!         add-note-block!
-          :on-add-linked     #(reset! (::show-block-picker? state) true)
-          :close-fn          #(reset! (::show-blocks-panel? state) false)}))]
+         {:note-block-ids      note-block-ids
+          :node-linked-blocks  node-linked-blocks
+          :on-open             open-linked-block!
+          :remove-note!        remove-note-block!
+          :remove-linked!      remove-linked-block!
+          :add-note!           add-note-block!
+          :on-add-linked       #(reset! (::show-block-picker? state) true)
+          :close-fn            #(reset! (::show-blocks-panel? state) false)
+          :note-block-title-fn (:note-block-title-fn (-> state :rum/args first))}))]
 
      ;; ── block picker modal ───────────────────────────────────────────────────
      (when show-block-picker?

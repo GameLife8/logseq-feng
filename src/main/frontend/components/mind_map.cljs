@@ -108,6 +108,13 @@
                (when result
                  (state/sidebar-add-block! repo (:db/id result) :block)
                  (str (:block/uuid result))))))
+         ;; Look up a note block's title by UUID string (sync DB read on main thread).
+         :note-block-title-fn (fn [uid-str]
+                                (when (seq uid-str)
+                                  (let [uid (try (uuid uid-str) (catch :default _ nil))]
+                                    (when uid
+                                      (or (:block/title (db/entity [:block/uuid uid]))
+                                          "(无标题)")))))
          ;; Search blocks: returns a JS Promise resolving to a plain-data vector
          :on-search-blocks (fn [q]
                              (when (seq q)

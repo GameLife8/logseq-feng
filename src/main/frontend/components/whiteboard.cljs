@@ -233,12 +233,15 @@
         note-ids      (rum/react *note-ids)
         show-search?  (rum/react *show-search?)
 
-        ;; Look up block title from main-thread DataScript (may be nil if not cached)
+        ;; Look up block title from main-thread DataScript; truncate long titles to 20 chars
         title-for-uid (fn [uid-str]
                         (let [uid (try (uuid uid-str) (catch :default _ nil))
-                              e   (when uid (db/entity [:block/uuid uid]))]
-                          (or (:block/title e)
-                              (str "(块 " (subs uid-str 0 (min 8 (count uid-str))) "…)"))))
+                              e   (when uid (db/entity [:block/uuid uid]))
+                              raw (or (:block/title e)
+                                      (str "(块 " (subs uid-str 0 (min 8 (count uid-str))) "…)"))]
+                          (if (> (count raw) 20)
+                            (str (subs raw 0 20) "…")
+                            raw)))
 
         close-search! (fn []
                         (reset! *show-search? false)

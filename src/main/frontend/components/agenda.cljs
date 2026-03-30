@@ -199,14 +199,14 @@
 
 (defn- task-date-info
   "返回 {:ms 毫秒时间戳 :source :scheduled|:deadline|:journal|:created}。
-   优先级：scheduled > deadline > journal-day > created-at。
-   所有任务都有 created-at，因此始终返回非 nil。"
+   优先级：deadline > scheduled > journal-day > created-at。
+   有 deadline 时一律显示 ⏰，有 scheduled 时显示 📅。"
   [task]
   (let [s-ms (prop->ms (:logseq.property/scheduled task))
         d-ms (prop->ms (:logseq.property/deadline task))]
     (cond
-      s-ms {:ms s-ms :source :scheduled}
       d-ms {:ms d-ms :source :deadline}
+      s-ms {:ms s-ms :source :scheduled}
       (get-in task [:block/page :block/journal-day])
       {:ms (journal-day->ms (get-in task [:block/page :block/journal-day]))
        :source :journal}
@@ -921,59 +921,57 @@
                     :paddingTop "12px"}} "暂无"])])
 
 (defn- classify-kanban
-  "看板分类逻辑（5 列）：
-   :today     → scheduled=今天 或 deadline=今天 或 (无显式日期 且 created=今天)
-   :scheduled → 有 scheduled（已开始或未来，持续显示直到完成）
-   :deadline  → 有 deadline 且 deadline > 今天结束（未到期）
-   :overdue   → deadline 已过期 或 (无显式日期 且 created < 今天)
-   done 单独过滤，不走本函数"
-  [task today-ms today-end]
-  (let [s (:logseq.property/scheduled task)
-        d (:logseq.property/deadline task)
-        c (:block/created-at task)]
+  "看板分类逻辑（4 列，去掉"今天"，deadline 优先）：
+   :deadline  → 有 deadline 且未过期（deadline 优先于 scheduled）
+   :overdue   → 有 deadline 但已过期
+   :scheduled → 有 scheduled（无 deadline）
+   :no-date   → 无显式日期
+   done/canceled/nil-status 单独过滤，不走本函数"
+  [task today-end]
+  (let [s-ms (prop->ms (:logseq.property/scheduled task))
+        d-ms (prop->ms (:logseq.property/deadline task))]
     (cond
-      ;; 今天：显式日期=今天，或无显式日期但今天创建
-      (or (and s (>= s today-ms) (<= s today-end))
-          (and d (>= d today-ms) (<= d today-end))
-          (and (nil? s) (nil? d) c (>= c today-ms) (<= c today-end)))
-      :today
+      ;; deadline 优先：未过期 → 截止日列
+      (and d-ms (> d-ms today-end)) :deadline
 
-      ;; 有 scheduled：不论过去还是未来，持续在"计划中"
-      s :scheduled
+      ;; deadline 已过期 → 逾期列
+      d-ms :overdue
 
-      ;; 有 deadline 且未过期
-      (and d (> d today-end)) :deadline-future
+      ;; 仅有 scheduled → 计划中列
+      s-ms :scheduled
 
-      ;; 逾期：deadline 已过 或 无显式日期且创建时间比今天早
-      :else :overdue)))
+      ;; 无显式日期 → 逾期（兜底）
+      :else :no-date)))
 
 (rum/defc kanban-view
   [all-tasks]
   (let [today-ymd  (today-ymd)
         today-ms   (ymd->day-ms today-ymd)
         today-end  (+ today-ms 86399999)
-        active     (filter task-active? all-tasks)
-        done       (filter #(contains? #{:logseq.property/status.done
-                                         :logseq.property/status.canceled}
-                                       (task-status-ident %))
-                           all-tasks)
-        groups     (group-by #(classify-kanban % today-ms today-end) active)
-        today-t    (sort-by #(or (:logseq.property/scheduled %)
-                                 (:logseq.property/deadline %)
+        ;; 无状态（nil status）→ 单独放"已取消"列
+        no-status  (filter #(nil? (task-status-ident %)) all-tasks)
+        ;; 有明确状态的任务
+        has-status (filter #(some? (task-status-ident %)) all-tasks)
+        done       (filter #(= :logseq.property/status.done (task-status-ident %)) has-status)
+        canceled   (filter #(= :logseq.property/status.canceled (task-status-ident %)) has-status)
+        ;; 活跃任务（非 done/canceled，且有明确状态）
+        active     (filter task-active? has-status)
+        groups     (group-by #(classify-kanban % today-end) active)
+        scheduled  (sort-by #(prop->ms (:logseq.property/scheduled %))
+                            (get groups :scheduled []))
+        deadline   (sort-by #(prop->ms (:logseq.property/deadline %))
+                            (get groups :deadline []))
+        overdue    (sort-by #(or (prop->ms (:logseq.property/deadline %))
                                  (:block/created-at %))
-                            (get groups :today []))
-        scheduled  (sort-by :logseq.property/scheduled (get groups :scheduled []))
-        deadline   (sort-by :logseq.property/deadline  (get groups :deadline-future []))
-        overdue    (sort-by #(or (:logseq.property/deadline %)
-                                 (:block/created-at %))
-                            (get groups :overdue []))]
+                            (concat (get groups :overdue []) (get groups :no-date [])))]
     [:div.agenda-kanban {:style {:display "flex" :gap "10px" :height "100%"
                                  :overflowX "auto"}}
-     (kanban-column "今天"   "#f59e0b" today-t)
      (kanban-column "计划中" "#6366f1" scheduled)
      (kanban-column "截止日" "#ef4444" deadline)
      (kanban-column "逾期"   "#dc2626" overdue)
-     (kanban-column "已完成" "#10b981" done)]))
+     (kanban-column "已完成" "#10b981" (concat done canceled))
+     ;; 已取消列专放无状态（nil status）任务，方便识别未分类项
+     (kanban-column "已取消" "#94a3b8" (sort-by :block/created-at no-status))]))
 
 ;; ── 范围过滤辅助 ─────────────────────────────────────────────────────────────
 

@@ -585,10 +585,20 @@
 (defmethod handle-step :editor/set-priority [[_ priority] _format]
   (db-based-set-priority priority))
 
+(defn- ensure-todo-status!
+  "当块没有显式状态时，自动设置为 Todo。"
+  []
+  (when-let [block (state/get-edit-block)]
+    (when (nil? (get-in block [:logseq.property/status :db/ident]))
+      (db-property-handler/batch-set-property-closed-value!
+       [(:block/uuid block)] :logseq.property/status "Todo"))))
+
 (defmethod handle-step :editor/set-scheduled [[_]]
+  (ensure-todo-status!)
   (state/pub-event! [:editor/new-property {:property-key "Scheduled"}]))
 
 (defmethod handle-step :editor/set-deadline [[_]]
+  (ensure-todo-status!)
   (state/pub-event! [:editor/new-property {:property-key "Deadline"}]))
 
 (defmethod handle-step :editor/run-query-command [[_]]
