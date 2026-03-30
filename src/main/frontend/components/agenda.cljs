@@ -921,7 +921,7 @@
                     :paddingTop "12px"}} "暂无"])])
 
 (defn- classify-kanban
-  "看板分类逻辑（4 列，去掉"今天"，deadline 优先）：
+  "看板分类逻辑（4 列，去掉今天列，deadline 优先）：
    :deadline  → 有 deadline 且未过期（deadline 优先于 scheduled）
    :overdue   → 有 deadline 但已过期
    :scheduled → 有 scheduled（无 deadline）
