@@ -292,40 +292,6 @@
 
         cancel-edit! (fn [] (reset! *editing-uid nil))
 
-        ;; 渲染单行（名称可内联编辑）
-        block-row    (fn [uid type on-open on-remove]
-                       (let [display (if (= type :linked) (display-linked uid) (display-note uid))
-                             editing? (and (= editing-uid uid) (= editing-type type))]
-                         [:div {:key uid :style row-style}
-                          (if editing?
-                            [:input {:auto-focus   true
-                                     :value        (rum/react *editing-val)
-                                     :placeholder  "自定义名称（空白=恢复默认）"
-                                     :on-change    #(reset! *editing-val (.. % -target -value))
-                                     :on-blur      commit-edit!
-                                     :on-key-down  (fn [^js e]
-                                                     (case (.-key e)
-                                                       "Enter"  (commit-edit!)
-                                                       "Escape" (cancel-edit!)
-                                                       nil))
-                                     :style {:flex "1" :fontSize "12px" :padding "2px 4px"
-                                             :borderRadius "4px" :outline "none"
-                                             :border "1px solid var(--lx-gray-07,#d1d5db)"}}]
-                            [:span {:title    "点击编辑名称"
-                                    :on-click #(start-edit! uid type display)
-                                    :style    {:flex "1" :fontSize "12px"
-                                               :overflow "hidden" :textOverflow "ellipsis"
-                                               :whiteSpace "nowrap" :cursor "text"}}
-                             display])
-                          [:button {:title "在侧边栏打开"
-                                    :on-click (fn [^js e] (.stopPropagation e) (on-open uid))
-                                    :style icon-btn-style}
-                           "↗"]
-                          [:button {:title "移除关联（不删除原块）"
-                                    :on-click (fn [^js e] (.stopPropagation e) (on-remove uid))
-                                    :style (assoc icon-btn-style :color "#ef4444")}
-                           "×"]]))
-
         close-search! (fn []
                         (reset! *show-search? false)
                         (reset! *search-q "")
@@ -361,7 +327,41 @@
 
         icon-btn-style {:background "none" :border "none" :cursor "pointer"
                         :fontSize "13px" :opacity "0.6" :padding "1px 3px"
-                        :flexShrink "0"}]
+                        :flexShrink "0"}
+
+        ;; 渲染单行（名称可内联编辑），依赖 row-style / icon-btn-style，须放在其后
+        block-row    (fn [uid type on-open on-remove]
+                       (let [display  (if (= type :linked) (display-linked uid) (display-note uid))
+                             editing? (and (= editing-uid uid) (= editing-type type))]
+                         [:div {:key uid :style row-style}
+                          (if editing?
+                            [:input {:auto-focus   true
+                                     :value        (rum/react *editing-val)
+                                     :placeholder  "自定义名称（空白=恢复默认）"
+                                     :on-change    #(reset! *editing-val (.. % -target -value))
+                                     :on-blur      commit-edit!
+                                     :on-key-down  (fn [^js e]
+                                                     (case (.-key e)
+                                                       "Enter"  (commit-edit!)
+                                                       "Escape" (cancel-edit!)
+                                                       nil))
+                                     :style {:flex "1" :fontSize "12px" :padding "2px 4px"
+                                             :borderRadius "4px" :outline "none"
+                                             :border "1px solid var(--lx-gray-07,#d1d5db)"}}]
+                            [:span {:title    "点击编辑名称"
+                                    :on-click #(start-edit! uid type display)
+                                    :style    {:flex "1" :fontSize "12px"
+                                               :overflow "hidden" :textOverflow "ellipsis"
+                                               :whiteSpace "nowrap" :cursor "text"}}
+                             display])
+                          [:button {:title "在侧边栏打开"
+                                    :on-click (fn [^js e] (.stopPropagation e) (on-open uid))
+                                    :style icon-btn-style}
+                           "↗"]
+                          [:button {:title "移除关联（不删除原块）"
+                                    :on-click (fn [^js e] (.stopPropagation e) (on-remove uid))
+                                    :style (assoc icon-btn-style :color "#ef4444")}
+                           "×"]]))]
 
     [:div.wb-linked-panel
      {:style {:position "absolute" :top "58px" :right "12px"

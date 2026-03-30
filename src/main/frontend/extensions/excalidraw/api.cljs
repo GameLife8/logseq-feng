@@ -147,6 +147,23 @@
   (some-> el (gobj/get "customData") (gobj/get "noteBlockAliases")
           (js->clj :keywordize-keys false)))
 
+(defn- update-el-cd!
+  "Apply `f` to element `elem-id`'s customData JS object, then updateScene."
+  [^js api elem-id f]
+  (when (and api elem-id)
+    (let [els     (.getSceneElements api)
+          new-els (.map els
+                        (fn [^js el]
+                          (if (= (gobj/get el "id") elem-id)
+                            (let [old-cd (or (gobj/get el "customData") #js {})
+                                  new-cd (f old-cd)]
+                              (js/Object.assign #js {} el
+                                                #js {:customData new-cd
+                                                     :version    (inc (or (gobj/get el "version") 1))
+                                                     :updated    (.now js/Date)}))
+                            el)))]
+      (.updateScene api #js {:elements new-els}))))
+
 (defn set-block-alias!
   "Persist a custom alias for a linked block in element's customData."
   [^js api elem-id uid alias-str]
@@ -170,23 +187,6 @@
                   (doto (js/Object.assign #js {} existing)
                     (gobj/set uid alias-str)))
         new-cd))))
-
-(defn- update-el-cd!
-  "Apply `f` to element `elem-id`'s customData JS object, then updateScene."
-  [^js api elem-id f]
-  (when (and api elem-id)
-    (let [els     (.getSceneElements api)
-          new-els (.map els
-                        (fn [^js el]
-                          (if (= (gobj/get el "id") elem-id)
-                            (let [old-cd (or (gobj/get el "customData") #js {})
-                                  new-cd (f old-cd)]
-                              (js/Object.assign #js {} el
-                                                #js {:customData new-cd
-                                                     :version    (inc (or (gobj/get el "version") 1))
-                                                     :updated    (.now js/Date)}))
-                            el)))]
-      (.updateScene api #js {:elements new-els}))))
 
 (defn add-linked-block!
   "Add `block-uuid-str` to element's linkedBlockIds. No-op if already present."
