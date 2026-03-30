@@ -422,24 +422,24 @@
                  validate-embeddable custom-fonts]}]
   (let [loaded? (rum/react (::loaded? state))]
     [:div.wb-canvas {:style {:width "100%" :height "100%"}}
-     (let [editor-fn (and loaded? @lazy-excalidraw)]
-       (if editor-fn
-         (editor-fn
-          {:page-uuid              page-uuid
-           :page-title             page-title
-           :on-back                on-back
-           :on-api-ready           on-api-ready
-           :on-show-linked-blocks  on-show-linked-blocks
-           :on-selection-change    on-selection-change
-           :on-rename              on-rename
-           :render-tags            render-tags
-           :validate-embeddable    validate-embeddable
-           :custom-fonts           custom-fonts
-           :on-load-data           whiteboard-handler/load-canvas-from-db
-           :on-save-data           whiteboard-handler/save-canvas-to-db!})
-         [:div.flex.items-center.justify-center.h-full
-          [:div.text-sm.opacity-60
-           (if loaded? "白板编辑器加载失败，请刷新页面" "正在加载白板编辑器…")]]))]))
+     (if loaded?
+       (@lazy-excalidraw
+        {:page-uuid              page-uuid
+         :page-title             page-title
+         :on-back                on-back
+         :on-api-ready           on-api-ready
+         :on-show-linked-blocks  on-show-linked-blocks
+         :on-selection-change    on-selection-change
+         :on-rename              on-rename
+         :render-tags            render-tags
+         ;; Config-driven props (from excalidraw settings panel)
+         :validate-embeddable    validate-embeddable
+         :custom-fonts           custom-fonts
+         ;; DB persistence callbacks (main bundle → lazy bundle boundary)
+         :on-load-data           whiteboard-handler/load-canvas-from-db
+         :on-save-data           whiteboard-handler/save-canvas-to-db!})
+       [:div.flex.items-center.justify-center.h-full
+        [:div.text-sm.opacity-60 "正在加载白板编辑器…"]])]))
 
 ;; ── full whiteboard page ──────────────────────────────────────────────────────
 
