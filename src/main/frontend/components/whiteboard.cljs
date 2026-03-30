@@ -214,34 +214,117 @@
   (rum/local "" ::search-q)
   (rum/local [] ::search-res)
   (rum/local false ::searching?)
+  (rum/local {} ::linked-aliases)  ; uid → custom alias string for linked blocks
+  (rum/local {} ::note-aliases)    ; uid → custom alias string for note blocks
+  (rum/local nil ::editing-uid)    ; uid currently being renamed (nil = none)
+  (rum/local :linked ::editing-type) ; :linked or :note
+  (rum/local "" ::editing-val)     ; current text in rename input
   {:did-mount
    (fn [state]
      (let [{:keys [api el-id]} (-> state :rum/args first)
            el (ex-api/get-element-by-id api el-id)]
        (js/console.log "[wb-panel] did-mount el-id:" el-id "found?" (boolean el))
-       (reset! (::linked-ids state) (ex-api/get-linked-block-ids el))
-       (reset! (::note-ids state)   (ex-api/get-note-block-ids el)))
+       (reset! (::linked-ids state)     (ex-api/get-linked-block-ids el))
+       (reset! (::note-ids state)       (ex-api/get-note-block-ids el))
+       (reset! (::linked-aliases state) (or (ex-api/get-block-aliases el) {}))
+       (reset! (::note-aliases state)   (or (ex-api/get-note-aliases el) {})))
      state)}
   [state {:keys [api el-id page-uuid on-close on-open-block on-add-note-block]}]
-  (let [*linked-ids   (::linked-ids state)
-        *note-ids     (::note-ids state)
-        *show-search? (::show-search? state)
-        *search-q     (::search-q state)
-        *search-res   (::search-res state)
-        *searching?   (::searching? state)
-        linked-ids    (rum/react *linked-ids)
-        note-ids      (rum/react *note-ids)
-        show-search?  (rum/react *show-search?)
+  (let [*linked-ids    (::linked-ids state)
+        *note-ids      (::note-ids state)
+        *show-search?  (::show-search? state)
+        *search-q      (::search-q state)
+        *search-res    (::search-res state)
+        *searching?    (::searching? state)
+        *linked-ali    (::linked-aliases state)
+        *note-ali      (::note-aliases state)
+        *editing-uid   (::editing-uid state)
+        *editing-type  (::editing-type state)
+        *editing-val   (::editing-val state)
+        linked-ids     (rum/react *linked-ids)
+        note-ids       (rum/react *note-ids)
+        show-search?   (rum/react *show-search?)
+        linked-aliases (rum/react *linked-ali)
+        note-aliases   (rum/react *note-ali)
+        editing-uid    (rum/react *editing-uid)
+        editing-type   (rum/react *editing-type)
 
-        ;; Look up block title from main-thread DataScript; truncate long titles to 20 chars
+        ;; 截断长文本至 20 字符
+        truncate      (fn [s] (if (> (count s) 20) (str (subs s 0 20) "…") s))
+
+        ;; Look up block title from DataScript; truncate long titles to 20 chars
         title-for-uid (fn [uid-str]
                         (let [uid (try (uuid uid-str) (catch :default _ nil))
                               e   (when uid (db/entity [:block/uuid uid]))
                               raw (or (:block/title e)
                                       (str "(块 " (subs uid-str 0 (min 8 (count uid-str))) "…)"))]
-                          (if (> (count raw) 20)
-                            (str (subs raw 0 20) "…")
-                            raw)))
+                          (truncate raw)))
+
+        ;; 显示名称：自定义别名优先，否则查 DB 标题
+        display-linked (fn [uid] (truncate (or (get linked-aliases uid) (title-for-uid uid))))
+        display-note   (fn [uid] (truncate (or (get note-aliases uid) (title-for-uid uid))))
+
+        ;; 开始编辑（单击名称）
+        start-edit!  (fn [uid type cur-display]
+                       (reset! *editing-uid uid)
+                       (reset! *editing-type type)
+                       (reset! *editing-val cur-display))
+
+        ;; 保存别名
+        commit-edit! (fn []
+                       (let [uid  @*editing-uid
+                             type @*editing-type
+                             val  (clojure.string/trim @*editing-val)]
+                         (when (seq uid)
+                           (if (seq val)
+                             (do (if (= type :linked)
+                                   (do (swap! *linked-ali assoc uid val)
+                                       (ex-api/set-block-alias! api el-id uid val))
+                                   (do (swap! *note-ali assoc uid val)
+                                       (ex-api/set-note-alias! api el-id uid val))))
+                             ;; 清空 → 恢复 DB 标题
+                             (if (= type :linked)
+                               (do (swap! *linked-ali dissoc uid)
+                                   (ex-api/set-block-alias! api el-id uid ""))
+                               (do (swap! *note-ali dissoc uid)
+                                   (ex-api/set-note-alias! api el-id uid "")))))
+                         (reset! *editing-uid nil)))
+
+        cancel-edit! (fn [] (reset! *editing-uid nil))
+
+        ;; 渲染单行（名称可内联编辑）
+        block-row    (fn [uid type on-open on-remove]
+                       (let [display (if (= type :linked) (display-linked uid) (display-note uid))
+                             editing? (and (= editing-uid uid) (= editing-type type))]
+                         [:div {:key uid :style row-style}
+                          (if editing?
+                            [:input {:auto-focus   true
+                                     :value        (rum/react *editing-val)
+                                     :placeholder  "自定义名称（空白=恢复默认）"
+                                     :on-change    #(reset! *editing-val (.. % -target -value))
+                                     :on-blur      commit-edit!
+                                     :on-key-down  (fn [^js e]
+                                                     (case (.-key e)
+                                                       "Enter"  (commit-edit!)
+                                                       "Escape" (cancel-edit!)
+                                                       nil))
+                                     :style {:flex "1" :fontSize "12px" :padding "2px 4px"
+                                             :borderRadius "4px" :outline "none"
+                                             :border "1px solid var(--lx-gray-07,#d1d5db)"}}]
+                            [:span {:title    "点击编辑名称"
+                                    :on-click #(start-edit! uid type display)
+                                    :style    {:flex "1" :fontSize "12px"
+                                               :overflow "hidden" :textOverflow "ellipsis"
+                                               :whiteSpace "nowrap" :cursor "text"}}
+                             display])
+                          [:button {:title "在侧边栏打开"
+                                    :on-click (fn [^js e] (.stopPropagation e) (on-open uid))
+                                    :style icon-btn-style}
+                           "↗"]
+                          [:button {:title "移除关联（不删除原块）"
+                                    :on-click (fn [^js e] (.stopPropagation e) (on-remove uid))
+                                    :style (assoc icon-btn-style :color "#ef4444")}
+                           "×"]]))
 
         close-search! (fn []
                         (reset! *show-search? false)
@@ -305,18 +388,7 @@
       (if (seq linked-ids)
         (doall
          (for [uid linked-ids]
-           [:div {:key uid :style row-style}
-            [:span {:style {:flex "1" :fontSize "12px" :overflow "hidden"
-                            :textOverflow "ellipsis" :whiteSpace "nowrap"}}
-             (title-for-uid uid)]
-            [:button {:title "在侧边栏打开"
-                      :on-click (fn [^js e] (.stopPropagation e) (open-block! uid))
-                      :style icon-btn-style}
-             "↗"]
-            [:button {:title "移除关联（不删除原块）"
-                      :on-click (fn [^js e] (.stopPropagation e) (do-remove-linked! uid))
-                      :style (assoc icon-btn-style :color "#ef4444")}
-             "×"]]))
+           (block-row uid :linked open-block! do-remove-linked!)))
         [:div {:style {:fontSize "12px" :opacity "0.4" :padding "4px 0"}} "暂无关联块"])
 
       ;; Inline block search or add button
@@ -383,18 +455,7 @@
       (if (seq note-ids)
         (doall
          (for [uid note-ids]
-           [:div {:key uid :style row-style}
-            [:span {:style {:flex "1" :fontSize "12px" :overflow "hidden"
-                            :textOverflow "ellipsis" :whiteSpace "nowrap"}}
-             (title-for-uid uid)]
-            [:button {:title "在侧边栏打开"
-                      :on-click (fn [^js e] (.stopPropagation e) (open-block! uid))
-                      :style icon-btn-style}
-             "↗"]
-            [:button {:title "移除备注引用（不删除原块）"
-                      :on-click (fn [^js e] (.stopPropagation e) (do-remove-note! uid))
-                      :style (assoc icon-btn-style :color "#ef4444")}
-             "×"]]))
+           (block-row uid :note open-block! do-remove-note!)))
         [:div {:style {:fontSize "12px" :opacity "0.4" :padding "4px 0"}} "暂无备注块"])
       [:button
        {:on-click (fn []

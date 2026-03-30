@@ -694,12 +694,23 @@
 
 ;; ── Blocks panel (right sidebar) ─────────────────────────────────────────────
 
-(defn- blocks-panel
-  "Right-side panel for managing note blocks and linked blocks on the active node."
-  [{:keys [note-block-ids node-linked-blocks
-           on-open remove-note! remove-linked!
-           add-note! on-add-linked close-fn note-block-title-fn]}]
-  (let [row-style {:display "flex" :alignItems "center" :gap "3px"
+(rum/defcs blocks-panel
+  "Right-side panel for managing note blocks and linked blocks on the active node.
+   Supports inline alias editing: click a block name to enter a custom display name."
+  < rum/reactive
+  (rum/local nil   ::editing-id)
+  (rum/local :note ::editing-type)
+  (rum/local ""    ::editing-val)
+  [state {:keys [note-block-ids node-linked-blocks
+                 on-open remove-note! remove-linked!
+                 add-note! on-add-linked close-fn note-block-title-fn
+                 on-save-note-alias on-save-linked-alias]}]
+  (let [*editing-id   (::editing-id state)
+        *editing-type (::editing-type state)
+        *editing-val  (::editing-val state)
+        editing-id    (rum/react *editing-id)
+        editing-type  (rum/react *editing-type)
+        row-style {:display "flex" :alignItems "center" :gap "3px"
                    :padding "3px 6px" :borderRadius "4px"
                    :background "var(--lx-gray-02,#f3f4f6)"
                    :marginBottom "4px"}
@@ -708,7 +719,52 @@
                               :style {:background "none" :border "none" :cursor "pointer"
                                       :fontSize "12px" :color color :padding "2px 3px"}}
                      label])
-        preview   (fn [s] (if (> (count s) 20) (str (subs s 0 20) "…") s))]
+        preview   (fn [s] (if (> (count s) 20) (str (subs s 0 20) "…") s))
+
+        start-edit!  (fn [id type cur-text]
+                       (reset! *editing-id id)
+                       (reset! *editing-type type)
+                       (reset! *editing-val cur-text))
+        commit-edit! (fn []
+                       (let [id  @*editing-id
+                             typ @*editing-type
+                             val (clojure.string/trim @*editing-val)]
+                         (when (seq id)
+                           (if (= typ :note)
+                             (when on-save-note-alias (on-save-note-alias id val))
+                             (when on-save-linked-alias (on-save-linked-alias id val))))
+                         (reset! *editing-id nil)))
+        cancel-edit! (fn [] (reset! *editing-id nil))
+
+        ;; 每行渲染（带内联重命名）
+        edit-row  (fn [id type fallback on-open-fn on-remove-fn]
+                    (let [editing? (and (= editing-id id) (= editing-type type))]
+                      [:div {:key (str "bp-" (name type) "-" id) :style row-style}
+                       (if editing?
+                         [:input
+                          {:auto-focus  true
+                           :value       (rum/react *editing-val)
+                           :placeholder "自定义名称（空白=恢复默认）"
+                           :on-change   #(reset! *editing-val (.. % -target -value))
+                           :on-blur     commit-edit!
+                           :on-key-down (fn [^js e]
+                                          (case (.-key e)
+                                            "Enter"  (commit-edit!)
+                                            "Escape" (cancel-edit!)
+                                            nil))
+                           :style {:flex "1" :fontSize "12px" :padding "2px 4px"
+                                   :border "1px solid var(--lx-gray-06,#d1d5db)"
+                                   :borderRadius "3px" :outline "none"
+                                   :background "var(--lx-gray-01,#fff)"}}]
+                         [:span {:title    "点击编辑名称"
+                                 :on-click #(start-edit! id type fallback)
+                                 :style    {:flex "1" :fontSize "12px"
+                                            :color "var(--lx-gray-11,#374151)"
+                                            :overflow "hidden" :textOverflow "ellipsis"
+                                            :whiteSpace "nowrap" :cursor "text"}}
+                          fallback])
+                       (icon-btn "↗" "在侧边栏打开" "#6b7280" #(on-open-fn id))
+                       (icon-btn "×" "移除引用" "#ef4444" #(on-remove-fn id))]))]
     [:div.mind-map-style-panel
      {:style {:width "230px" :flexShrink "0"
               :borderLeft "1px solid var(--lx-gray-05,#e5e7eb)"
@@ -735,29 +791,17 @@
          "备注块"]
         (for [[i uid] (map-indexed vector note-block-ids)]
           (let [raw-title (when note-block-title-fn (note-block-title-fn uid))
-                display   (preview (or (when (seq raw-title) raw-title)
-                                       (str "备注 " (inc i))))]
-            [:div {:key (str "bp-note-" uid) :style row-style}
-             [:span {:style {:flex "1" :fontSize "12px" :color "var(--lx-gray-11,#374151)"
-                             :overflow "hidden" :textOverflow "ellipsis" :whiteSpace "nowrap"}
-                     :title raw-title}
-              display]
-             (icon-btn "↗" "在侧边栏打开" "#6b7280" #(on-open uid))
-             (icon-btn "×" "移除引用" "#ef4444" #(remove-note! uid))]))])
+                display   (preview (or (when (seq raw-title) raw-title) (str "备注 " (inc i))))]
+            (edit-row uid :note display on-open remove-note!)))])
      ;; Linked blocks
      (when (seq node-linked-blocks)
        [:div {:style {:marginBottom "10px"}}
         [:div {:style {:fontSize "11px" :fontWeight "600" :color "var(--lx-gray-09,#6b7280)"
                        :marginBottom "5px"}}
          "链接块"]
-        (for [{:keys [block-id block-title]} node-linked-blocks]
-          [:div {:key (str "bp-link-" block-id) :style row-style}
-           [:span {:style {:flex "1" :fontSize "12px" :color "var(--lx-gray-11,#374151)"
-                           :overflow "hidden" :textOverflow "ellipsis" :whiteSpace "nowrap"
-                           :title block-title}}
-            (preview (or block-title ""))]
-           (icon-btn "↗" "在侧边栏打开" "#6b7280" #(on-open block-id))
-           (icon-btn "×" "移除引用" "#ef4444" #(remove-linked! block-id))])])
+        (for [{:keys [block-id block-title alias]} node-linked-blocks]
+          (let [display (preview (or (when (seq alias) alias) block-title ""))]
+            (edit-row block-id :linked display on-open remove-linked!)))])
      ;; Action buttons
      [:div {:style {:display "flex" :flexDirection "column" :gap "5px"}}
       [:button {:on-click add-note!
@@ -942,7 +986,8 @@
   (rum/local 0     ::assoc-last-click)     ; epoch-ms of last associative_line_click
   ;; per-node note block and linked blocks (read from node data on node_active)
   (rum/local []    ::note-block-ids)       ; vector of UUID strings (note blocks)
-  (rum/local []    ::node-linked-blocks)   ; [{:block-id :block-title :page-title}]
+  (rum/local {}    ::note-block-aliases)   ; uid → alias string for note blocks
+  (rum/local []    ::node-linked-blocks)   ; [{:block-id :block-title :page-title :alias}]
   (rum/local false ::show-block-picker?)
   (rum/local false ::show-blocks-panel?)
   {:did-mount
@@ -1097,14 +1142,22 @@
                                     (try (vec (js/JSON.parse ids-str))
                                          (catch :default _ []))
                                     [])))
+                        ;; note block aliases — stored as JSON object in "noteBlockAliases"
+                        (let [ali-str (.getData ^js node "noteBlockAliases")]
+                          (reset! (::note-block-aliases state)
+                                  (if (seq ali-str)
+                                    (try (js->clj (js/JSON.parse ali-str))
+                                         (catch :default _ {}))
+                                    {})))
                         ;; linked blocks — stored as JSON array in "linkedBlocksJson"
                         (let [json-str (.getData ^js node "linkedBlocksJson")
                               blocks   (when (seq json-str)
                                          (try
                                            (mapv (fn [^js b]
-                                                   {:block-id    (.-blockId b)
-                                                    :block-title (.-blockTitle b)
-                                                    :page-title  (.-pageTitle b)})
+                                                   (cond-> {:block-id    (.-blockId b)
+                                                            :block-title (.-blockTitle b)
+                                                            :page-title  (.-pageTitle b)}
+                                                     (.-alias b) (assoc :alias (.-alias b))))
                                                  (js/JSON.parse json-str))
                                            (catch :default _ [])))]
                           (reset! (::node-linked-blocks state) (or blocks []))))
@@ -1112,6 +1165,7 @@
                       ;; the spurious CLEAR_ACTIVE_NODE that fires when a line is clicked.
                       (when (> (- (.now js/Date) @(::assoc-last-click state)) 400)
                         (reset! (::note-block-ids state)     [])
+                        (reset! (::note-block-aliases state) {})
                         (reset! (::node-linked-blocks state) [])
                         (reset! (::show-blocks-panel? state) false))))))
            (.on instance "scale"
@@ -1310,6 +1364,7 @@
         show-assoc?         (rum/react (::show-assoc-panel? state))
         assoc-styles        (rum/react (::assoc-line-styles state))
         note-block-ids      (rum/react (::note-block-ids state))
+        note-block-aliases  (rum/react (::note-block-aliases state))
         node-linked-blocks  (rum/react (::node-linked-blocks state))
         show-block-picker?  (rum/react (::show-block-picker? state))
         show-blocks-panel?  (rum/react (::show-blocks-panel? state))
@@ -1323,7 +1378,7 @@
                              (when node
                                (.execCommand ^js i "SET_NODE_STYLE" node prop value)
                                (swap! (::node-styles state) assoc (keyword prop) value)))))
-        ;; Persist the full linked-blocks vector to the active node's data
+        ;; Persist the full linked-blocks vector (with optional alias) to the active node's data
         persist-linked-blocks!
         (fn [blocks-vec]
           (when-let [i @*instance]
@@ -1331,11 +1386,40 @@
               (.execCommand ^js i "SET_NODE_DATA" node
                             #js {:linkedBlocksJson
                                  (js/JSON.stringify
-                                  (clj->js (mapv (fn [{:keys [block-id block-title page-title]}]
-                                                   {"blockId"    block-id
-                                                    "blockTitle" block-title
-                                                    "pageTitle"  page-title})
+                                  (clj->js (mapv (fn [{:keys [block-id block-title page-title alias]}]
+                                                   (cond-> {"blockId"    block-id
+                                                            "blockTitle" block-title
+                                                            "pageTitle"  page-title}
+                                                     (seq alias) (assoc "alias" alias)))
                                                  blocks-vec)))}))))
+        ;; Persist note-block alias map to active node's data
+        persist-note-aliases!
+        (fn [aliases-map]
+          (when-let [i @*instance]
+            (when-let [node (aget (.. ^js i -renderer -activeNodeList) 0)]
+              (.execCommand ^js i "SET_NODE_DATA" node
+                            #js {:noteBlockAliases
+                                 (js/JSON.stringify (clj->js aliases-map))}))))
+        ;; Save alias for a linked block
+        save-linked-alias!
+        (fn [block-id alias-str]
+          (let [new-blocks (mapv (fn [b]
+                                   (if (= (:block-id b) block-id)
+                                     (if (seq alias-str)
+                                       (assoc b :alias alias-str)
+                                       (dissoc b :alias))
+                                     b))
+                                 @(::node-linked-blocks state))]
+            (reset! (::node-linked-blocks state) new-blocks)
+            (persist-linked-blocks! new-blocks)))
+        ;; Save alias for a note block
+        save-note-alias!
+        (fn [uid alias-str]
+          (let [new-aliases (if (seq alias-str)
+                              (assoc @(::note-block-aliases state) uid alias-str)
+                              (dissoc @(::note-block-aliases state) uid))]
+            (reset! (::note-block-aliases state) new-aliases)
+            (persist-note-aliases! new-aliases)))
         add-linked-block!
         (fn [block-map]
           (let [new-blocks (conj (or @(::node-linked-blocks state) []) block-map)]
@@ -1597,16 +1681,22 @@
          node-styles set-style! #(reset! (::show-style-panel? state) false)))
       ;; blocks panel (right sidebar)
       (when (and show-blocks-panel? node-active? (not show-assoc?))
-        (blocks-panel
-         {:note-block-ids      note-block-ids
-          :node-linked-blocks  node-linked-blocks
-          :on-open             open-linked-block!
-          :remove-note!        remove-note-block!
-          :remove-linked!      remove-linked-block!
-          :add-note!           add-note-block!
-          :on-add-linked       #(reset! (::show-block-picker? state) true)
-          :close-fn            #(reset! (::show-blocks-panel? state) false)
-          :note-block-title-fn (:note-block-title-fn (-> state :rum/args first))}))]
+        (let [args (-> state :rum/args first)]
+          (blocks-panel
+           {:note-block-ids      note-block-ids
+            ;; Merge per-uid alias into note-block display: pass enriched title fn
+            :note-block-title-fn (fn [uid]
+                                   (or (get note-block-aliases uid)
+                                       (when-let [f (:note-block-title-fn args)] (f uid))))
+            :node-linked-blocks  node-linked-blocks
+            :on-open             open-linked-block!
+            :remove-note!        remove-note-block!
+            :remove-linked!      remove-linked-block!
+            :add-note!           add-note-block!
+            :on-add-linked       #(reset! (::show-block-picker? state) true)
+            :close-fn            #(reset! (::show-blocks-panel? state) false)
+            :on-save-linked-alias save-linked-alias!
+            :on-save-note-alias   save-note-alias!})))]
 
      ;; ── block picker modal ───────────────────────────────────────────────────
      (when show-block-picker?

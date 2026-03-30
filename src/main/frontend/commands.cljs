@@ -586,12 +586,15 @@
   (db-based-set-priority priority))
 
 (defn- ensure-todo-status!
-  "当块没有显式状态时，自动设置为 Todo。"
+  "当块没有显式状态时，自动设置为 Todo。
+   使用 db/entity 直接查询 DataScript 获取最新状态，避免 state/get-edit-block 返回不完整实体的问题。"
   []
   (when-let [block (state/get-edit-block)]
-    (when (nil? (get-in block [:logseq.property/status :db/ident]))
-      (db-property-handler/batch-set-property-closed-value!
-       [(:block/uuid block)] :logseq.property/status "Todo"))))
+    (let [uuid     (:block/uuid block)
+          entity   (when uuid (db/entity [:block/uuid uuid]))
+          status   (get-in entity [:logseq.property/status :db/ident])]
+      (when (nil? status)
+        (db-based-set-status "Todo")))))
 
 (defmethod handle-step :editor/set-scheduled [[_]]
   (ensure-todo-status!)

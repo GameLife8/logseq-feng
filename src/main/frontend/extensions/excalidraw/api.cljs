@@ -135,7 +135,41 @@
         (if (and ids (pos? (.-length ids))) (vec (array-seq ids)) []))
       [])))
 
-;; ── element customData mutators ───────────────────────────────────────────────
+(defn get-block-aliases
+  "Returns a ClojureScript map of uid → alias string for linked blocks."
+  [^js el]
+  (some-> el (gobj/get "customData") (gobj/get "linkedBlockAliases")
+          (js->clj :keywordize-keys false)))
+
+(defn get-note-aliases
+  "Returns a ClojureScript map of uid → alias string for note blocks."
+  [^js el]
+  (some-> el (gobj/get "customData") (gobj/get "noteBlockAliases")
+          (js->clj :keywordize-keys false)))
+
+(defn set-block-alias!
+  "Persist a custom alias for a linked block in element's customData."
+  [^js api elem-id uid alias-str]
+  (update-el-cd! api elem-id
+    (fn [^js cd]
+      (let [new-cd   (js/Object.assign #js {} cd)
+            existing (or (gobj/get cd "linkedBlockAliases") #js {})]
+        (gobj/set new-cd "linkedBlockAliases"
+                  (doto (js/Object.assign #js {} existing)
+                    (gobj/set uid alias-str)))
+        new-cd))))
+
+(defn set-note-alias!
+  "Persist a custom alias for a note block in element's customData."
+  [^js api elem-id uid alias-str]
+  (update-el-cd! api elem-id
+    (fn [^js cd]
+      (let [new-cd   (js/Object.assign #js {} cd)
+            existing (or (gobj/get cd "noteBlockAliases") #js {})]
+        (gobj/set new-cd "noteBlockAliases"
+                  (doto (js/Object.assign #js {} existing)
+                    (gobj/set uid alias-str)))
+        new-cd))))
 
 (defn- update-el-cd!
   "Apply `f` to element `elem-id`'s customData JS object, then updateScene."
