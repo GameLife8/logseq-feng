@@ -30,6 +30,8 @@
       (js/JSON.parse json-str)
       (catch :default _ nil))))
 
+(declare canvas-json)
+
 (defn- save-to-ls! [page-uuid ^js api]
   (when (and api page-uuid)
     (visual-doc/save-doc-cache! cache-prefix page-uuid (canvas-json api))))
