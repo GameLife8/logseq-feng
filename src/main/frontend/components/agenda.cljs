@@ -3,9 +3,9 @@
    设计灵感来自 logseq-plugin-agenda (haydenull)，按 DB 版规范重写。"
   (:require [clojure.string :as string]
             [datascript.core :as d]
+            [frontend.components.agenda-data :as agenda-data]
             [frontend.date :as date]
             [frontend.db :as db]
-            [frontend.db.async :as db-async]
             [frontend.db.model :as db-model]
             [frontend.handler.db-based.property :as db-property-handler]
             [frontend.handler.editor :as editor-handler]
@@ -144,79 +144,13 @@
 ;; 不使用 [*] 通配符——DataScript 在将 pull-spec 作为 :in 变量传入时
 ;; 不会展开 * 通配符，导致 :logseq.property/scheduled 等标量属性返回 nil。
 ;; 改为显式列出所有需要的属性。
-(def ^:private task-pull-spec
-  '[:db/id
-    :block/uuid :block/title :block/created-at :block/updated-at
-    :logseq.property/scheduled :logseq.property/deadline
-    {:logseq.property/status [:db/ident :block/title]
-     :block/tags              [:db/id :block/title]
-     :block/page              [:db/id :block/title :block/uuid :block/journal-day]}])
-
-(defn- <load-tasks
-  "从 DB Worker 加载所有「任务类」块：
-   有状态 OR 有计划日期 OR 有截止日期 均纳入。
-   这样新建只设了 scheduled/deadline（尚未设状态）的任务也能被发现。"
-  [repo]
-  (db-async/<q repo {}
-               '[:find [(pull ?block ?pull-spec) ...]
-                 :in $ ?pull-spec
-                 :where
-                 (or-join [?block]
-                   [?block :logseq.property/status _]
-                   [?block :logseq.property/scheduled _]
-                   [?block :logseq.property/deadline _])]
-               task-pull-spec))
-
-(defn- task-status-ident [task]
-  (get-in task [:logseq.property/status :db/ident]))
-
-(defn- task-active?
-  "非已完成、非已取消"
-  [task]
-  (let [ident (task-status-ident task)]
-    (not (contains? #{:logseq.property/status.done
-                      :logseq.property/status.canceled} ident))))
-
-(defn- journal-day->ms
-  "将 YYYYMMDD 整数（如 20240322）转换为当天零点的本地毫秒时间戳"
-  [jd]
-  (let [s     (str jd)
-        year  (js/parseInt (.substring s 0 4))
-        month (dec (js/parseInt (.substring s 4 6)))
-        day   (js/parseInt (.substring s 6 8))]
-    (.getTime (js/Date. year month day))))
-
-(defn- prop->ms
-  "将 scheduled/deadline 属性值转为毫秒：
-   - number?  → 直接使用（UTC ms）
-   - map? 含 :block/journal-day → 转换日记日期到本地零点 ms
-   - 否则 → nil（忽略）"
-  [v]
-  (cond
-    (number? v) v
-    (and (map? v) (:block/journal-day v)) (journal-day->ms (:block/journal-day v))
-    :else nil))
-
-(defn- task-date-info
-  "返回 {:ms 毫秒时间戳 :source :scheduled|:deadline|:journal|:created}。
-   优先级：deadline > scheduled > journal-day > created-at。
-   有 deadline 时一律显示 ⏰，有 scheduled 时显示 📅。"
-  [task]
-  (let [s-ms (prop->ms (:logseq.property/scheduled task))
-        d-ms (prop->ms (:logseq.property/deadline task))]
-    (cond
-      d-ms {:ms d-ms :source :deadline}
-      s-ms {:ms s-ms :source :scheduled}
-      (get-in task [:block/page :block/journal-day])
-      {:ms (journal-day->ms (get-in task [:block/page :block/journal-day]))
-       :source :journal}
-      :else
-      {:ms (or (:block/created-at task) 0) :source :created})))
-
-(defn- task-date-ms
-  "返回任务的有效日期毫秒，无日期返回 nil"
-  [task]
-  (:ms (task-date-info task)))
+;; Share task/date helpers with the Today page so both views normalize dates the same way.
+(def ^:private <load-tasks agenda-data/<load-tasks)
+(def ^:private task-status-ident agenda-data/task-status-ident)
+(def ^:private task-active? agenda-data/task-active?)
+(def ^:private prop->ms agenda-data/prop->ms)
+(def ^:private task-date-info agenda-data/task-date-info)
+(def ^:private task-date-ms agenda-data/task-date-ms)
 
 (defn- group-tasks-by-day
   "tasks → {[y m d] [tasks...]}"
@@ -1016,11 +950,14 @@
         today-end (+ today-ms 86399999)
         now-ms    (.getTime (js/Date.))
         active    (filter task-active? tasks)
-        starting  (filter #(let [s (:logseq.property/scheduled %)]
-                              (and s (>= s today-ms) (<= s today-end)))
+        starting  (filter #(let [scheduled-ms (prop->ms (:logseq.property/scheduled %))]
+                              (and scheduled-ms
+                                   (>= scheduled-ms today-ms)
+                                   (<= scheduled-ms today-end)))
                           active)
-        overdue   (filter #(let [d (:logseq.property/deadline %)]
-                              (and d (< d now-ms)))
+        overdue   (filter #(let [deadline-ms (prop->ms (:logseq.property/deadline %))]
+                              (and deadline-ms
+                                   (< deadline-ms now-ms)))
                           active)]
     (when (seq starting)
       (notification/show!
