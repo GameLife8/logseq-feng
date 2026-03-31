@@ -43,6 +43,49 @@
           parsed))
       (catch :default _ nil))))
 
+(defn- sync-status-dict []
+  (let [lang (.toLowerCase (str (or (state/sub :preferred-language)
+                                    (some-> js/window .-navigator .-language)
+                                    "en")))]
+    (cond
+      (.includes lang "hant")
+      {:draft "草稿"
+       :graph "圖譜"
+       :cached "已快取"
+       :pending "待保存"
+       :saved "已保存"}
+
+      (.startsWith lang "zh")
+      {:draft "草稿"
+       :graph "图谱"
+       :cached "已缓存"
+       :pending "待保存"
+       :saved "已保存"}
+
+      :else
+      {:draft "Draft"
+       :graph "Graph"
+       :cached "cached"
+       :pending "pending"
+       :saved "saved"})))
+
+(defn- sync-status-copy
+  [cached? persisted?]
+  (let [{:keys [draft graph cached pending saved]} (sync-status-dict)
+        draft-label   draft
+        graph-label   graph
+        cached-label  cached
+        pending-label pending
+        saved-label   saved
+        draft-state   (if cached? cached-label pending-label)
+        graph-state   (if persisted? saved-label pending-label)]
+    {:title (str draft-label ": " draft-state
+                 " | " graph-label ": " graph-state)
+     :label (str draft-label " " draft-state
+                 " | " graph-label " " graph-state)
+     :draft (str draft-label " " draft-state)
+     :graph (str graph-label " " graph-state)}))
+
 (defn- save-to-ls! [map-id data]
   (when (and map-id data)
     (visual-doc/save-doc-cache! cache-prefix map-id (js/JSON.stringify data))))
@@ -1412,6 +1455,7 @@
         readonly?     (rum/react (::readonly? state))
         cached?       (rum/react (::cached? state))
         persisted?    (rum/react (::persisted? state))
+        sync-status   (sync-status-copy cached? persisted?)
         ctx-menu       (rum/react (::ctx-menu state))
         show-style?    (rum/react (::show-style-panel? state))
         node-styles    (rum/react (::node-styles state))
@@ -1561,7 +1605,7 @@
        {:style {:padding      "4px 8px"
                 :fontSize     "13px"
                 :fontWeight   "600"
-                :maxWidth     "180px"
+                :maxWidth     "320px"
                 :overflow     "hidden"
                 :textOverflow "ellipsis"
                 :whiteSpace   "nowrap"
@@ -1570,12 +1614,8 @@
         [:span {:style {:marginLeft "6px"
                         :fontSize   "10px"
                         :color      (if persisted? "#047857" "#b45309")}
-                :title  (str "Draft: " (if cached? "cached" "pending")
-                             " | Graph: " (if persisted? "saved" "pending"))}
-         (str "Draft "
-              (if cached? "cached" "pending")
-              " / Graph "
-              (if persisted? "saved" "pending"))]]
+                :title  (:title sync-status)}
+         (:label sync-status)]]
 
       (tb-sep)
 
@@ -1801,9 +1841,9 @@
          [:span {:key "rclick"} "右键: 更多操作"]))
       [:div {:style {:flex "1"}}]
       [:span {:style {:color (if cached? "#0369a1" "#b45309")}}
-       (str "Draft " (if cached? "cached" "pending"))]
+       (:draft sync-status)]
       [:span {:style {:color (if persisted? "#047857" "#b45309")}}
-       (str "Graph " (if persisted? "saved" "pending"))]
+       (:graph sync-status)]
       [:span (str zoom-pct "%")]]]))
 
 ;; Export for shadow.lazy loadable

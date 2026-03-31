@@ -30,6 +30,47 @@
       (js/JSON.parse json-str)
       (catch :default _ nil))))
 
+(defn- sync-status-dict []
+  (let [lang (.toLowerCase (str (or (state/sub :preferred-language)
+                                    (some-> js/window .-navigator .-language)
+                                    "en")))]
+    (cond
+      (.includes lang "hant")
+      {:draft "草稿"
+       :graph "圖譜"
+       :cached "已快取"
+       :pending "待保存"
+       :saved "已保存"}
+
+      (.startsWith lang "zh")
+      {:draft "草稿"
+       :graph "图谱"
+       :cached "已缓存"
+       :pending "待保存"
+       :saved "已保存"}
+
+      :else
+      {:draft "Draft"
+       :graph "Graph"
+       :cached "cached"
+       :pending "pending"
+       :saved "saved"})))
+
+(defn- sync-status-copy
+  [cached? persisted?]
+  (let [{:keys [draft graph cached pending saved]} (sync-status-dict)
+        draft-label   draft
+        graph-label   graph
+        cached-label  cached
+        pending-label pending
+        saved-label   saved
+        draft-state   (if cached? cached-label pending-label)
+        graph-state   (if persisted? saved-label pending-label)]
+    {:title (str draft-label ": " draft-state
+                 " | " graph-label ": " graph-state)
+     :label (str draft-label " " draft-state
+                 " | " graph-label " " graph-state)}))
+
 (declare canvas-json)
 
 (defn- save-to-ls! [page-uuid ^js api]
@@ -72,8 +113,7 @@
           sel-el-id           (gobj/get props "selElId")
           cached?             (boolean (gobj/get props "cached"))
           persisted?          (boolean (gobj/get props "persisted"))
-          sync-status         (str "Draft: " (if cached? "cached" "pending")
-                                   " | Graph: " (if persisted? "saved" "pending"))
+          sync-status         (sync-status-copy cached? persisted?)
           ;; hooks – must be unconditionally at top level
           [open?     set-open!]    (rum/use-state false)
           [editing?  set-editing!] (rum/use-state false)
@@ -154,7 +194,7 @@
 
          (js/React.createElement
           "span"
-          #js {:title sync-status
+          #js {:title (:title sync-status)
                :style #js {:padding "4px 8px"
                            :borderRadius "999px"
                            :fontSize "11px"
@@ -163,7 +203,7 @@
                                          "rgba(245,158,11,0.12)")
                            :color (if persisted? "#047857" "#b45309")
                            :whiteSpace "nowrap"}}
-          sync-status)
+          (:label sync-status))
 
          ;; 🔗 链接块 — shown only when exactly one element is selected
          (when (and sel-el-id on-show-linked)
