@@ -483,7 +483,7 @@
      state)}
   [state {:keys [page-uuid page-title on-back on-api-ready
                  on-show-linked-blocks on-selection-change render-tags on-rename
-                 validate-embeddable custom-fonts initial-json]}]
+                 validate-embeddable custom-fonts initial-json needs-initial-flush?]}]
   (let [loaded? (rum/react (::loaded? state))]
     [:div.wb-canvas {:style {:width "100%" :height "100%"}}
      (if loaded?
@@ -501,6 +501,7 @@
          :custom-fonts           custom-fonts
          ;; DB persistence callbacks (main bundle → lazy bundle boundary)
          :initial-json           initial-json
+         :needs-initial-flush?   needs-initial-flush?
          :on-save-data           whiteboard-handler/save-canvas-to-db!})
        [:div.flex.items-center.justify-center.h-full
         [:div.text-sm.opacity-60 "正在加载白板编辑器…"]])]))
@@ -540,7 +541,7 @@
         *ex-config-atom    (::ex-config state)
         *initial-doc       (::initial-doc state)
         linked-panel-el-id (rum/react *linked-panel-el-id)
-        {:keys [loaded? json]} (rum/react *initial-doc)
+        {:keys [loaded? json needs-flush?]} (rum/react *initial-doc)
         page-uuid          (str (:block/uuid page-entity))
         page-title         (or (:block/title page-entity) "Untitled Whiteboard")
         repo               (state/get-current-repo)
@@ -614,10 +615,11 @@
                                    (reset! *linked-panel-el-id nil)))
         :on-rename             (fn [new-title]
                                  (whiteboard-handler/<rename-whiteboard! page-uuid new-title))
-        :render-tags           (fn [] (tags-bar page-uuid page-entity))
-        :validate-embeddable   validate-embed
-        :custom-fonts          custom-fonts
-        :initial-json          json})
+          :render-tags           (fn [] (tags-bar page-uuid page-entity))
+          :validate-embeddable   validate-embed
+          :custom-fonts          custom-fonts
+          :initial-json          json
+          :needs-initial-flush?  needs-flush?})
         [:div.flex.items-center.justify-center.h-full
          [:div.text-sm.opacity-60 "Loading whiteboard data..."]])]
 

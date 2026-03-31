@@ -957,12 +957,15 @@
   < rum/reactive
   (rum/local nil   ::instance)
   (rum/local nil   ::container-ref)
-  (rum/local nil   ::timer-id)
+  (rum/local nil   ::cache-timer-id)
+  (rum/local nil   ::flush-timer-id)
   (rum/local nil   ::resize-observer)
   (rum/local nil   ::file-input-ref)
   (rum/local nil   ::key-handler)
   (rum/local nil   ::focusin-handler)
   (rum/local nil   ::focusout-handler)
+  (rum/local nil   ::pagehide-handler)
+  (rum/local nil   ::visibility-handler)
   ;; reactive toolbar state
   (rum/local false ::node-active?)
   (rum/local false ::node-is-root?)
@@ -973,7 +976,10 @@
   (rum/local false ::show-layout?)
   (rum/local false ::show-export?)
   (rum/local false ::readonly?)
-  (rum/local false ::unsaved?)
+  (rum/local true  ::cached?)
+  (rum/local true  ::persisted?)
+  (rum/local false ::cache-dirty?)
+  (rum/local false ::persist-dirty?)
   ;; context menu
   (rum/local nil   ::ctx-menu)
   (rum/local nil   ::ctx-handler)     ; contextmenu listener (document capture)
@@ -999,6 +1005,8 @@
      (let [args         (-> state :rum/args first)
            map-id       (:map-id args)
            initial-json (:initial-json args)
+           on-save-data (:on-save-data args)
+           needs-initial-flush? (boolean (:needs-initial-flush? args))
            container    @(::container-ref state)
            MindMapCtor  (get-mind-map-ctor)]
        (when (and container MindMapCtor)
@@ -1081,13 +1089,40 @@
                                 :hoverRectColor                       (if dark?
                                                                         "rgba(99,102,241,0.7)"
                                                                         "rgba(30,41,59,0.2)")})
-               timer      (js/setInterval
-                           (fn []
-                             (when-let [inst @(::instance state)]
-                               (save-to-ls! map-id (.getData ^js inst))
-                               (save-thumbnail! inst map-id)
-                               (reset! (::unsaved? state) false)))
-                           3000)
+               persist!   (fn [inst]
+                            (when inst
+                              (save-to-ls! map-id (.getData ^js inst))
+                              (save-thumbnail! inst map-id)
+                              (reset! (::cached? state) true)
+                              (reset! (::cache-dirty? state) false)
+                              (if on-save-data
+                                (let [saved? (boolean (on-save-data map-id (js/JSON.stringify (.getData ^js inst))))]
+                                  (reset! (::persisted? state) saved?)
+                                  (when saved?
+                                    (reset! (::persist-dirty? state) false)))
+                                (reset! (::persisted? state) false))))
+               cache-timer (js/setInterval
+                            (fn []
+                              (when-let [inst @(::instance state)]
+                                (when @(::cache-dirty? state)
+                                  (save-to-ls! map-id (.getData ^js inst))
+                                  (save-thumbnail! inst map-id)
+                                  (reset! (::cached? state) true)
+                                  (reset! (::cache-dirty? state) false))))
+                            3000)
+               flush-timer (js/setInterval
+                            (fn []
+                              (when-let [inst @(::instance state)]
+                                (when @(::persist-dirty? state)
+                                  (persist! inst))))
+                            9000)
+               pagehide-handler (fn []
+                                  (when-let [inst @(::instance state)]
+                                    (persist! inst)))
+               visibility-handler (fn []
+                                    (when (and (= "hidden" (.-visibilityState js/document))
+                                               @(::instance state))
+                                      (persist! @(::instance state))))
                ;; ResizeObserver: resize mind map when container changes size
                ro         (js/ResizeObserver.
                            (fn [entries]
@@ -1098,6 +1133,16 @@
                                      h     (.-height rect)]
                                  (when (and (> w 10) (> h 10))
                                    (.resize ^js inst w h))))))]
+           (reset! (::cached? state) true)
+           (reset! (::persisted? state) (not needs-initial-flush?))
+           (reset! (::cache-timer-id state) cache-timer)
+           (reset! (::flush-timer-id state) flush-timer)
+           (reset! (::pagehide-handler state) pagehide-handler)
+           (reset! (::visibility-handler state) visibility-handler)
+           (.addEventListener js/window "pagehide" pagehide-handler)
+           (.addEventListener js/document "visibilitychange" visibility-handler)
+           (when needs-initial-flush?
+             (persist! instance))
            ;; ── wire reactive events ────────────────────────────────────────
            (.on instance "back_forward"
                 (fn [idx len]
@@ -1173,7 +1218,10 @@
                           (js/Math.round (* s 100)))))
            (.on instance "data_change"
                 (fn []
-                  (reset! (::unsaved? state) true)
+                  (reset! (::cached? state) false)
+                  (reset! (::persisted? state) false)
+                  (reset! (::cache-dirty? state) true)
+                  (reset! (::persist-dirty? state) true)
                   (when @(::show-outline? state)
                     (reset! (::outline-data state)
                             (.getData ^js instance)))))
@@ -1207,7 +1255,6 @@
                     (reset! (::assoc-line-styles state) {}))))
            (.observe ro container)
            (reset! (::instance state) instance)
-           (reset! (::timer-id state) timer)
            (reset! (::resize-observer state) ro)
            ;; ── native keyboard interception (document capture) ──────────────
            ;; Problem: SimpleMindMap does not keep focus inside the container
@@ -1315,15 +1362,23 @@
      (let [args         (-> state :rum/args first)
            map-id       (:map-id args)
            on-save-data (:on-save-data args)
-           timer        @(::timer-id state)
+           cache-timer  @(::cache-timer-id state)
+           flush-timer  @(::flush-timer-id state)
            ro           @(::resize-observer state)
            instance     @(::instance state)
            container    @(::container-ref state)
            key-handler  @(::key-handler state)
            fi-handler   @(::focusin-handler state)
-           fo-handler   @(::focusout-handler state)]
-       (when timer (js/clearInterval timer))
+           fo-handler   @(::focusout-handler state)
+           pagehide-handler @(::pagehide-handler state)
+           visibility-handler @(::visibility-handler state)]
+       (when cache-timer (js/clearInterval cache-timer))
+       (when flush-timer (js/clearInterval flush-timer))
        (when ro (.disconnect ^js ro))
+       (when pagehide-handler
+         (.removeEventListener js/window "pagehide" pagehide-handler))
+       (when visibility-handler
+         (.removeEventListener js/document "visibilitychange" visibility-handler))
        (when (and container key-handler)
          (.removeEventListener js/document "keydown"  key-handler      true)
          (.removeEventListener container "focusin"  fi-handler       false)
@@ -1338,7 +1393,8 @@
            (save-to-ls! map-id data)
            (when on-save-data
              (on-save-data map-id (js/JSON.stringify data)))
-           (reset! (::unsaved? state) false)
+           (reset! (::cached? state) true)
+           (reset! (::persisted? state) true)
            (.destroy ^js instance))))
      state)}
   [state {:keys [map-id map-title on-back]}]
@@ -1354,7 +1410,8 @@
         show-layout?  (rum/react (::show-layout? state))
         show-export?  (rum/react (::show-export? state))
         readonly?     (rum/react (::readonly? state))
-        unsaved?      (rum/react (::unsaved? state))
+        cached?       (rum/react (::cached? state))
+        persisted?    (rum/react (::persisted? state))
         ctx-menu       (rum/react (::ctx-menu state))
         show-style?    (rum/react (::show-style-panel? state))
         node-styles    (rum/react (::node-styles state))
@@ -1491,7 +1548,14 @@
       (tb-btn "←" "保存并返回"
               (fn []
                 (when-let [i @*instance]
-                  (save-to-ls! map-id (.getData ^js i)))
+                  (save-to-ls! map-id (.getData ^js i))
+                  (reset! (::cached? state) true)
+                  (reset! (::cache-dirty? state) false)
+                  (when-let [save-fn (:on-save-data (-> state :rum/args first))]
+                    (let [saved? (boolean (save-fn map-id (js/JSON.stringify (.getData ^js i))))]
+                      (reset! (::persisted? state) saved?)
+                      (when saved?
+                        (reset! (::persist-dirty? state) false)))))
                 (when on-back (on-back))))
       [:span
        {:style {:padding      "4px 8px"
@@ -1503,12 +1567,15 @@
                 :whiteSpace   "nowrap"
                 :color        "var(--lx-gray-11,#374151)"}}
        (or map-title "思维导图")
-       (when unsaved?
-         [:span {:style {:color      "#f59e0b"
-                         :marginLeft "4px"
-                         :fontSize   "10px"
-                         :title      "有未保存的更改（3 秒后自动保存）"}}
-          "●"])]
+       [:span {:style {:marginLeft "6px"
+                       :fontSize   "10px"
+                       :color      (if persisted? "#047857" "#b45309")}
+               :title  (str "Draft: " (if cached? "cached" "pending")
+                            " | Graph: " (if persisted? "saved" "pending"))}
+        (str "Draft "
+             (if cached? "cached" "pending")
+             " / Graph "
+             (if persisted? "saved" "pending"))])]
 
       (tb-sep)
 
@@ -1733,8 +1800,10 @@
          [:span {:key "ctrlg"} "Ctrl+G: 概要"]
          [:span {:key "rclick"} "右键: 更多操作"]))
       [:div {:style {:flex "1"}}]
-      (when unsaved?
-        [:span {:style {:color "#f59e0b"}} "未保存"])
+      [:span {:style {:color (if cached? "#0369a1" "#b45309")}}
+       (str "Draft " (if cached? "cached" "pending"))]
+      [:span {:style {:color (if persisted? "#047857" "#b45309")}}
+       (str "Graph " (if persisted? "saved" "pending"))]
       [:span (str zoom-pct "%")]]]))
 
 ;; Export for shadow.lazy loadable

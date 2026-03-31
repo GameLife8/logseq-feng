@@ -62,7 +62,7 @@
      state)}
   [state route-match]
   (let [editor-loaded? (rum/react (::loaded? state))
-        {:keys [loaded? json]} (rum/react (::initial-doc state))
+        {:keys [loaded? json needs-flush?]} (rum/react (::initial-doc state))
         doc-loaded?    loaded?
         page-uuid (get-in route-match [:path-params :name])
         page      (when (and page-uuid (util/uuid-string? page-uuid))
@@ -93,6 +93,7 @@
          :map-title    map-title
          :on-back      (fn [] (route-handler/redirect! {:to :all-mind-maps}))
          :initial-json json
+         :needs-initial-flush? needs-flush?
          :on-save-data mind-map-handler/save-mind-map-to-db!
          ;; Open a linked block (by UUID string) in the right sidebar.
          ;; Uses db-async/<get-block to ensure the block is loaded into the

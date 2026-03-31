@@ -68,6 +68,10 @@
           render-tags         (gobj/get props "renderTags")
           on-show-linked      (gobj/get props "onShowLinkedBlocks")
           sel-el-id           (gobj/get props "selElId")
+          cached?             (boolean (gobj/get props "cached"))
+          persisted?          (boolean (gobj/get props "persisted"))
+          sync-status         (str "Draft: " (if cached? "cached" "pending")
+                                   " | Graph: " (if persisted? "saved" "pending"))
           ;; hooks – must be unconditionally at top level
           [open?     set-open!]    (rum/use-state false)
           [editing?  set-editing!] (rum/use-state false)
@@ -146,6 +150,19 @@
                                :whiteSpace "nowrap" :cursor "pointer"}}
             page-title))
 
+         (js/React.createElement
+          "span"
+          #js {:title sync-status
+               :style #js {:padding "4px 8px"
+                           :borderRadius "999px"
+                           :fontSize "11px"
+                           :background (if persisted?
+                                         "rgba(16,185,129,0.12)"
+                                         "rgba(245,158,11,0.12)")
+                           :color (if persisted? "#047857" "#b45309")
+                           :whiteSpace "nowrap"}}
+          sync-status)
+
          ;; 🔗 链接块 — shown only when exactly one element is selected
          (when (and sel-el-id on-show-linked)
            (js/React.createElement
@@ -191,23 +208,66 @@
   < rum/static
   (rum/local nil    ::api)
   (rum/local nil    ::sel-el-id)   ; ID string of selected element, or nil
-  (rum/local false  ::dirty?)
-  (rum/local nil    ::timer-id)
+  (rum/local false  ::cache-dirty?)
+  (rum/local false  ::persist-dirty?)
+  (rum/local true   ::cached?)
+  (rum/local true   ::persisted?)
+  (rum/local nil    ::cache-timer-id)
+  (rum/local nil    ::flush-timer-id)
+  (rum/local nil    ::pagehide-handler)
+  (rum/local nil    ::visibility-handler)
   (rum/local nil    ::library-items)
   {:did-mount
    (fn [state]
-     (let [*timer   (::timer-id state)
-           *dirty?  (::dirty? state)
-           *api     (::api state)
-           *library (::library-items state)
-           p-uuid   (-> state :rum/args first :page-uuid)
-           timer    (js/setInterval
-                     (fn []
-                       (when @*dirty?
-                         (save-to-ls! p-uuid @*api)
-                         (reset! *dirty? false)))
-                     3000)]
-       (reset! *timer timer)
+     (let [*cache-timer   (::cache-timer-id state)
+           *flush-timer   (::flush-timer-id state)
+           *cache-dirty?  (::cache-dirty? state)
+           *persist-dirty? (::persist-dirty? state)
+           *cached?       (::cached? state)
+           *persisted?    (::persisted? state)
+           *pagehide      (::pagehide-handler state)
+           *visibility    (::visibility-handler state)
+           *api           (::api state)
+           *library       (::library-items state)
+           args           (first (:rum/args state))
+           p-uuid         (:page-uuid args)
+           save-fn        (:on-save-data args)
+           needs-initial-flush? (boolean (:needs-initial-flush? args))
+           persist!       (fn []
+                            (when-let [api @*api]
+                              (save-to-ls! p-uuid api)
+                              (reset! *cached? true)
+                              (reset! *cache-dirty? false)
+                              (if save-fn
+                                (let [saved? (boolean (save-fn p-uuid (canvas-json api)))]
+                                  (reset! *persisted? saved?)
+                                  (when saved?
+                                    (reset! *persist-dirty? false)))
+                                (reset! *persisted? false))))
+           cache-timer    (js/setInterval
+                           (fn []
+                             (when (and @*cache-dirty? @*api)
+                               (save-to-ls! p-uuid @*api)
+                               (reset! *cached? true)
+                               (reset! *cache-dirty? false)))
+                           3000)
+           flush-timer    (js/setInterval
+                           (fn []
+                             (when @*persist-dirty?
+                               (persist!)))
+                           9000)
+           pagehide       (fn [] (persist!))
+           visibility     (fn []
+                            (when (= "hidden" (.-visibilityState js/document))
+                              (persist!)))]
+       (reset! *cached? true)
+       (reset! *persisted? (not needs-initial-flush?))
+       (reset! *cache-timer cache-timer)
+       (reset! *flush-timer flush-timer)
+       (reset! *pagehide pagehide)
+       (reset! *visibility visibility)
+       (.addEventListener js/window "pagehide" pagehide)
+       (.addEventListener js/document "visibilitychange" visibility)
        (when-let [raw (.getItem js/localStorage (lib-key))]
          (try (reset! *library (js/JSON.parse raw))
               (catch :default _ nil)))
@@ -299,21 +359,32 @@
    :will-unmount
    (fn [state]
      (let [api     @(::api state)
-           timer   @(::timer-id state)
+           cache-timer @(::cache-timer-id state)
+           flush-timer @(::flush-timer-id state)
+           pagehide-handler @(::pagehide-handler state)
+           visibility-handler @(::visibility-handler state)
            p-uuid  (-> state :rum/args first :page-uuid)
            save-fn (-> state :rum/args first :on-save-data)]
-       (when timer (js/clearInterval timer))
+       (when cache-timer (js/clearInterval cache-timer))
+       (when flush-timer (js/clearInterval flush-timer))
+       (when pagehide-handler
+         (.removeEventListener js/window "pagehide" pagehide-handler))
+       (when visibility-handler
+         (.removeEventListener js/document "visibilitychange" visibility-handler))
        (when api
          (save-to-ls! p-uuid api)
          (when save-fn (save-fn p-uuid (canvas-json api)))))
      state)}
   [state {:keys [page-uuid page-title on-back on-api-ready
                  on-show-linked-blocks on-selection-change
-                 initial-json on-save-data render-tags on-rename
+                 initial-json needs-initial-flush? on-save-data render-tags on-rename
                  validate-embeddable custom-fonts]}]
   (let [*api        (::api state)
         *sel-el-id  (::sel-el-id state)
-        *dirty?     (::dirty? state)
+        *cache-dirty? (::cache-dirty? state)
+        *persist-dirty? (::persist-dirty? state)
+        *cached?    (::cached? state)
+        *persisted? (::persisted? state)
         *library    (::library-items state)
         init-data   (parse-canvas-json initial-json)
         save-and-back!
@@ -321,7 +392,13 @@
           (let [api @*api]
             (when api
               (save-to-ls! page-uuid api)
-              (when on-save-data (on-save-data page-uuid (canvas-json api)))))
+              (reset! *cached? true)
+              (reset! *cache-dirty? false)
+              (when on-save-data
+                (let [saved? (boolean (on-save-data page-uuid (canvas-json api)))]
+                  (reset! *persisted? saved?)
+                  (when saved?
+                    (reset! *persist-dirty? false))))))
           (when on-back (on-back)))]
 
     [:div.excalidraw-wrapper
@@ -332,7 +409,15 @@
       #js {;; ── IMPORTANT: use :excalidrawAPI, NOT :ref ──────────────────────
            :excalidrawAPI    (fn [^js api]
                                (reset! *api api)
-                               (when on-api-ready (on-api-ready api)))
+                               (when on-api-ready (on-api-ready api))
+                               (when needs-initial-flush?
+                                 (save-to-ls! page-uuid api)
+                                 (reset! *cached? true)
+                                 (when on-save-data
+                                   (let [saved? (boolean (on-save-data page-uuid (canvas-json api)))]
+                                     (reset! *persisted? saved?)
+                                     (when saved?
+                                       (reset! *persist-dirty? false)))))))
            :initialData      (or init-data #js {})
            :langCode         "zh-CN"
            :theme            (if (= "dark" (state/sub :ui/theme)) "dark" "light")
@@ -350,7 +435,10 @@
                                (.setItem js/localStorage (lib-key)
                                          (js/JSON.stringify items)))
            :onChange         (fn [_elements ^js app-state _files]
-                               (reset! *dirty? true)
+                               (reset! *cache-dirty? true)
+                               (reset! *persist-dirty? true)
+                               (reset! *cached? false)
+                               (reset! *persisted? false)
                                ;; Track selected element ID for the 🔗 toolbar button.
                                ;; Guard: only fire on-selection-change when value actually
                                ;; changes, not on every animation frame that triggers onChange.
@@ -367,6 +455,8 @@
               toolbar-buttons
               #js {:pageTitle          page-title
                    :saveAndBack        save-and-back!
+                   :cached             @*cached?
+                   :persisted          @*persisted?
                    :onRename           on-rename
                    :renderTags         render-tags
                    :onShowLinkedBlocks (fn [el-id]

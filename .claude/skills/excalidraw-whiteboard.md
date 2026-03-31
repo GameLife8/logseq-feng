@@ -47,6 +47,10 @@ Logseq DB  (:block/whiteboard-canvas JSON 字符串)  ←  via on-save-data call
 
 加载优先级：`worker-first DB pull` 与 `localStorage wrapper` 比较时间戳，父组件拿到最终结果后再挂载 Excalidraw。
 
+保存语义：
+- `localStorage` 草稿缓存按 3s 节奏写入
+- DB 落库按更慢的节奏单独处理；UI 需要区分 `Draft cached` 和 `Graph saved`
+
 ---
 
 ## 元素 customData 结构

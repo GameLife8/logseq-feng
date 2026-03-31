@@ -51,6 +51,7 @@
 - 父组件先走 worker-first 读取 `:block/mind-map-data`
 - 同时读取 `localStorage("mind-map-data-{uuid}")`
 - localStorage 现在使用 `{:version 1 :saved-at ms :data json-string}` 包装；时间戳更新更晚的一侧胜出
+- autosave 需要把 `Draft cached` 和 `Graph saved` 分开表示，不能再把 localStorage 写入当成 DB 已保存
 
 ---
 
