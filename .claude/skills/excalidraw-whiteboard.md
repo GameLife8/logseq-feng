@@ -22,7 +22,7 @@
 {:page-uuid               "uuid-str"     ; 白板 page UUID
  :page-title              "标题"
  :on-back                 (fn [])        ; 保存后返回列表
- :on-load-data            (fn [uuid])    ; => JSON-string | nil（从 DB 读）
+ :initial-json            "{\"elements\":[],...}" ; worker-first 预加载结果
  :on-save-data            (fn [uuid json]) ; 写 DB
  :on-api-ready            (fn [api])     ; 拿到 ExcalidrawImperativeAPI
  :on-show-linked-blocks   (fn [el-id])   ; 打开元素关联块面板
@@ -40,12 +40,12 @@
 ## 数据持久化策略
 
 ```
-localStorage (key: "whiteboard-data-{uuid}")  ←  每 3s 自动存一次 (dirty flag)
+localStorage (key: "whiteboard-data-{uuid}")  ←  {:version 1 :saved-at ms :data json-string}
               ↓  on-back / will-unmount 时强制写
 Logseq DB  (:block/whiteboard-canvas JSON 字符串)  ←  via on-save-data callback
 ```
 
-加载优先级：`on-load-data(DB)` → `localStorage` → 空画布。
+加载优先级：`worker-first DB pull` 与 `localStorage wrapper` 比较时间戳，父组件拿到最终结果后再挂载 Excalidraw。
 
 ---
 

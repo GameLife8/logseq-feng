@@ -13,8 +13,12 @@
             [frontend.handler.notification :as notification]
             [frontend.handler.page :as page-handler]
             [frontend.handler.route :as route-handler]
+            [frontend.handler.visual-doc :as visual-doc]
             [frontend.state :as state]
             [promesa.core :as p]))
+
+(def mind-map-attr :block/mind-map-data)
+(def mind-map-cache-prefix "mind-map-data")
 
 (defn get-all-mind-maps
   "返回所有思维导图页面实体（按更新时间倒序）。"
@@ -40,16 +44,22 @@
     (when-let [page (db/entity [:block/uuid (uuid page-uuid)])]
       (db/transact! (state/get-current-repo)
                     [{:db/id             (:db/id page)
-                      :block/mind-map-data json-str
+                      mind-map-attr      json-str
                       :block/updated-at   (.now js/Date)}]
                     {:outliner-op :save-block})
       true)))
+
+(defn <load-mind-map-doc
+  "Loads the mind map document using the worker DB first, then resolves
+   whether DB or local cache is newer."
+  [page-uuid]
+  (visual-doc/<load-doc (state/get-current-repo) page-uuid mind-map-attr mind-map-cache-prefix))
 
 (defn load-mind-map-from-db
   "从 page 实体读取思维导图 JSON，若不存在则返回 nil。"
   [page-uuid]
   (when (seq page-uuid)
-    (let [data (:block/mind-map-data (db/entity [:block/uuid (uuid page-uuid)]))]
+    (let [data (mind-map-attr (db/entity [:block/uuid (uuid page-uuid)]))]
       (when (seq data) data))))
 
 (defn- <ensure-mindmap-class-tag!

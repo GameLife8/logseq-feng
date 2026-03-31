@@ -38,7 +38,7 @@
 {:map-id             "page-uuid-str"    ; localStorage 和 DB key
  :map-title          "标题"
  :on-back            (fn [])            ; 返回画廊
- :on-load-data       (fn [map-id])      ; => JSON-string | nil
+ :initial-json       "{\"data\":{\"text\":\"root\"},...}" ; worker-first 预加载结果
  :on-save-data       (fn [map-id json]) ; 保存到 DB
  :on-open-block      (fn [uuid-str])    ; 在右侧边栏打开块
  :on-open-note-block (fn [uuid-str])    ; 备注：空串=新建块，非空=打开已有块
@@ -46,6 +46,11 @@
  :on-search-blocks   (fn [q])           ; 搜索块，返回 Promise<[{:block-id :block-title :page-title}]>
 }
 ```
+
+初始化规则：
+- 父组件先走 worker-first 读取 `:block/mind-map-data`
+- 同时读取 `localStorage("mind-map-data-{uuid}")`
+- localStorage 现在使用 `{:version 1 :saved-at ms :data json-string}` 包装；时间戳更新更晚的一侧胜出
 
 ---
 

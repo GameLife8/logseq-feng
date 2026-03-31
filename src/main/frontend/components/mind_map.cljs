@@ -46,13 +46,24 @@
   "单个思维导图编辑器。route-match 提供 :path-params {:name <page-uuid>}。"
   < rum/reactive
   (rum/local false ::loaded?)
+  (rum/local {:loaded? false
+              :json nil
+              :needs-flush? false
+              :source :empty}
+             ::initial-doc)
   {:did-mount
    (fn [state]
-     (ensure-mind-map-loaded!
-      (fn [] (reset! (::loaded? state) true)))
+     (let [page-uuid (some-> state :rum/args first :path-params :name)]
+       (ensure-mind-map-loaded!
+        (fn [] (reset! (::loaded? state) true)))
+       (p/let [doc-info (mind-map-handler/<load-mind-map-doc page-uuid)]
+         (reset! (::initial-doc state)
+                 (merge {:loaded? true} doc-info))))
      state)}
   [state route-match]
-  (let [loaded?   (rum/react (::loaded? state))
+  (let [editor-loaded? (rum/react (::loaded? state))
+        {:keys [loaded? json]} (rum/react (::initial-doc state))
+        doc-loaded?    loaded?
         page-uuid (get-in route-match [:path-params :name])
         page      (when (and page-uuid (util/uuid-string? page-uuid))
                     (db/entity [:block/uuid (uuid page-uuid)]))
@@ -67,7 +78,7 @@
         {:on-click #(route-handler/redirect! {:to :all-mind-maps})}
         "返回列表")]
 
-      (not loaded?)
+      (or (not editor-loaded?) (not doc-loaded?))
       [:div.mind-map-page
        {:style {:width "100%" :height "100%" :display "flex" :flexDirection "column"}}
        [:div {:style {:display "flex" :alignItems "center" :justifyContent "center"
@@ -81,7 +92,7 @@
         {:map-id       page-uuid
          :map-title    map-title
          :on-back      (fn [] (route-handler/redirect! {:to :all-mind-maps}))
-         :on-load-data mind-map-handler/load-mind-map-from-db
+         :initial-json json
          :on-save-data mind-map-handler/save-mind-map-to-db!
          ;; Open a linked block (by UUID string) in the right sidebar.
          ;; Uses db-async/<get-block to ensure the block is loaded into the

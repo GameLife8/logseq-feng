@@ -483,7 +483,7 @@
      state)}
   [state {:keys [page-uuid page-title on-back on-api-ready
                  on-show-linked-blocks on-selection-change render-tags on-rename
-                 validate-embeddable custom-fonts]}]
+                 validate-embeddable custom-fonts initial-json]}]
   (let [loaded? (rum/react (::loaded? state))]
     [:div.wb-canvas {:style {:width "100%" :height "100%"}}
      (if loaded?
@@ -500,7 +500,7 @@
          :validate-embeddable    validate-embeddable
          :custom-fonts           custom-fonts
          ;; DB persistence callbacks (main bundle → lazy bundle boundary)
-         :on-load-data           whiteboard-handler/load-canvas-from-db
+         :initial-json           initial-json
          :on-save-data           whiteboard-handler/save-canvas-to-db!})
        [:div.flex.items-center.justify-center.h-full
         [:div.text-sm.opacity-60 "正在加载白板编辑器…"]])]))
@@ -516,20 +516,31 @@
   (rum/local nil ::canvas-api)
   (rum/local nil ::linked-panel-el-id)  ; element ID whose panel is open, or nil
   (rum/local nil ::ex-config)           ; async-loaded excalidraw config (nil = not yet loaded)
+  (rum/local {:loaded? false
+              :json nil
+              :needs-flush? false
+              :source :empty}
+             ::initial-doc)
   {:did-mount
    (fn [state]
      ;; Async-load the Excalidraw config from the worker DB.  The synchronous
      ;; get-config falls back to default when the logseq/excalidraw page isn't in
      ;; the main-thread DataScript replica yet (lazy-DB).  Once the async load
      ;; resolves, the atom update triggers a re-render with the correct config.
-     (p/let [cfg (ex-cfg/<get-config)]
-       (reset! (::ex-config state) cfg))
+     (let [page-uuid (some-> state :rum/args first :page-entity :block/uuid str)]
+       (p/let [cfg      (ex-cfg/<get-config)
+               doc-info (whiteboard-handler/<load-canvas-doc page-uuid)]
+         (reset! (::ex-config state) cfg)
+         (reset! (::initial-doc state)
+                 (merge {:loaded? true} doc-info))))
      state)}
   [state {:keys [page-entity]}]
   (let [*canvas-api        (::canvas-api state)
         *linked-panel-el-id (::linked-panel-el-id state)
         *ex-config-atom    (::ex-config state)
+        *initial-doc       (::initial-doc state)
         linked-panel-el-id (rum/react *linked-panel-el-id)
+        {:keys [loaded? json]} (rum/react *initial-doc)
         page-uuid          (str (:block/uuid page-entity))
         page-title         (or (:block/title page-entity) "Untitled Whiteboard")
         repo               (state/get-current-repo)
@@ -586,7 +597,8 @@
 
      ;; Canvas fills entire viewport
      [:div {:style {:position "absolute" :inset 0 :overflow "hidden"}}
-      (whiteboard-canvas
+      (if loaded?
+        (whiteboard-canvas
        {:page-uuid             page-uuid
         :page-title            page-title
         :on-back               on-back
@@ -604,10 +616,13 @@
                                  (whiteboard-handler/<rename-whiteboard! page-uuid new-title))
         :render-tags           (fn [] (tags-bar page-uuid page-entity))
         :validate-embeddable   validate-embed
-        :custom-fonts          custom-fonts})]
+        :custom-fonts          custom-fonts
+        :initial-json          json})
+        [:div.flex.items-center.justify-center.h-full
+         [:div.text-sm.opacity-60 "Loading whiteboard data..."]])]
 
      ;; Linked-blocks panel (shown when linked-panel-el-id is set)
-     (when (and linked-panel-el-id @*canvas-api)
+     (when (and loaded? linked-panel-el-id @*canvas-api)
        (linked-blocks-panel
         {:api              @*canvas-api
          :el-id            linked-panel-el-id

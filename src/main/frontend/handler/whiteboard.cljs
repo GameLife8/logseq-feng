@@ -7,16 +7,20 @@
    Canvas data is stored directly on the page entity as :block/whiteboard-canvas
    (a plain string attribute), persisted via db/transact!."
   (:require [clojure.string :as string]
-            [datascript.core :as d]
-            [frontend.db :as db]
-            [frontend.handler.common.page :as common-page-handler]
-            [frontend.handler.db-based.property :as db-property-handler]
-            [frontend.handler.editor :as editor-handler]
-            [frontend.handler.notification :as notification]
-            [frontend.handler.page :as page-handler]
-            [frontend.handler.route :as route-handler]
-            [frontend.state :as state]
-            [promesa.core :as p]))
+             [datascript.core :as d]
+             [frontend.db :as db]
+             [frontend.handler.common.page :as common-page-handler]
+             [frontend.handler.db-based.property :as db-property-handler]
+             [frontend.handler.editor :as editor-handler]
+             [frontend.handler.notification :as notification]
+             [frontend.handler.page :as page-handler]
+             [frontend.handler.route :as route-handler]
+             [frontend.handler.visual-doc :as visual-doc]
+             [frontend.state :as state]
+             [promesa.core :as p]))
+
+(def canvas-attr :block/whiteboard-canvas)
+(def canvas-cache-prefix "whiteboard-data")
 
 ;; ── whiteboard identification ─────────────────────────────────────────────────
 
@@ -80,11 +84,17 @@
       (do (js/console.warn "[whiteboard] save-canvas-to-db! failed: page not found for uuid" page-uuid)
           false))))
 
+(defn <load-canvas-doc
+  "Loads the whiteboard document using the worker DB first, then resolves
+   whether DB or local cache is newer."
+  [page-uuid]
+  (visual-doc/<load-doc (state/get-current-repo) page-uuid canvas-attr canvas-cache-prefix))
+
 (defn load-canvas-from-db
   "Returns the canvas JSON string stored on the page entity, or nil."
   [page-uuid]
   (when (seq page-uuid)
-    (:block/whiteboard-canvas (db/entity [:block/uuid (uuid page-uuid)]))))
+    (canvas-attr (db/entity [:block/uuid (uuid page-uuid)]))))
 
 ;; ── tag management ────────────────────────────────────────────────────────────
 
@@ -154,8 +164,8 @@
             (when-let [wclass (db/entity :logseq.class/Whiteboard)]
               (js/console.log "[wb] applying :logseq.class/Whiteboard tag, id=" (:db/id wclass))
               (swap! tags-ids conj (:db/id wclass)))
-            ;; Strategy 2: user tag page named "Whiteboard"
-            (let [database (db/get-db)
+             ;; Strategy 2: user tag page named "Whiteboard"
+             (let [database (db/get-db)
                   tag-eid  (ffirst (d/q '[:find [?e ...]
                                           :where [?e :block/title "Whiteboard"]
                                                  [(missing? $ ?e :db/ident)]]

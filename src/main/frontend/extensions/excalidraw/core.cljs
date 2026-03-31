@@ -5,7 +5,7 @@
 
    Canvas data persistence strategy:
    - Fast write cache  : native localStorage, saved every 3 s while editing
-   - Authoritative store: Logseq DB (via on-save-data / on-load-data callbacks)
+   - Authoritative store: Logseq DB (via on-save-data callback)
    - On back  : explicit save to localStorage + DB BEFORE navigation (on-back callback)
    - On unmount: fallback save to localStorage
 
@@ -14,34 +14,25 @@
    The correct API is the :excalidrawAPI prop, which accepts a callback fn(api)."
   (:require ["@excalidraw/excalidraw" :refer [Excalidraw]]
             [frontend.extensions.excalidraw.api :as ex-api]
+            [frontend.handler.visual-doc :as visual-doc]
             [frontend.state :as state]
             [goog.object :as gobj]
             [rum.core :as rum]))
 
 ;; ── localStorage fast cache ───────────────────────────────────────────────────
 
-(defn- ls-key [page-uuid] (str "whiteboard-data-" page-uuid))
+(def ^:private cache-prefix "whiteboard-data")
 
-(defn- load-from-ls
-  "Load canvas data from localStorage.
-   Handles both raw JSON (current) and legacy pr-str-wrapped JSON (old storage)."
-  [page-uuid]
-  (when-let [raw (.getItem js/localStorage (ls-key page-uuid))]
+(defn- parse-canvas-json
+  [json-str]
+  (when (seq json-str)
     (try
-      (let [parsed (js/JSON.parse raw)]
-        (if (string? parsed) (js/JSON.parse parsed) parsed))
+      (js/JSON.parse json-str)
       (catch :default _ nil))))
 
 (defn- save-to-ls! [page-uuid ^js api]
   (when (and api page-uuid)
-    (let [els    (.getSceneElements api)
-          astate (.getAppState api)
-          data   (js/JSON.stringify
-                  #js {:elements els
-                       :appState #js {:scrollX (gobj/get astate "scrollX")
-                                      :scrollY (gobj/get astate "scrollY")
-                                      :zoom    (gobj/get astate "zoom")}})]
-      (.setItem js/localStorage (ls-key page-uuid) data))))
+    (visual-doc/save-doc-cache! cache-prefix page-uuid (canvas-json api))))
 
 (defn- canvas-json [^js api]
   (let [els    (.getSceneElements api)
@@ -195,7 +186,7 @@
      :on-show-linked-blocks – fn(element-id-str) open linked-blocks panel in parent
      :on-selection-change   – fn(element-id-str|nil) fired on every selection change
      :on-api-ready       – fn called with the ExcalidrawImperativeAPI once mounted
-     :on-load-data       – fn(page-uuid) → JSON-string | nil  (reads from DB)
+     :initial-json       – preloaded JSON string for the initial scene
      :on-save-data       – fn(page-uuid, json-string)          (writes to DB)"
   < rum/static
   (rum/local nil    ::api)
@@ -318,18 +309,13 @@
      state)}
   [state {:keys [page-uuid page-title on-back on-api-ready
                  on-show-linked-blocks on-selection-change
-                 on-load-data on-save-data render-tags on-rename
+                 initial-json on-save-data render-tags on-rename
                  validate-embeddable custom-fonts]}]
   (let [*api        (::api state)
         *sel-el-id  (::sel-el-id state)
         *dirty?     (::dirty? state)
         *library    (::library-items state)
-        init-data   (or (when on-load-data
-                          (try
-                            (when-let [json-str (on-load-data page-uuid)]
-                              (js/JSON.parse json-str))
-                            (catch :default _ nil)))
-                        (load-from-ls page-uuid))
+        init-data   (parse-canvas-json initial-json)
         save-and-back!
         (fn []
           (let [api @*api]
@@ -346,17 +332,7 @@
       #js {;; ── IMPORTANT: use :excalidrawAPI, NOT :ref ──────────────────────
            :excalidrawAPI    (fn [^js api]
                                (reset! *api api)
-                               (when on-api-ready (on-api-ready api))
-                               ;; Fallback: if scene empty after init (timing race with DB),
-                               ;; reload from DB first, then localStorage.
-                               (when (zero? (.-length (.getSceneElements api)))
-                                 (when-let [data (or (when on-load-data
-                                                       (try (when-let [s (on-load-data page-uuid)]
-                                                              (js/JSON.parse s))
-                                                            (catch :default _ nil)))
-                                                     (load-from-ls page-uuid))]
-                                   (.updateScene api #js {:elements (.-elements data)
-                                                          :appState (.-appState data)}))))
+                               (when on-api-ready (on-api-ready api)))
            :initialData      (or init-data #js {})
            :langCode         "zh-CN"
            :theme            (if (= "dark" (state/sub :ui/theme)) "dark" "light")

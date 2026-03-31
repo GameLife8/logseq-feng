@@ -7,7 +7,7 @@
 
    Data persistence:
    - Fast write cache  : localStorage, saved every 3s while editing
-   - Authoritative store: Logseq DB (via on-save-data / on-load-data)
+   - Authoritative store: Logseq DB (via on-save-data)
 
    Features (aligned with obsidian-simplemindmap plugin):
    - Export: PNG / SVG / JSON download
@@ -15,12 +15,13 @@
    - Readonly mode toggle
    - ResizeObserver for responsive canvas
    - Full toolbar: undo/redo, node ops, zoom, layout picker"
-  (:require [rum.core :as rum]
+  (:require [frontend.handler.visual-doc :as visual-doc]
+            [rum.core :as rum]
             [frontend.state :as state]))
 
 ;; ── localStorage fast cache ───────────────────────────────────────────────────
 
-(defn- ls-key [map-id] (str "mind-map-data-" map-id))
+(def ^:private cache-prefix "mind-map-data")
 (defn- thumb-ls-key [map-id] (str "mind-map-thumb-" map-id))
 
 ;; Save a static SVG snapshot to localStorage for gallery thumbnails.
@@ -33,15 +34,18 @@
                    (.setItem js/localStorage (thumb-ls-key map-id) data-url))))
         (.catch (fn [e] (js/console.warn "[mind-map] thumbnail export failed:" e))))))
 
-(defn- load-from-ls [map-id]
-  (when-let [raw (.getItem js/localStorage (ls-key map-id))]
-    (try (js/JSON.parse raw)
-         (catch :default _ nil))))
+(defn- parse-map-json
+  [json-str]
+  (when (seq json-str)
+    (try
+      (let [parsed (js/JSON.parse json-str)]
+        (when (and parsed (.-data parsed) (.-text (.-data parsed)))
+          parsed))
+      (catch :default _ nil))))
 
 (defn- save-to-ls! [map-id data]
   (when (and map-id data)
-    (.setItem js/localStorage (ls-key map-id)
-              (js/JSON.stringify data))))
+    (visual-doc/save-doc-cache! cache-prefix map-id (js/JSON.stringify data))))
 
 ;; ── default root node ─────────────────────────────────────────────────────────
 
@@ -948,7 +952,7 @@
      :map-id       – unique string identifier (used for localStorage key)
      :map-title    – display title string
      :on-back      – fn() navigate back
-     :on-load-data – fn(map-id) → JSON-string | nil
+     :initial-json – preloaded JSON string for the initial document
      :on-save-data – fn(map-id, json-string)"
   < rum/reactive
   (rum/local nil   ::instance)
@@ -994,16 +998,11 @@
    (fn [state]
      (let [args         (-> state :rum/args first)
            map-id       (:map-id args)
-           on-load-data (:on-load-data args)
+           initial-json (:initial-json args)
            container    @(::container-ref state)
            MindMapCtor  (get-mind-map-ctor)]
        (when (and container MindMapCtor)
-         (let [saved-json (or (when on-load-data (on-load-data map-id)) nil)
-               init-data  (or (when saved-json
-                                (try (let [p (js/JSON.parse saved-json)]
-                                       (when (and p (.-data p) (.-text (.-data p))) p))
-                                     (catch :default _ nil)))
-                              (load-from-ls map-id)
+         (let [init-data  (or (parse-map-json initial-json)
                               default-data)
                dark?      (= "dark" (state/sub :ui/theme))
                theme-cfg  (if dark?
@@ -1342,7 +1341,7 @@
            (reset! (::unsaved? state) false)
            (.destroy ^js instance))))
      state)}
-  [state {:keys [map-id map-title on-back _on-load-data _on-save-data]}]
+  [state {:keys [map-id map-title on-back]}]
   (let [*container    (::container-ref state)
         *instance     (::instance state)
         *file-input   (::file-input-ref state)
