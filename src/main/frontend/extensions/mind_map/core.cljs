@@ -1567,15 +1567,15 @@
                 :whiteSpace   "nowrap"
                 :color        "var(--lx-gray-11,#374151)"}}
        (or map-title "思维导图")
-       [:span {:style {:marginLeft "6px"
-                       :fontSize   "10px"
-                       :color      (if persisted? "#047857" "#b45309")}
-               :title  (str "Draft: " (if cached? "cached" "pending")
-                            " | Graph: " (if persisted? "saved" "pending"))}
-        (str "Draft "
-             (if cached? "cached" "pending")
-             " / Graph "
-             (if persisted? "saved" "pending"))])]
+        [:span {:style {:marginLeft "6px"
+                        :fontSize   "10px"
+                        :color      (if persisted? "#047857" "#b45309")}
+                :title  (str "Draft: " (if cached? "cached" "pending")
+                             " | Graph: " (if persisted? "saved" "pending"))}
+         (str "Draft "
+              (if cached? "cached" "pending")
+              " / Graph "
+              (if persisted? "saved" "pending"))]]
 
       (tb-sep)
 

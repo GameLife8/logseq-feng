@@ -413,11 +413,11 @@
                                (when needs-initial-flush?
                                  (save-to-ls! page-uuid api)
                                  (reset! *cached? true)
-                                 (when on-save-data
-                                   (let [saved? (boolean (on-save-data page-uuid (canvas-json api)))]
-                                     (reset! *persisted? saved?)
-                                     (when saved?
-                                       (reset! *persist-dirty? false)))))))
+                                  (when on-save-data
+                                    (let [saved? (boolean (on-save-data page-uuid (canvas-json api)))]
+                                      (reset! *persisted? saved?)
+                                      (when saved?
+                                        (reset! *persist-dirty? false))))))
            :initialData      (or init-data #js {})
            :langCode         "zh-CN"
            :theme            (if (= "dark" (state/sub :ui/theme)) "dark" "light")
