@@ -94,7 +94,9 @@
           ;; 写入默认 JSON + 打 MindMap 标签（合并为单次 transact!）
           (let [repo (state/get-current-repo)
                 tx   (cond-> {:db/id             (:db/id page)
-                               :block/mind-map-data (str "{\"data\":{\"text\":\"" title "\"},\"children\":[]}")
+                               :block/mind-map-data (js/JSON.stringify
+                                                     (clj->js {:data {:text title}
+                                                               :children []}))
                                :block/updated-at   (.now js/Date)}
                         (some? tag) (assoc :block/tags #{(:db/id tag)}))]
             (db/transact! repo [tx] {:outliner-op :save-block}))

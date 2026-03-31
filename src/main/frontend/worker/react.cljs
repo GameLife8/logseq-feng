@@ -47,6 +47,18 @@
         tags (->> (filter (fn [datom] (= :block/tags (:a datom))) tx-data)
                   (map :v)
                   (distinct))
+        object-membership-attrs #{:block/title
+                                  :block/updated-at
+                                  :block/whiteboard-canvas
+                                  :block/mind-map-data}
+        object-tags (->> (filter (fn [datom]
+                                   (contains? object-membership-attrs (:a datom)))
+                                 tx-data)
+                         (mapcat (fn [datom]
+                                   (some->> (d/entity db-after (:e datom))
+                                            :block/tags
+                                            (keep :db/id))))
+                         (distinct))
         journals? (some (fn [datom]
                           (and
                            (= :block/tags (:a datom))
@@ -98,7 +110,7 @@
                        (keep
                         (fn [tag]
                           (when tag [::objects tag]))
-                        tags)
+                        (concat tags object-tags))
 
                        (when journals?
                          [[::journals]]))]

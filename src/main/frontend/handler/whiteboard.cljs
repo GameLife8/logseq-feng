@@ -166,10 +166,10 @@
               (swap! tags-ids conj (:db/id wclass)))
              ;; Strategy 2: user tag page named "Whiteboard"
              (let [database (db/get-db)
-                  tag-eid  (ffirst (d/q '[:find [?e ...]
-                                          :where [?e :block/title "Whiteboard"]
-                                                 [(missing? $ ?e :db/ident)]]
-                                        database))]
+                  tag-eid  (first (d/q '[:find [?e ...]
+                                         :where [?e :block/title "Whiteboard"]
+                                                [(missing? $ ?e :db/ident)]]
+                                       database))]
               (if tag-eid
                 (do (js/console.log "[wb] applying user 'Whiteboard' tag, id=" tag-eid)
                     (swap! tags-ids conj tag-eid))
