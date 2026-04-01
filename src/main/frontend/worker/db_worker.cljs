@@ -31,6 +31,7 @@
             [frontend.worker.sync.crypt :as sync-crypt]
             [frontend.worker.sync.log-and-state :as rtc-log-and-state]
             [frontend.worker.thread-atom]
+            [frontend.worker.visual-doc :as worker-visual-doc]
             [goog.object :as gobj]
             [lambdaisland.glogi :as log]
             [lambdaisland.glogi.console :as glogi-console]
@@ -80,6 +81,7 @@
 (def ^:private search-index-build-pause-ms 300)
 (defonce *sqlite worker-state/*sqlite)
 (defonce *sqlite-conns worker-state/*sqlite-conns)
+(defonce *visual-doc-conns worker-state/*visual-doc-conns)
 (defonce *datascript-conns worker-state/*datascript-conns)
 (defonce *client-ops-conns worker-state/*client-ops-conns)
 (defonce *opfs-pools worker-state/*opfs-pools)
@@ -113,6 +115,8 @@
       nil)))
 
 (def repo-path "/db.sqlite")
+
+(def ^:private visual-doc-path worker-visual-doc/sidecar-path)
 
 (defn- <export-db-file
   ([repo]
@@ -179,8 +183,9 @@
       (restore-data-from-addr db addr))))
 
 (defn- close-db-aux!
-  [repo ^Object db ^Object search ^Object client-ops]
+  [repo ^Object db ^Object search ^Object client-ops ^Object visual-doc-db]
   (swap! *sqlite-conns dissoc repo)
+  (swap! *visual-doc-conns dissoc repo)
   (swap! *datascript-conns dissoc repo)
   (swap! *client-ops-conns dissoc repo)
   (swap! *search-index-build-ids dissoc repo)
@@ -188,6 +193,7 @@
   (when db (.close db))
   (when search (.close search))
   (when client-ops (.close client-ops))
+  (when visual-doc-db (.close visual-doc-db))
   (when-let [^js pool (worker-state/get-opfs-pool repo)]
     (.pauseVfs pool))
   (swap! *opfs-pools dissoc repo))
@@ -210,12 +216,32 @@
   [repo]
   (doseq [[r {:keys [db search client-ops]}] @*sqlite-conns]
     (when-not (= repo r)
-      (close-db-aux! r db search client-ops))))
+      (close-db-aux! r db search client-ops (worker-state/get-visual-doc-conn r)))))
 
 (defn close-db!
   [repo]
   (let [{:keys [db search client-ops]} (get @*sqlite-conns repo)]
-    (close-db-aux! repo db search client-ops)))
+    (close-db-aux! repo db search client-ops (worker-state/get-visual-doc-conn repo))))
+
+(defn- <get-visual-doc-db
+  [repo]
+  (or (worker-state/get-visual-doc-conn repo)
+      (if @*publishing?
+        (p/let [^object DB (.-DB ^object (.-oo1 ^object @*sqlite))
+                visual-doc-db (new DB visual-doc-path "c")]
+          (enable-sqlite-wal-mode! visual-doc-db)
+          (worker-visual-doc/ensure-table! visual-doc-db)
+          (swap! *visual-doc-conns assoc repo visual-doc-db)
+          visual-doc-db)
+        (p/let [^js pool (<get-opfs-pool repo)
+                capacity (.getCapacity pool)
+                _ (when (zero? capacity)
+                    (.unpauseVfs pool))
+                visual-doc-db (new (.-OpfsSAHPoolDb pool) visual-doc-path)]
+          (enable-sqlite-wal-mode! visual-doc-db)
+          (worker-visual-doc/ensure-table! visual-doc-db)
+          (swap! *visual-doc-conns assoc repo visual-doc-db)
+          visual-doc-db))))
 
 (defn reset-db!
   [repo db-transit-str]
@@ -289,7 +315,8 @@
       (when-not @*publishing? (common-sqlite/create-kvs-table! client-ops-db))
       (search/create-tables-and-triggers! search-db)
       (ldb/register-transact-pipeline-fn! worker-pipeline/transact-pipeline)
-      (let [conn (common-sqlite/get-storage-conn storage db-schema/schema)
+      (p/let [_ (<get-visual-doc-db repo)]
+        (let [conn (common-sqlite/get-storage-conn storage db-schema/schema)
             _ (db-fix/check-and-fix-schema! conn)
             _ (when datoms
                 (let [ident-eids (into #{}
@@ -339,7 +366,7 @@
 
           (db-listener/listen-db-changes! repo (get @*datascript-conns repo))
 
-          nil)))))
+          nil))))))
 
 (defn- iter->vec [iter']
   (when iter'
@@ -529,6 +556,45 @@
       (some->> eid
                (d/pull @conn selector)
                (common-initial-data/with-parent @conn)))))
+
+(def-thread-api :thread-api/visual-doc-get
+  [repo page-uuid doc-type legacy-attr]
+  (p/let [visual-doc-db (<get-visual-doc-db repo)]
+    (or (some-> (worker-visual-doc/get-doc visual-doc-db page-uuid)
+                ((fn [{:keys [page_uuid doc_type content updated_at]}]
+                   {:page-uuid  page_uuid
+                    :doc-type   doc_type
+                    :content    content
+                    :updated-at updated_at
+                    :storage    :sidecar})))
+        (when-let [conn (worker-state/get-datascript-conn repo)]
+          (let [legacy-id  (when (seq page-uuid) [:block/uuid (uuid page-uuid)])
+                legacy-doc (when legacy-id
+                             (d/pull @conn [legacy-attr :block/updated-at] legacy-id))
+                content    (get legacy-doc legacy-attr)]
+            (when (seq content)
+              {:page-uuid  page-uuid
+               :doc-type   (name doc-type)
+               :content    content
+               :updated-at (:block/updated-at legacy-doc)
+               :storage    :legacy-db}))))))
+
+(def-thread-api :thread-api/visual-doc-upsert
+  [repo page-uuid doc-type content]
+  (when (and (seq repo) (seq page-uuid) (seq content))
+    (p/let [visual-doc-db (<get-visual-doc-db repo)
+            updated-at    (common-util/time-ms)]
+      (worker-visual-doc/upsert-doc! visual-doc-db
+                                     {:page-uuid  page-uuid
+                                      :doc-type   (name doc-type)
+                                      :content    content
+                                      :updated-at updated-at}))))
+
+(def-thread-api :thread-api/visual-doc-delete
+  [repo page-uuid]
+  (when (and (seq repo) (seq page-uuid))
+    (p/let [visual-doc-db (<get-visual-doc-db repo)]
+      (worker-visual-doc/delete-doc! visual-doc-db page-uuid))))
 
 (def ^:private *get-blocks-cache (volatile! (cache/lru-cache-factory {} :threshold 1000)))
 (def ^:private get-blocks-with-cache

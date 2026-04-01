@@ -47,6 +47,8 @@
 (defonce *sqlite (atom nil))
 ;; repo -> {:db conn :search conn :client-ops conn}
 (defonce *sqlite-conns (atom {}))
+;; repo -> sidecar sqlite conn for visual docs
+(defonce *visual-doc-conns (atom {}))
 ;; repo -> conn
 (defonce *datascript-conns (atom nil))
 
@@ -62,6 +64,10 @@
   ([repo which-db]
    (assert (contains? #{:db :search :client-ops} which-db) which-db)
    (get-in @*sqlite-conns [repo which-db])))
+
+(defn get-visual-doc-conn
+  [repo]
+  (get @*visual-doc-conns repo))
 
 (defn get-datascript-conn
   [repo]
