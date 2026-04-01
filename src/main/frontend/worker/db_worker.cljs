@@ -562,8 +562,8 @@
   (p/let [visual-doc-db (<get-visual-doc-db repo)]
     (or (some-> (worker-visual-doc/get-doc visual-doc-db page-uuid)
                 ((fn [{:keys [page_uuid doc_type content updated_at storage_format] :as doc}]
-                   (let [needs-migration? (and (= doc-type :mind-map)
-                                               (not= storage_format "mind_map_nodes")
+                   (let [expected-format (worker-visual-doc/expected-storage-format doc_type)
+                         needs-migration? (and (not= storage_format expected-format)
                                                (seq content))
                          doc'             (if needs-migration?
                                             (or (worker-visual-doc/upsert-doc! visual-doc-db

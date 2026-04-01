@@ -3,15 +3,23 @@
    content. These records must stay out of DataScript so page manifests remain
    lightweight in both worker and main-thread replicas.
 
-   Schema v2 introduces normalized mind-map node rows so the mind-map payload is
-   no longer stored only as a single blob."
+   Schema v3 introduces normalized mind-map node rows and normalized whiteboard
+   element rows so visual docs are no longer stored only as single blobs."
   (:require [cljs-bean.core :as bean]))
 
 (def sidecar-path "/visual-doc.sqlite")
 
-(def ^:private current-schema-version 2)
+(def ^:private current-schema-version 3)
 (def ^:private blob-storage-format "blob")
 (def ^:private mind-map-node-storage-format "mind_map_nodes")
+(def ^:private whiteboard-element-storage-format "whiteboard_elements")
+
+(defn expected-storage-format
+  [doc-type]
+  (case doc-type
+    "mind-map" mind-map-node-storage-format
+    "whiteboard" whiteboard-element-storage-format
+    blob-storage-format))
 
 (defn- exec-ignore-error!
   [^js db sql]
@@ -106,6 +114,49 @@
     (when root-id
       (build-node root-id))))
 
+(defn- flatten-whiteboard
+  [json-str]
+  (when-let [scene (some-> json-str parse-json)]
+    {:elements (mapv (fn [[idx element]]
+                       (let [element' (assoc element :id (or (:id element) (str (random-uuid))))]
+                         {:element-id    (:id element')
+                          :element-type  (:type element')
+                          :element-order idx
+                          :element-json  (stringify element')}))
+                     (map-indexed vector (vec (or (:elements scene) []))))
+     :app-state (or (:appState scene) {})}))
+
+(defn- whiteboard-element-rows
+  [^js db page-uuid]
+  (when (seq page-uuid)
+    (->> (.exec db #js {:sql "select page_uuid, element_id, element_type, element_order, element_json
+                              from whiteboard_elements
+                              where page_uuid = ?
+                              order by element_order asc"
+                        :bind #js [page-uuid]
+                        :rowMode "object"})
+         array-seq
+         (map row->clj)
+         vec)))
+
+(defn- whiteboard-scene-meta
+  [^js db page-uuid]
+  (when (seq page-uuid)
+    (let [rows (.exec db #js {:sql "select page_uuid, app_state_json
+                                    from whiteboard_scene_meta
+                                    where page_uuid = ?
+                                    limit 1"
+                              :bind #js [page-uuid]
+                              :rowMode "object"})]
+      (some-> rows first-row row->clj))))
+
+(defn- hydrate-whiteboard
+  [element-rows scene-meta]
+  {:elements (mapv (fn [{:keys [element_json]}]
+                     (or (parse-json element_json) {}))
+                   (sort-by :element_order element-rows))
+   :appState (or (some-> scene-meta :app_state_json parse-json) {})})
+
 (defn- ensure-doc-columns!
   [^js db]
   (exec-ignore-error! db "alter table visual_docs add column schema_version integer not null default 1")
@@ -136,6 +187,20 @@
              )")
   (.exec db "create index if not exists idx_mind_map_nodes_page_parent_order
              on mind_map_nodes(page_uuid, parent_id, child_order)")
+  (.exec db "create table if not exists whiteboard_elements (
+               page_uuid text not null,
+               element_id text not null,
+               element_type text,
+               element_order integer not null,
+               element_json text not null,
+               primary key (page_uuid, element_id)
+             )")
+  (.exec db "create index if not exists idx_whiteboard_elements_page_order
+             on whiteboard_elements(page_uuid, element_order)")
+  (.exec db "create table if not exists whiteboard_scene_meta (
+               page_uuid text primary key,
+               app_state_json text not null
+             )")
   (.exec db (str "pragma user_version = " current-schema-version))
   db)
 
@@ -187,10 +252,49 @@
                           :content content
                           :updated-at updated-at})))
 
+(defn- upsert-whiteboard-doc!
+  [^js db {:keys [page-uuid doc-type content updated-at]}]
+  (if-let [{:keys [elements app-state]} (flatten-whiteboard content)]
+    (let [content' (stringify {:elements (mapv (fn [{:keys [element-json]}]
+                                                (or (parse-json element-json) {}))
+                                              (sort-by :element-order elements))
+                               :appState app-state})]
+      (.exec db #js {:sql "delete from whiteboard_elements where page_uuid = ?"
+                     :bind #js [page-uuid]})
+      (doseq [{:keys [element-id element-type element-order element-json]} elements]
+        (.exec db #js {:sql "insert into whiteboard_elements (page_uuid, element_id, element_type, element_order, element_json)
+                             values (?, ?, ?, ?, ?)"
+                       :bind #js [page-uuid element-id element-type element-order element-json]}))
+      (.exec db #js {:sql "insert into whiteboard_scene_meta (page_uuid, app_state_json)
+                           values (?, ?)
+                           on conflict(page_uuid) do update set
+                             app_state_json = excluded.app_state_json"
+                     :bind #js [page-uuid (stringify app-state)]})
+      (.exec db #js {:sql "insert into visual_docs (page_uuid, doc_type, content, updated_at, schema_version, storage_format)
+                           values (?, ?, ?, ?, ?, ?)
+                           on conflict(page_uuid) do update set
+                             doc_type = excluded.doc_type,
+                             content = excluded.content,
+                             updated_at = excluded.updated_at,
+                             schema_version = excluded.schema_version,
+                             storage_format = excluded.storage_format"
+                     :bind #js [page-uuid doc-type content' updated-at current-schema-version whiteboard-element-storage-format]})
+      {:page-uuid      page-uuid
+       :doc-type       doc-type
+       :updated-at     updated-at
+       :schema-version current-schema-version
+       :storage-format whiteboard-element-storage-format
+       :content        content'})
+    (upsert-blob-doc! db {:page-uuid page-uuid
+                          :doc-type doc-type
+                          :content content
+                          :updated-at updated-at})))
+
 (defn upsert-doc!
   [^js db {:keys [doc-type] :as doc}]
-  (if (= "mind-map" doc-type)
-    (upsert-mind-map-doc! db doc)
+  (case doc-type
+    "mind-map" (upsert-mind-map-doc! db doc)
+    "whiteboard" (upsert-whiteboard-doc! db doc)
     (upsert-blob-doc! db doc)))
 
 (defn get-doc
@@ -204,16 +308,28 @@
                               :rowMode "object"})
           row  (some-> rows first-row row->clj)]
       (when row
-        (if (= mind-map-node-storage-format (:storage_format row))
+        (case (:storage_format row)
+          "mind_map_nodes"
           (let [root-node (some-> (mind-map-node-rows db page-uuid) hydrate-mind-map)]
             (assoc row :content (or (some-> root-node stringify)
                                     (:content row))))
+
+          "whiteboard_elements"
+          (let [scene (hydrate-whiteboard (or (whiteboard-element-rows db page-uuid) [])
+                                          (whiteboard-scene-meta db page-uuid))]
+            (assoc row :content (or (some-> scene stringify)
+                                    (:content row))))
+
           row)))))
 
 (defn delete-doc!
   [^js db page-uuid]
   (when (seq page-uuid)
     (.exec db #js {:sql "delete from mind_map_nodes where page_uuid = ?"
+                   :bind #js [page-uuid]})
+    (.exec db #js {:sql "delete from whiteboard_elements where page_uuid = ?"
+                   :bind #js [page-uuid]})
+    (.exec db #js {:sql "delete from whiteboard_scene_meta where page_uuid = ?"
                    :bind #js [page-uuid]})
     (.exec db #js {:sql "delete from visual_docs where page_uuid = ?"
                    :bind #js [page-uuid]}))
