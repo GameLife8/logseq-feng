@@ -5,8 +5,7 @@
    so they remain queryable from DataScript and visible in the Pages view.
 
    VISUAL-DOC-SIDECAR: the page entity is a lightweight manifest only.
-   The full Excalidraw payload lives in the worker sqlite sidecar. Legacy
-   :block/whiteboard-canvas reads remain as a temporary migration fallback."
+   The full Excalidraw payload lives in the worker sqlite sidecar."
   (:require [clojure.string :as string]
              [datascript.core :as d]
              [frontend.db :as db]
@@ -36,12 +35,7 @@
                                           [?t :db/ident :logseq.class/Whiteboard]]
                                  database)
                            (map first))
-          ;; Strategy 2: canvas attribute
-          with-canvas (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
-                                   :where [?b :block/whiteboard-canvas _]]
-                                 database)
-                           (map first))
-          ;; Strategy 3: user tag named "Whiteboard"
+          ;; Strategy 2: user tag named "Whiteboard"
           with-user-tag (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
                                      :where [?t :block/title "Whiteboard"]
                                             [(missing? $ ?t :db/ident)]
@@ -49,7 +43,7 @@
                                             [(missing? $ ?b :db/ident)]]
                                    database)
                              (map first))
-          result (->> (concat with-class with-canvas with-user-tag)
+          result (->> (concat with-class with-user-tag)
                       (into {} (map (juxt :db/id identity)))  ; deduplicate by :db/id
                       vals
                       (filter :block/title)
@@ -90,15 +84,10 @@
   (visual-doc/<load-doc (state/get-current-repo) page-uuid canvas-attr canvas-cache-prefix))
 
 (defn load-canvas-from-db
-  "Best-effort preview reader for gallery thumbnails.
-
-   Prefer the local draft cache because it already mirrors the sidecar payload.
-   If the cache is missing, fall back to the legacy page attribute while old
-   graphs are being migrated."
+  "Best-effort preview reader for gallery thumbnails from local draft cache."
   [page-uuid]
   (when (seq page-uuid)
-    (or (some-> (visual-doc/read-doc-cache canvas-cache-prefix page-uuid) :data)
-        (canvas-attr (db/entity [:block/uuid (uuid page-uuid)])))))
+    (some-> (visual-doc/read-doc-cache canvas-cache-prefix page-uuid) :data)))
 
 ;; ── tag management ────────────────────────────────────────────────────────────
 

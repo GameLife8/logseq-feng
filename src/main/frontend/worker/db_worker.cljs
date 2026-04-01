@@ -560,41 +560,30 @@
 (def-thread-api :thread-api/visual-doc-get
   [repo page-uuid doc-type legacy-attr]
   (p/let [visual-doc-db (<get-visual-doc-db repo)]
-    (or (some-> (worker-visual-doc/get-doc visual-doc-db page-uuid)
-                ((fn [{:keys [page_uuid doc_type content updated_at storage_format] :as doc}]
-                   (let [expected-format (worker-visual-doc/expected-storage-format doc_type)
-                         needs-migration? (and (not= storage_format expected-format)
-                                               (seq content))
-                         doc'             (if needs-migration?
-                                            (or (worker-visual-doc/upsert-doc! visual-doc-db
-                                                                              {:page-uuid  page_uuid
-                                                                               :doc-type   doc_type
-                                                                               :content    content
-                                                                               :updated-at updated_at})
-                                                doc)
+    (some-> (worker-visual-doc/get-doc visual-doc-db page-uuid)
+            ((fn [{:keys [page_uuid doc_type content updated_at storage_format] :as doc}]
+               (let [expected-format (worker-visual-doc/expected-storage-format doc_type)
+                     needs-migration? (and (not= storage_format expected-format)
+                                           (seq content))
+                     doc'             (if needs-migration?
+                                        (or (worker-visual-doc/upsert-doc! visual-doc-db
+                                                                          {:page-uuid  page_uuid
+                                                                           :doc-type   doc_type
+                                                                           :content    content
+                                                                           :updated-at updated_at})
                                             doc)
-                         latest-doc       (if needs-migration?
-                                            (or (worker-visual-doc/get-doc visual-doc-db page-uuid)
-                                                doc')
-                                            doc')]
-                     {:page-uuid      (:page_uuid latest-doc)
-                      :doc-type       (:doc_type latest-doc)
-                      :content        (:content latest-doc)
-                      :updated-at     (:updated_at latest-doc)
-                      :schema-version (:schema_version latest-doc)
-                      :storage-format (:storage_format latest-doc)
-                      :storage        :sidecar}))))
-        (when-let [conn (worker-state/get-datascript-conn repo)]
-          (let [legacy-id  (when (seq page-uuid) [:block/uuid (uuid page-uuid)])
-                legacy-doc (when legacy-id
-                             (d/pull @conn [legacy-attr :block/updated-at] legacy-id))
-                content    (get legacy-doc legacy-attr)]
-            (when (seq content)
-              {:page-uuid  page-uuid
-               :doc-type   (name doc-type)
-               :content    content
-               :updated-at (:block/updated-at legacy-doc)
-               :storage    :legacy-db}))))))
+                                        doc)
+                     latest-doc       (if needs-migration?
+                                        (or (worker-visual-doc/get-doc visual-doc-db page-uuid)
+                                            doc')
+                                        doc')]
+                 {:page-uuid      (:page_uuid latest-doc)
+                  :doc-type       (:doc_type latest-doc)
+                  :content        (:content latest-doc)
+                  :updated-at     (:updated_at latest-doc)
+                  :schema-version (:schema_version latest-doc)
+                  :storage-format (:storage_format latest-doc)
+                  :storage        :sidecar}))))))
 
 (def-thread-api :thread-api/visual-doc-upsert
   [repo page-uuid doc-type content]

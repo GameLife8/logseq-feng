@@ -126,8 +126,8 @@
 (defn <load-doc
   "Loads the visual document payload from the worker sidecar first.
 
-   If the sidecar has no document yet, worker code falls back to the legacy page
-   attribute without transacting that payload into the main-thread DataScript."
+   The sidecar is the only authoritative store for new visual documents. Local
+   draft cache can still win when it is newer than the durable sidecar copy."
   [repo page-uuid attr cache-prefix]
   (if-not (seq page-uuid)
     (p/resolved {:source :empty
@@ -140,14 +140,10 @@
                                                     attr)
                            normalize-worker-result)
             cache  (read-doc-cache cache-prefix page-uuid)]
-      (let [selected       (choose-newer-source {:db-json       (:content result)
-                                                 :db-updated-at (:updated-at result)
-                                                 :cache         cache})
-            legacy-source? (= :legacy-db (:storage result))]
-        (assoc selected
-               :storage (:storage result)
-               :needs-flush? (or (:needs-flush? selected)
-                                 legacy-source?))))))
+      (assoc (choose-newer-source {:db-json       (:content result)
+                                   :db-updated-at (:updated-at result)
+                                   :cache         cache})
+             :storage (:storage result)))))
 
 (defn- <ensure-page-id
   [repo page-uuid]

@@ -152,23 +152,16 @@
   "Returns all mind-map page manifests from the local DataScript replica."
   []
   (when-let [database (db/get-db)]
-    (let [with-class (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
-                                 :where [?class :block/title "MindMap"]
-                                        [?class :block/tags :logseq.class/Tag]
-                                        [?b :block/tags ?class]]
-                               database)
-                          (map first))
-          with-legacy (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
-                                  :where [?b :block/mind-map-data _]]
-                                database)
-                           (map first))]
-      (->> (concat with-class with-legacy)
-           (into {} (map (juxt :db/id identity)))
-           vals
-           (filter #(and (:block/title %)
-                         (:block/uuid %)
-                         (not (:db/ident %))))
-           (sort-by #(or (:block/updated-at %) 0) >)))))
+    (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
+                :where [?class :block/title "MindMap"]
+                       [?class :block/tags :logseq.class/Tag]
+                       [?b :block/tags ?class]]
+              database)
+         (map first)
+         (filter #(and (:block/title %)
+                       (:block/uuid %)
+                       (not (:db/ident %))))
+         (sort-by #(or (:block/updated-at %) 0) >))))
 
 (defn- mind-map-name-exists?
   [title]
@@ -195,16 +188,10 @@
   (visual-doc/<load-doc (state/get-current-repo) page-uuid mind-map-attr mind-map-cache-prefix))
 
 (defn load-mind-map-from-db
-  "Best-effort preview reader for mind-map payloads.
-
-   Prefer the local draft cache because it mirrors the sidecar content. If the
-   cache is missing, fall back to the legacy page attribute while old graphs are
-   being migrated."
+  "Best-effort preview reader for mind-map payloads from local draft cache."
   [page-uuid]
   (when (seq page-uuid)
-    (or (some-> (visual-doc/read-doc-cache mind-map-cache-prefix page-uuid) :data)
-        (let [data (mind-map-attr (db/entity [:block/uuid (uuid page-uuid)]))]
-          (when (seq data) data)))))
+    (some-> (visual-doc/read-doc-cache mind-map-cache-prefix page-uuid) :data)))
 
 (defn <create-mind-map!
   "Creates a new mind-map page manifest and stores the initial JSON in the
