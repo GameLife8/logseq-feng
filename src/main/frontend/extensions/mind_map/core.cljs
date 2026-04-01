@@ -38,12 +38,21 @@
 
 (defn- parse-map-json
   [json-str]
-  (when (seq json-str)
+  (let [json-str' (cond
+                    (string? json-str)
+                    json-str
+
+                    (sequential? json-str)
+                    (apply str json-str)
+
+                    :else
+                    nil)]
+    (when (seq json-str')
     (try
-      (let [parsed (js/JSON.parse json-str)]
+      (let [parsed (js/JSON.parse json-str')]
         (when (and parsed (.-data parsed) (.-text (.-data parsed)))
           parsed))
-      (catch :default _ nil))))
+      (catch :default _ nil)))))
 
 (defn- sync-status-dict []
   (let [lang (.toLowerCase (str (or (state/sub :preferred-language)

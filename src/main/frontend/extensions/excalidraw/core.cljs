@@ -27,10 +27,19 @@
 
 (defn- parse-canvas-json
   [json-str]
-  (when (seq json-str)
-    (try
-      (js/JSON.parse json-str)
-      (catch :default _ nil))))
+  (let [json-str' (cond
+                    (string? json-str)
+                    json-str
+
+                    (sequential? json-str)
+                    (apply str json-str)
+
+                    :else
+                    nil)]
+    (when (seq json-str')
+      (try
+        (js/JSON.parse json-str')
+        (catch :default _ nil)))))
 
 (defn- sync-status-dict []
   (let [lang (.toLowerCase (str (or (state/sub :preferred-language)
@@ -545,7 +554,9 @@
                                (.setItem js/localStorage (lib-key)
                                          (js/JSON.stringify items)))
             :onChange         (fn [elements ^js app-state _files]
-                                (let [current-json    (scene-json elements app-state)
+                                (let [current-json    (if-let [api @*api]
+                                                        (canvas-json api)
+                                                        (scene-json elements app-state))
                                       cache-dirty?    (not= current-json @*last-cached-json)
                                       persist-dirty?  (not= current-json @*last-persisted-json)]
                                   (reset! *cache-dirty? cache-dirty?)

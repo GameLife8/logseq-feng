@@ -73,15 +73,16 @@
    Legacy caches without a timestamp only win when the DB has no data."
   [{:keys [db-json db-updated-at cache]}]
   (let [db-json'       (when (seq db-json) db-json)
-        cache-json     (some-> cache :data seq)
+        cache-json     (some-> cache :data)
+        cache-json'    (when (seq cache-json) cache-json)
         cache-saved-at (:saved-at cache)
-        cache-newer?   (and cache-json
+        cache-newer?   (and cache-json'
                             (number? cache-saved-at)
                             (> cache-saved-at (or db-updated-at 0)))]
     (cond
       cache-newer?
       {:source        :cache
-       :json          cache-json
+       :json          cache-json'
        :db-updated-at db-updated-at
        :cache-saved-at cache-saved-at
        :needs-flush?  true}
@@ -93,9 +94,9 @@
        :cache-saved-at cache-saved-at
        :needs-flush?  false}
 
-      cache-json
+      cache-json'
       {:source        :cache
-       :json          cache-json
+       :json          cache-json'
        :db-updated-at db-updated-at
        :cache-saved-at cache-saved-at
        :needs-flush?  (number? cache-saved-at)}
