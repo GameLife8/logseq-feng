@@ -15,7 +15,9 @@
    - Readonly mode toggle
    - ResizeObserver for responsive canvas
    - Full toolbar: undo/redo, node ops, zoom, layout picker"
-  (:require [frontend.handler.visual-doc :as visual-doc]
+  (:require [frontend.handler.notification :as notification]
+            [frontend.handler.visual-doc :as visual-doc]
+            [promesa.core :as p]
             [rum.core :as rum]
             [frontend.state :as state]))
 
@@ -1133,17 +1135,28 @@
                                                                         "rgba(99,102,241,0.7)"
                                                                         "rgba(30,41,59,0.2)")})
                persist!   (fn [inst]
-                            (when inst
-                              (save-to-ls! map-id (.getData ^js inst))
-                              (save-thumbnail! inst map-id)
-                              (reset! (::cached? state) true)
-                              (reset! (::cache-dirty? state) false)
-                              (if on-save-data
-                                (let [saved? (boolean (on-save-data map-id (js/JSON.stringify (.getData ^js inst))))]
-                                  (reset! (::persisted? state) saved?)
-                                  (when saved?
-                                    (reset! (::persist-dirty? state) false)))
-                                (reset! (::persisted? state) false))))
+                            (if inst
+                              (let [data     (.getData ^js inst)
+                                    json-str (js/JSON.stringify data)]
+                                (save-to-ls! map-id data)
+                                (save-thumbnail! inst map-id)
+                                (reset! (::cached? state) true)
+                                (reset! (::cache-dirty? state) false)
+                                (if on-save-data
+                                  (-> (p/let [save-result (on-save-data map-id json-str)]
+                                        (let [saved? (boolean save-result)]
+                                          (reset! (::persisted? state) saved?)
+                                          (if saved?
+                                            (reset! (::persist-dirty? state) false)
+                                            (reset! (::persist-dirty? state) true))
+                                          saved?))
+                                      (p/catch (fn [error]
+                                                 (js/console.error "[mind-map] persist failed:" error)
+                                                 (reset! (::persisted? state) false)
+                                                 (reset! (::persist-dirty? state) true)
+                                                 false)))
+                                  (p/resolved false)))
+                              (p/resolved false)))
                cache-timer (js/setInterval
                             (fn []
                               (when-let [inst @(::instance state)]
@@ -1465,13 +1478,37 @@
         assoc-styles        (rum/react (::assoc-line-styles state))
         note-block-ids      (rum/react (::note-block-ids state))
         note-block-aliases  (rum/react (::note-block-aliases state))
-        node-linked-blocks  (rum/react (::node-linked-blocks state))
-        show-block-picker?  (rum/react (::show-block-picker? state))
-        show-blocks-panel?  (rum/react (::show-blocks-panel? state))
-        on-open-block       (:on-open-block (-> state :rum/args first))
-        on-search-blocks    (:on-search-blocks (-> state :rum/args first))
-        on-add-note-block   (:on-add-note-block (-> state :rum/args first))
-        cmd!           (fn [c] (when-let [i @*instance] (.execCommand ^js i c)))
+         node-linked-blocks  (rum/react (::node-linked-blocks state))
+         show-block-picker?  (rum/react (::show-block-picker? state))
+         show-blocks-panel?  (rum/react (::show-blocks-panel? state))
+         on-open-block       (:on-open-block (-> state :rum/args first))
+         on-search-blocks    (:on-search-blocks (-> state :rum/args first))
+         on-add-note-block   (:on-add-note-block (-> state :rum/args first))
+         persist-now!
+         (fn []
+           (if-let [inst @*instance]
+             (let [data     (.getData ^js inst)
+                   json-str (js/JSON.stringify data)]
+               (save-to-ls! map-id data)
+               (save-thumbnail! inst map-id)
+               (reset! (::cached? state) true)
+               (reset! (::cache-dirty? state) false)
+               (if-let [save-fn (:on-save-data (-> state :rum/args first))]
+                 (-> (p/let [save-result (save-fn map-id json-str)]
+                       (let [saved? (boolean save-result)]
+                         (reset! (::persisted? state) saved?)
+                         (if saved?
+                           (reset! (::persist-dirty? state) false)
+                           (reset! (::persist-dirty? state) true))
+                         saved?))
+                     (p/catch (fn [error]
+                                (js/console.error "[mind-map] explicit persist failed:" error)
+                                (reset! (::persisted? state) false)
+                                (reset! (::persist-dirty? state) true)
+                                false)))
+                 (p/resolved false)))
+             (p/resolved false)))
+         cmd!           (fn [c] (when-let [i @*instance] (.execCommand ^js i c)))
         set-style!     (fn [prop value]
                          (when-let [i @*instance]
                            (let [node (aget (.. ^js i -renderer -activeNodeList) 0)]
@@ -1591,16 +1628,15 @@
       ;; ← 返回 + 标题
       (tb-btn "←" "保存并返回"
               (fn []
-                (when-let [i @*instance]
-                  (save-to-ls! map-id (.getData ^js i))
-                  (reset! (::cached? state) true)
-                  (reset! (::cache-dirty? state) false)
-                  (when-let [save-fn (:on-save-data (-> state :rum/args first))]
-                    (let [saved? (boolean (save-fn map-id (js/JSON.stringify (.getData ^js i))))]
-                      (reset! (::persisted? state) saved?)
-                      (when saved?
-                        (reset! (::persist-dirty? state) false)))))
-                (when on-back (on-back))))
+                (-> (p/let [saved? (persist-now!)]
+                      (if saved?
+                        (do
+                          (notification/show! "思维导图已保存" :success)
+                          (when on-back (on-back)))
+                        (notification/show! "思维导图保存失败，请稍后重试" :warning)))
+                    (p/catch (fn [error]
+                               (js/console.error "[mind-map] save-and-back failed:" error)
+                               (notification/show! "思维导图保存失败，请稍后重试" :warning))))))
       [:span
        {:style {:padding      "4px 8px"
                 :fontSize     "13px"

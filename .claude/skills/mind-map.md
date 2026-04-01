@@ -1,5 +1,15 @@
 # logseq-dev — Logseq 开发辅助 Skill
 
+## Recent Save Semantics
+
+- Mind-map data now loads worker-first before the editor mounts.
+- Draft cache and graph persistence are tracked separately:
+  `localStorage` is the fast draft layer and the graph DB is the durable layer.
+- The back action must wait for the DB flush promise to resolve successfully
+  before navigating away.
+- The back action should show a success notification only after the DB write
+  finishes, and it should stay on the page when the flush fails.
+
 当用户在本项目（logseq-feng）中进行功能开发、调试或代码审查时，
 自动加载本 skill，避免每次重新读取源文件。
 

@@ -67,22 +67,20 @@
 (defn save-canvas-to-db!
   "Saves Excalidraw canvas as a JSON string on the whiteboard page entity.
    Also bumps :block/updated-at so the gallery sorts correctly.
-   Returns true if the save was attempted, false if preconditions failed."
+   Resolves truthy only after the DB flush completes."
   [page-uuid canvas-json]
   (if-not (and (seq page-uuid) (seq canvas-json))
-    (do (js/console.warn "[whiteboard] save-canvas-to-db! skipped: missing page-uuid or canvas-json")
-        false)
-    (if-let [page (db/entity [:block/uuid (uuid page-uuid)])]
-      (do
-        (js/console.log "[whiteboard] saving canvas to DB, page-id:" (:db/id page))
-        (db/transact! (state/get-current-repo)
-                      [{:db/id                   (:db/id page)
-                        :block/whiteboard-canvas canvas-json
-                        :block/updated-at        (.now js/Date)}]
-                      {:outliner-op :save-block})
-        true)
-      (do (js/console.warn "[whiteboard] save-canvas-to-db! failed: page not found for uuid" page-uuid)
-          false))))
+    (do
+      (js/console.warn "[whiteboard] save-canvas-to-db! skipped: missing page-uuid or canvas-json")
+      (p/resolved false))
+    (-> (visual-doc/<flush-doc! (state/get-current-repo) page-uuid canvas-attr canvas-json)
+        (p/then (fn [result]
+                  (when result
+                    (js/console.log "[whiteboard] canvas flushed to DB, page-uuid:" page-uuid))
+                  (boolean result)))
+        (p/catch (fn [error]
+                   (js/console.error "[whiteboard] save-canvas-to-db! failed:" error)
+                   false)))))
 
 (defn <load-canvas-doc
   "Loads the whiteboard document using the worker DB first, then resolves

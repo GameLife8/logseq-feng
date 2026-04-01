@@ -38,16 +38,16 @@
         (get-all-mind-maps)))
 
 (defn save-mind-map-to-db!
-  "将思维导图 JSON 存储到对应 page 实体的 :block/mind-map-data。"
+  "将思维导图 JSON 存储到对应 page 实体的 :block/mind-map-data。
+   Returns a promise that resolves truthy only after the DB flush completes."
   [page-uuid json-str]
-  (when (and (seq page-uuid) (seq json-str))
-    (when-let [page (db/entity [:block/uuid (uuid page-uuid)])]
-      (db/transact! (state/get-current-repo)
-                    [{:db/id             (:db/id page)
-                      mind-map-attr      json-str
-                      :block/updated-at   (.now js/Date)}]
-                    {:outliner-op :save-block})
-      true)))
+  (if-not (and (seq page-uuid) (seq json-str))
+    (p/resolved false)
+    (-> (visual-doc/<flush-doc! (state/get-current-repo) page-uuid mind-map-attr json-str)
+        (p/then boolean)
+        (p/catch (fn [error]
+                   (js/console.error "[mind-map] save-mind-map-to-db! failed:" error)
+                   false)))))
 
 (defn <load-mind-map-doc
   "Loads the mind map document using the worker DB first, then resolves

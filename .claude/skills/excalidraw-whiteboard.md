@@ -1,5 +1,16 @@
 # excalidraw-whiteboard — Excalidraw / 白板开发速查
 
+## Recent Save Semantics
+
+- Whiteboard data now loads worker-first before the editor mounts.
+- Draft cache and graph persistence are tracked separately:
+  `localStorage` is the fast draft layer and the graph DB is the durable layer.
+- The back action must wait for the DB flush promise to resolve successfully
+  before navigating away.
+- The toolbar status should reflect serialized scene equality instead of every
+  raw `onChange` callback, so selection-only changes should not keep the badge
+  stuck in a pending state.
+
 加载条件：操作白板、Excalidraw、excalidraw-config 设置时加载。
 
 ---

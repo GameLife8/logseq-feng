@@ -14,9 +14,11 @@
    The correct API is the :excalidrawAPI prop, which accepts a callback fn(api)."
   (:require ["@excalidraw/excalidraw" :refer [Excalidraw]]
             [frontend.extensions.excalidraw.api :as ex-api]
+            [frontend.handler.notification :as notification]
             [frontend.handler.visual-doc :as visual-doc]
             [frontend.state :as state]
             [goog.object :as gobj]
+            [promesa.core :as p]
             [rum.core :as rum]))
 
 ;; ── localStorage fast cache ───────────────────────────────────────────────────
@@ -71,6 +73,14 @@
      :label (str draft-label " " draft-state
                  " | " graph-label " " graph-state)}))
 
+(defn- scene-json
+  [elements app-state]
+  (js/JSON.stringify
+   #js {:elements elements
+        :appState #js {:scrollX (gobj/get app-state "scrollX")
+                       :scrollY (gobj/get app-state "scrollY")
+                       :zoom    (gobj/get app-state "zoom")}}))
+
 (declare canvas-json)
 
 (defn- save-to-ls! [page-uuid ^js api]
@@ -78,13 +88,7 @@
     (visual-doc/save-doc-cache! cache-prefix page-uuid (canvas-json api))))
 
 (defn- canvas-json [^js api]
-  (let [els    (.getSceneElements api)
-        astate (.getAppState api)]
-    (js/JSON.stringify
-     #js {:elements els
-          :appState #js {:scrollX (gobj/get astate "scrollX")
-                         :scrollY (gobj/get astate "scrollY")
-                         :zoom    (gobj/get astate "zoom")}})))
+  (scene-json (.getSceneElements api) (.getAppState api)))
 
 ;; ── library (shared across whiteboards, per graph) ───────────────────────────
 
@@ -254,6 +258,8 @@
   (rum/local false  ::persist-dirty?)
   (rum/local true   ::cached?)
   (rum/local true   ::persisted?)
+  (rum/local nil    ::last-cached-json)
+  (rum/local nil    ::last-persisted-json)
   (rum/local nil    ::cache-timer-id)
   (rum/local nil    ::flush-timer-id)
   (rum/local nil    ::pagehide-handler)
@@ -261,38 +267,58 @@
   (rum/local nil    ::library-items)
   {:did-mount
    (fn [state]
-     (let [*cache-timer   (::cache-timer-id state)
-           *flush-timer   (::flush-timer-id state)
-           *cache-dirty?  (::cache-dirty? state)
-           *persist-dirty? (::persist-dirty? state)
-           *cached?       (::cached? state)
-           *persisted?    (::persisted? state)
-           *pagehide      (::pagehide-handler state)
-           *visibility    (::visibility-handler state)
-           *api           (::api state)
-           *library       (::library-items state)
-           args           (first (:rum/args state))
-           p-uuid         (:page-uuid args)
-           save-fn        (:on-save-data args)
-           needs-initial-flush? (boolean (:needs-initial-flush? args))
-           persist!       (fn []
-                            (when-let [api @*api]
-                              (save-to-ls! p-uuid api)
-                              (reset! *cached? true)
-                              (reset! *cache-dirty? false)
-                              (if save-fn
-                                (let [saved? (boolean (save-fn p-uuid (canvas-json api)))]
-                                  (reset! *persisted? saved?)
-                                  (when saved?
-                                    (reset! *persist-dirty? false)))
-                                (reset! *persisted? false))))
-           cache-timer    (js/setInterval
-                           (fn []
-                             (when (and @*cache-dirty? @*api)
-                               (save-to-ls! p-uuid @*api)
-                               (reset! *cached? true)
-                               (reset! *cache-dirty? false)))
-                           3000)
+      (let [*cache-timer        (::cache-timer-id state)
+            *flush-timer        (::flush-timer-id state)
+            *cache-dirty?       (::cache-dirty? state)
+            *persist-dirty?     (::persist-dirty? state)
+            *cached?            (::cached? state)
+            *persisted?         (::persisted? state)
+            *last-cached-json   (::last-cached-json state)
+            *last-persisted-json (::last-persisted-json state)
+            *pagehide           (::pagehide-handler state)
+            *visibility         (::visibility-handler state)
+            *api                (::api state)
+            *library            (::library-items state)
+            args                (first (:rum/args state))
+            p-uuid              (:page-uuid args)
+            save-fn             (:on-save-data args)
+            initial-json        (:initial-json args)
+            needs-initial-flush? (boolean (:needs-initial-flush? args))
+            persist!            (fn []
+                                  (if-let [api @*api]
+                                    (let [json-str (canvas-json api)]
+                                      (save-to-ls! p-uuid api)
+                                      (reset! *last-cached-json json-str)
+                                      (reset! *cached? true)
+                                      (reset! *cache-dirty? false)
+                                      (if save-fn
+                                        (-> (p/let [save-result (save-fn p-uuid json-str)]
+                                              (let [saved? (boolean save-result)]
+                                                (reset! *persisted? saved?)
+                                                (if saved?
+                                                  (do
+                                                    (reset! *last-persisted-json json-str)
+                                                    (reset! *persist-dirty? false))
+                                                  (reset! *persist-dirty? true))
+                                                saved?))
+                                            (p/catch (fn [error]
+                                                       (js/console.error "[excalidraw] persist failed:" error)
+                                                       (reset! *persisted? false)
+                                                       (reset! *persist-dirty? true)
+                                                       false)))
+                                        (do
+                                          (reset! *persisted? false)
+                                          (p/resolved false))))
+                                    (p/resolved false)))
+            cache-timer    (js/setInterval
+                            (fn []
+                              (when (and @*cache-dirty? @*api)
+                                (let [json-str (canvas-json @*api)]
+                                  (save-to-ls! p-uuid @*api)
+                                  (reset! *last-cached-json json-str))
+                                (reset! *cached? true)
+                                (reset! *cache-dirty? false)))
+                            3000)
            flush-timer    (js/setInterval
                            (fn []
                              (when @*persist-dirty?
@@ -302,8 +328,10 @@
            visibility     (fn []
                             (when (= "hidden" (.-visibilityState js/document))
                               (persist!)))]
-       (reset! *cached? true)
-       (reset! *persisted? (not needs-initial-flush?))
+        (reset! *last-cached-json initial-json)
+        (reset! *last-persisted-json (when-not needs-initial-flush? initial-json))
+        (reset! *cached? true)
+        (reset! *persisted? (not needs-initial-flush?))
        (reset! *cache-timer cache-timer)
        (reset! *flush-timer flush-timer)
        (reset! *pagehide pagehide)
@@ -422,26 +450,51 @@
                  initial-json needs-initial-flush? on-save-data render-tags on-rename
                  validate-embeddable custom-fonts]}]
   (let [*api        (::api state)
-        *sel-el-id  (::sel-el-id state)
-        *cache-dirty? (::cache-dirty? state)
-        *persist-dirty? (::persist-dirty? state)
-        *cached?    (::cached? state)
-        *persisted? (::persisted? state)
-        *library    (::library-items state)
-        init-data   (parse-canvas-json initial-json)
-        save-and-back!
-        (fn []
-          (let [api @*api]
-            (when api
-              (save-to-ls! page-uuid api)
-              (reset! *cached? true)
-              (reset! *cache-dirty? false)
-              (when on-save-data
-                (let [saved? (boolean (on-save-data page-uuid (canvas-json api)))]
-                  (reset! *persisted? saved?)
-                  (when saved?
-                    (reset! *persist-dirty? false))))))
-          (when on-back (on-back)))]
+         *sel-el-id  (::sel-el-id state)
+         *cache-dirty? (::cache-dirty? state)
+         *persist-dirty? (::persist-dirty? state)
+         *cached?    (::cached? state)
+         *persisted? (::persisted? state)
+         *last-cached-json   (::last-cached-json state)
+         *last-persisted-json (::last-persisted-json state)
+         *library    (::library-items state)
+         init-data   (parse-canvas-json initial-json)
+         persist-now!
+         (fn []
+           (if-let [api @*api]
+             (let [json-str (canvas-json api)]
+               (save-to-ls! page-uuid api)
+               (reset! *last-cached-json json-str)
+               (reset! *cached? true)
+               (reset! *cache-dirty? false)
+               (if on-save-data
+                 (-> (p/let [save-result (on-save-data page-uuid json-str)]
+                       (let [saved? (boolean save-result)]
+                         (reset! *persisted? saved?)
+                         (if saved?
+                           (do
+                             (reset! *last-persisted-json json-str)
+                             (reset! *persist-dirty? false))
+                           (reset! *persist-dirty? true))
+                         saved?))
+                     (p/catch (fn [error]
+                                (js/console.error "[excalidraw] explicit persist failed:" error)
+                                (reset! *persisted? false)
+                                (reset! *persist-dirty? true)
+                                false)))
+                 (p/resolved false)))
+             (p/resolved false)))
+         save-and-back!
+         (fn []
+           (-> (p/let [saved? (persist-now!)]
+                 (if saved?
+                   (do
+                     (notification/show! "白板已保存" :success)
+                     (when on-back (on-back)))
+                   (notification/show! "白板保存失败，请稍后重试" :warning)))
+               (p/catch (fn [error]
+                          (js/console.error "[excalidraw] save-and-back failed:" error)
+                          (notification/show! "白板保存失败，请稍后重试" :warning))))) ]
 
     [:div.excalidraw-wrapper
      {:style {:width "100%" :height "100%" :position "relative"}}
@@ -449,17 +502,33 @@
      (js/React.createElement
       Excalidraw
       #js {;; ── IMPORTANT: use :excalidrawAPI, NOT :ref ──────────────────────
-           :excalidrawAPI    (fn [^js api]
-                               (reset! *api api)
-                               (when on-api-ready (on-api-ready api))
-                               (when needs-initial-flush?
-                                 (save-to-ls! page-uuid api)
-                                 (reset! *cached? true)
-                                  (when on-save-data
-                                    (let [saved? (boolean (on-save-data page-uuid (canvas-json api)))]
-                                      (reset! *persisted? saved?)
-                                      (when saved?
-                                        (reset! *persist-dirty? false))))))
+            :excalidrawAPI    (fn [^js api]
+                                (reset! *api api)
+                                (when on-api-ready (on-api-ready api))
+                                (let [current-json (canvas-json api)]
+                                  (when-not @*last-cached-json
+                                    (reset! *last-cached-json current-json))
+                                  (when (and (not needs-initial-flush?)
+                                             (not @*last-persisted-json))
+                                    (reset! *last-persisted-json current-json)))
+                                (when needs-initial-flush?
+                                  (let [json-str (canvas-json api)]
+                                    (save-to-ls! page-uuid api)
+                                    (reset! *last-cached-json json-str)
+                                    (reset! *cached? true)
+                                    (when on-save-data
+                                      (-> (p/let [save-result (on-save-data page-uuid json-str)]
+                                            (let [saved? (boolean save-result)]
+                                              (reset! *persisted? saved?)
+                                              (if saved?
+                                                (do
+                                                  (reset! *last-persisted-json json-str)
+                                                  (reset! *persist-dirty? false))
+                                                (reset! *persist-dirty? true))))
+                                          (p/catch (fn [error]
+                                                     (js/console.error "[excalidraw] initial flush failed:" error)
+                                                     (reset! *persisted? false)
+                                                     (reset! *persist-dirty? true))))))))
            :initialData      (or init-data #js {})
            :langCode         "zh-CN"
            :theme            (if (= "dark" (state/sub :ui/theme)) "dark" "light")
@@ -476,14 +545,17 @@
                                (reset! *library items)
                                (.setItem js/localStorage (lib-key)
                                          (js/JSON.stringify items)))
-           :onChange         (fn [_elements ^js app-state _files]
-                               (reset! *cache-dirty? true)
-                               (reset! *persist-dirty? true)
-                               (reset! *cached? false)
-                               (reset! *persisted? false)
-                               ;; Track selected element ID for the 🔗 toolbar button.
-                               ;; Guard: only fire on-selection-change when value actually
-                               ;; changes, not on every animation frame that triggers onChange.
+            :onChange         (fn [elements ^js app-state _files]
+                                (let [current-json    (scene-json elements app-state)
+                                      cache-dirty?    (not= current-json @*last-cached-json)
+                                      persist-dirty?  (not= current-json @*last-persisted-json)]
+                                  (reset! *cache-dirty? cache-dirty?)
+                                  (reset! *persist-dirty? persist-dirty?)
+                                  (reset! *cached? (not cache-dirty?))
+                                  (reset! *persisted? (not persist-dirty?)))
+                                ;; Track selected element ID for the 🔗 toolbar button.
+                                ;; Guard: only fire on-selection-change when value actually
+                                ;; changes, not on every animation frame that triggers onChange.
                                (let [sel-ids (js/Object.keys
                                               (or (gobj/get app-state "selectedElementIds") #js {}))
                                      sel-id  (when (= 1 (.-length sel-ids)) (aget sel-ids 0))]
