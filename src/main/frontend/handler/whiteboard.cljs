@@ -186,9 +186,22 @@
 (defn <delete-whiteboard!
   "Deletes a whiteboard page. Shows success notification on completion."
   [page-uuid-str]
-  (common-page-handler/<delete!
-   (uuid page-uuid-str)
-   (fn [] (notification/show! "白板已删除" :success))))
+  (let [page (db/entity [:block/uuid (uuid page-uuid-str)])]
+    (cond
+      (nil? page)
+      (do
+        (notification/show! "白板页面未找到" :warning)
+        (p/resolved false))
+
+      (:db/ident page)
+      (do
+        (notification/show! "内置白板页面不能删除" :warning)
+        (p/resolved false))
+
+      :else
+      (common-page-handler/<delete!
+       (uuid page-uuid-str)
+       (fn [] (notification/show! "白板已删除" :success))))))
 
 (defn <rename-whiteboard!
   "Renames a whiteboard page. Rejects duplicate names (case-insensitive)."

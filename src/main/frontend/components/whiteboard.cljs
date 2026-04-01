@@ -560,7 +560,6 @@
                             :cascadia  (:font-path-cascadia ex-config)}
 
         on-back (fn []
-                  (notification/show! "白板已保存" :success)
                   (route-handler/redirect! {:to :all-whiteboards}))
 
         ;; Open a block (by UUID string) in the right sidebar.
@@ -722,7 +721,9 @@
                                   (fn [_db _]
                                     (p/let [result (db-async/<get-tag-objects repo wclass-id)]
                                       (->> result
-                                           (filter :block/title)
+                                           (filter #(and (:block/title %)
+                                                         (:block/uuid %)
+                                                         (not (:db/ident %))))
                                            (sort-by #(or (:block/updated-at %) 0) >))))}
                                  nil))
         whiteboards   (or (some-> wb-atom rum/react) [])

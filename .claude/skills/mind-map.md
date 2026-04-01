@@ -9,6 +9,8 @@
   before navigating away.
 - The back action should show a success notification only after the DB write
   finishes, and it should stay on the page when the flush fails.
+- Component unmount should only keep the latest local draft cache. It must not
+  perform another DB write, otherwise a page being deleted can be written back.
 
 当用户在本项目（logseq-feng）中进行功能开发、调试或代码审查时，
 自动加载本 skill，避免每次重新读取源文件。

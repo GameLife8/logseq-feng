@@ -7,9 +7,13 @@
   `localStorage` is the fast draft layer and the graph DB is the durable layer.
 - The back action must wait for the DB flush promise to resolve successfully
   before navigating away.
+- Component unmount should only keep the latest local draft cache. It must not
+  perform another DB write, otherwise a page being deleted can be written back.
 - The toolbar status should reflect serialized scene equality instead of every
   raw `onChange` callback, so selection-only changes should not keep the badge
   stuck in a pending state.
+- Whiteboard gallery data should exclude built-in/class entities. Only real
+  whiteboard pages should be shown or offered for deletion.
 
 加载条件：操作白板、Excalidraw、excalidraw-config 设置时加载。
 

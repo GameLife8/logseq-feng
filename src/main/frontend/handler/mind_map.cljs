@@ -108,9 +108,22 @@
 (defn <delete-mind-map!
   "删除思维导图页面。"
   [page-uuid-str]
-  (common-page-handler/<delete!
-   (uuid page-uuid-str)
-   (fn [] (notification/show! "思维导图已删除" :success))))
+  (let [page (db/entity [:block/uuid (uuid page-uuid-str)])]
+    (cond
+      (nil? page)
+      (do
+        (notification/show! "思维导图页面未找到" :warning)
+        (p/resolved false))
+
+      (:db/ident page)
+      (do
+        (notification/show! "内置思维导图页面不能删除" :warning)
+        (p/resolved false))
+
+      :else
+      (common-page-handler/<delete!
+       (uuid page-uuid-str)
+       (fn [] (notification/show! "思维导图已删除" :success))))))
 
 (defn <rename-mind-map!
   "重命名思维导图页面。"

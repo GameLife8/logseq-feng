@@ -433,8 +433,7 @@
            flush-timer @(::flush-timer-id state)
            pagehide-handler @(::pagehide-handler state)
            visibility-handler @(::visibility-handler state)
-           p-uuid  (-> state :rum/args first :page-uuid)
-           save-fn (-> state :rum/args first :on-save-data)]
+           p-uuid  (-> state :rum/args first :page-uuid)]
        (when cache-timer (js/clearInterval cache-timer))
        (when flush-timer (js/clearInterval flush-timer))
        (when pagehide-handler
@@ -442,8 +441,8 @@
        (when visibility-handler
          (.removeEventListener js/document "visibilitychange" visibility-handler))
        (when api
-         (save-to-ls! p-uuid api)
-         (when save-fn (save-fn p-uuid (canvas-json api)))))
+         ;; Keep the latest draft locally without reviving a page that is being deleted.
+         (save-to-ls! p-uuid api)))
      state)}
   [state {:keys [page-uuid page-title on-back on-api-ready
                  on-show-linked-blocks on-selection-change

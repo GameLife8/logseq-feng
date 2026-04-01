@@ -114,8 +114,7 @@
 
 (defn- <ensure-page-id
   [repo page-uuid]
-  (if-let [page (db/entity [:block/uuid (uuid page-uuid)])]
-    (p/resolved (:db/id page))
+  (when (seq page-uuid)
     (p/let [page (db-async/<pull repo
                                  [:db/id]
                                  [:block/uuid (uuid page-uuid)])]

@@ -1417,7 +1417,6 @@
    (fn [state]
      (let [args         (-> state :rum/args first)
            map-id       (:map-id args)
-           on-save-data (:on-save-data args)
            cache-timer  @(::cache-timer-id state)
            flush-timer  @(::flush-timer-id state)
            ro           @(::resize-observer state)
@@ -1446,11 +1445,10 @@
        (state/set-block-component-editing-mode! false)
        (when instance
          (let [data (.getData ^js instance)]
+           ;; Keep the latest draft locally without reviving a page that is being deleted.
            (save-to-ls! map-id data)
-           (when on-save-data
-             (on-save-data map-id (js/JSON.stringify data)))
+           (save-thumbnail! instance map-id)
            (reset! (::cached? state) true)
-           (reset! (::persisted? state) true)
            (.destroy ^js instance))))
      state)}
   [state {:keys [map-id map-title on-back]}]
