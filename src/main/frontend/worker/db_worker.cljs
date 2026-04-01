@@ -561,12 +561,29 @@
   [repo page-uuid doc-type legacy-attr]
   (p/let [visual-doc-db (<get-visual-doc-db repo)]
     (or (some-> (worker-visual-doc/get-doc visual-doc-db page-uuid)
-                ((fn [{:keys [page_uuid doc_type content updated_at]}]
-                   {:page-uuid  page_uuid
-                    :doc-type   doc_type
-                    :content    content
-                    :updated-at updated_at
-                    :storage    :sidecar})))
+                ((fn [{:keys [page_uuid doc_type content updated_at storage_format] :as doc}]
+                   (let [needs-migration? (and (= doc-type :mind-map)
+                                               (not= storage_format "mind_map_nodes")
+                                               (seq content))
+                         doc'             (if needs-migration?
+                                            (or (worker-visual-doc/upsert-doc! visual-doc-db
+                                                                              {:page-uuid  page_uuid
+                                                                               :doc-type   doc_type
+                                                                               :content    content
+                                                                               :updated-at updated_at})
+                                                doc)
+                                            doc)
+                         latest-doc       (if needs-migration?
+                                            (or (worker-visual-doc/get-doc visual-doc-db page-uuid)
+                                                doc')
+                                            doc')]
+                     {:page-uuid      (:page_uuid latest-doc)
+                      :doc-type       (:doc_type latest-doc)
+                      :content        (:content latest-doc)
+                      :updated-at     (:updated_at latest-doc)
+                      :schema-version (:schema_version latest-doc)
+                      :storage-format (:storage_format latest-doc)
+                      :storage        :sidecar}))))
         (when-let [conn (worker-state/get-datascript-conn repo)]
           (let [legacy-id  (when (seq page-uuid) [:block/uuid (uuid page-uuid)])
                 legacy-doc (when legacy-id
