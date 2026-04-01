@@ -9,6 +9,7 @@ Use this note when working on the mind-map editor, mind-map gallery, linked bloc
 - Mind-map page = manifest only.
 - Page entities should keep lightweight metadata only.
 - Full mind-map JSON lives in the worker sqlite sidecar implemented in `src/main/frontend/worker/visual_doc.cljs`.
+- The authoritative sidecar format is now normalized node storage in `mind_map_nodes`.
 - Main-thread code must load payloads through `frontend.handler.visual-doc/<load-doc`.
 - Main-thread code must save payloads through `frontend.handler.visual-doc/<flush-doc!`.
 - `localStorage` is the draft cache layer.
@@ -21,8 +22,11 @@ Use this note when working on the mind-map editor, mind-map gallery, linked bloc
 3. Editor mounts with `:initial-json` from sidecar, cache, or legacy fallback.
 4. Draft cache writes into `localStorage`.
 5. Durable flush writes sidecar content and updates only manifest metadata.
-6. Successful sidecar flush retracts the legacy `:block/mind-map-data` payload.
-7. Back navigation must await flush success before leaving.
+6. Worker-side save normalizes the tree into `mind_map_nodes` rows keyed by `node_id`, with `parent_id` and `child_order`.
+7. Worker-side load reconstructs the JSON tree from normalized node rows.
+8. Older blob sidecar records are auto-migrated into node rows on first read.
+9. Successful sidecar flush retracts the legacy `:block/mind-map-data` payload.
+10. Back navigation must await flush success before leaving.
 
 ## Create And Delete Rules
 
