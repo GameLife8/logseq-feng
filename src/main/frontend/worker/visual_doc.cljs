@@ -58,11 +58,11 @@
   (let [node'    (normalize-mind-map-node node nil)
         node-id  (get-in node' [:data :uid])
         children (vec (:children node'))
-        row      {:node-id     node-id
-                  :parent-id   parent-id
-                  :child-order child-order
-                  :node-json   (stringify (dissoc node' :children))
-                  :node-text   (get-in node' [:data :text])}]
+        row      {:node_id     node-id
+                  :parent_id   parent-id
+                  :child_order child-order
+                  :node_json   (stringify (dissoc node' :children))
+                  :node_text   (get-in node' [:data :text])}]
     (into [row]
           (mapcat (fn [[idx child]]
                     (flatten-mind-map-node child node-id idx)))
@@ -114,15 +114,41 @@
     (when root-id
       (build-node root-id))))
 
+(defn- by-id
+  [rows id-key]
+  (into {} (map (juxt id-key identity)) rows))
+
+(defn- changed-row?
+  [existing incoming fields]
+  (boolean
+   (some #(not= (get existing %) (get incoming %)) fields)))
+
+(defn- delete-missing-rows!
+  [^js db table page-uuid id-column stale-ids]
+  (doseq [stale-id stale-ids]
+    (.exec db #js {:sql (str "delete from " table " where page_uuid = ? and " id-column " = ?")
+                   :bind #js [page-uuid stale-id]})))
+
+(defn- upsert-mind-map-node-row!
+  [^js db page-uuid {:keys [node_id parent_id child_order node_json node_text]}]
+  (.exec db #js {:sql "insert into mind_map_nodes (page_uuid, node_id, parent_id, child_order, node_json, node_text)
+                       values (?, ?, ?, ?, ?, ?)
+                       on conflict(page_uuid, node_id) do update set
+                         parent_id = excluded.parent_id,
+                         child_order = excluded.child_order,
+                         node_json = excluded.node_json,
+                         node_text = excluded.node_text"
+                 :bind #js [page-uuid node_id parent_id child_order node_json node_text]}))
+
 (defn- flatten-whiteboard
   [json-str]
   (when-let [scene (some-> json-str parse-json)]
     {:elements (mapv (fn [[idx element]]
                        (let [element' (assoc element :id (or (:id element) (str (random-uuid))))]
-                         {:element-id    (:id element')
-                          :element-type  (:type element')
-                          :element-order idx
-                          :element-json  (stringify element')}))
+                         {:element_id    (:id element')
+                          :element_type  (:type element')
+                          :element_order idx
+                          :element_json  (stringify element')}))
                      (map-indexed vector (vec (or (:elements scene) []))))
      :app-state (or (:appState scene) {})}))
 
@@ -156,6 +182,16 @@
                      (or (parse-json element_json) {}))
                    (sort-by :element_order element-rows))
    :appState (or (some-> scene-meta :app_state_json parse-json) {})})
+
+(defn- upsert-whiteboard-element-row!
+  [^js db page-uuid {:keys [element_id element_type element_order element_json]}]
+  (.exec db #js {:sql "insert into whiteboard_elements (page_uuid, element_id, element_type, element_order, element_json)
+                       values (?, ?, ?, ?, ?)
+                       on conflict(page_uuid, element_id) do update set
+                         element_type = excluded.element_type,
+                         element_order = excluded.element_order,
+                         element_json = excluded.element_json"
+                 :bind #js [page-uuid element_id element_type element_order element_json]}))
 
 (defn- ensure-doc-columns!
   [^js db]
@@ -225,13 +261,20 @@
   [^js db {:keys [page-uuid doc-type content updated-at]}]
   (if-let [rows (flatten-mind-map content)]
     (let [root-node (hydrate-mind-map rows)
-          content'  (or (some-> root-node stringify) content)]
-      (.exec db #js {:sql "delete from mind_map_nodes where page_uuid = ?"
-                     :bind #js [page-uuid]})
-      (doseq [{:keys [node-id parent-id child-order node-json node-text]} rows]
-        (.exec db #js {:sql "insert into mind_map_nodes (page_uuid, node_id, parent_id, child_order, node_json, node_text)
-                             values (?, ?, ?, ?, ?, ?)"
-                       :bind #js [page-uuid node-id parent-id child-order node-json node-text]}))
+          content'  (or (some-> root-node stringify) content)
+          existing  (mind-map-node-rows db page-uuid)
+          old-by-id (by-id existing :node_id)
+          new-by-id (by-id rows :node_id)
+          stale-ids (remove #(contains? new-by-id %) (keys old-by-id))
+          changed?  (fn [incoming]
+                      (let [existing-row (get old-by-id (:node_id incoming))]
+                        (or (nil? existing-row)
+                            (changed-row? existing-row incoming
+                                          [:parent_id :child_order :node_json :node_text]))))]
+      (delete-missing-rows! db "mind_map_nodes" page-uuid "node_id" stale-ids)
+      (doseq [row rows
+              :when (changed? row)]
+        (upsert-mind-map-node-row! db page-uuid row))
       (.exec db #js {:sql "insert into visual_docs (page_uuid, doc_type, content, updated_at, schema_version, storage_format)
                            values (?, ?, ?, ?, ?, ?)
                            on conflict(page_uuid) do update set
@@ -255,21 +298,31 @@
 (defn- upsert-whiteboard-doc!
   [^js db {:keys [page-uuid doc-type content updated-at]}]
   (if-let [{:keys [elements app-state]} (flatten-whiteboard content)]
-    (let [content' (stringify {:elements (mapv (fn [{:keys [element-json]}]
-                                                (or (parse-json element-json) {}))
-                                              (sort-by :element-order elements))
-                               :appState app-state})]
-      (.exec db #js {:sql "delete from whiteboard_elements where page_uuid = ?"
-                     :bind #js [page-uuid]})
-      (doseq [{:keys [element-id element-type element-order element-json]} elements]
-        (.exec db #js {:sql "insert into whiteboard_elements (page_uuid, element_id, element_type, element_order, element_json)
-                             values (?, ?, ?, ?, ?)"
-                       :bind #js [page-uuid element-id element-type element-order element-json]}))
-      (.exec db #js {:sql "insert into whiteboard_scene_meta (page_uuid, app_state_json)
-                           values (?, ?)
-                           on conflict(page_uuid) do update set
-                             app_state_json = excluded.app_state_json"
-                     :bind #js [page-uuid (stringify app-state)]})
+    (let [content'     (stringify {:elements (mapv (fn [{:keys [element_json]}]
+                                                    (or (parse-json element_json) {}))
+                                                  (sort-by :element_order elements))
+                                   :appState app-state})
+          existing     (whiteboard-element-rows db page-uuid)
+          old-by-id    (by-id existing :element_id)
+          new-by-id    (by-id elements :element_id)
+          stale-ids    (remove #(contains? new-by-id %) (keys old-by-id))
+          app-state-js (stringify app-state)
+          scene-meta   (whiteboard-scene-meta db page-uuid)
+          changed?     (fn [incoming]
+                         (let [existing-row (get old-by-id (:element_id incoming))]
+                           (or (nil? existing-row)
+                               (changed-row? existing-row incoming
+                                             [:element_type :element_order :element_json]))))]
+      (delete-missing-rows! db "whiteboard_elements" page-uuid "element_id" stale-ids)
+      (doseq [row elements
+              :when (changed? row)]
+        (upsert-whiteboard-element-row! db page-uuid row))
+      (when (not= (:app_state_json scene-meta) app-state-js)
+        (.exec db #js {:sql "insert into whiteboard_scene_meta (page_uuid, app_state_json)
+                             values (?, ?)
+                             on conflict(page_uuid) do update set
+                               app_state_json = excluded.app_state_json"
+                       :bind #js [page-uuid app-state-js]}))
       (.exec db #js {:sql "insert into visual_docs (page_uuid, doc_type, content, updated_at, schema_version, storage_format)
                            values (?, ?, ?, ?, ?, ?)
                            on conflict(page_uuid) do update set

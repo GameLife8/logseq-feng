@@ -11,6 +11,7 @@ Use this note when working on Logseq whiteboard, Excalidraw integration, whitebo
 - Full scene JSON lives in the worker sqlite sidecar implemented in `src/main/frontend/worker/visual_doc.cljs`.
 - The authoritative sidecar format is now normalized scene storage:
   `whiteboard_elements` rows plus `whiteboard_scene_meta`.
+- Sidecar writes should update `whiteboard_elements` incrementally by `element_id`, not by recreating the whole scene table on every save.
 - Main-thread code must load payloads through `frontend.handler.visual-doc/<load-doc`.
 - Main-thread code must save payloads through `frontend.handler.visual-doc/<flush-doc!`.
 - `localStorage` is only the draft cache layer.
@@ -25,9 +26,10 @@ Use this note when working on Logseq whiteboard, Excalidraw integration, whitebo
 5. Durable flush writes sidecar content and only touches manifest metadata in DataScript.
 6. Worker-side save normalizes the scene into `whiteboard_elements` plus `whiteboard_scene_meta`.
 7. Worker-side load reconstructs Excalidraw JSON from normalized rows.
-8. Older blob sidecar records are auto-migrated into normalized scene rows on first read.
-9. Successful sidecar flush retracts the legacy `:block/whiteboard-canvas` page payload.
-10. Back navigation must await flush success before leaving.
+8. Worker-side updates should diff rows by `element_id` so inserts, deletes, reorder changes, and element edits stay incremental.
+9. Older blob sidecar records are auto-migrated into normalized scene rows on first read.
+10. Successful sidecar flush retracts the legacy `:block/whiteboard-canvas` page payload.
+11. Back navigation must await flush success before leaving.
 
 ## Delete Order
 
