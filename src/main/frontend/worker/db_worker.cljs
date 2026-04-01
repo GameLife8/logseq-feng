@@ -558,7 +558,7 @@
                (common-initial-data/with-parent @conn)))))
 
 (def-thread-api :thread-api/visual-doc-get
-  [repo page-uuid doc-type legacy-attr]
+  [repo page-uuid doc-type]
   (p/let [visual-doc-db (<get-visual-doc-db repo)]
     (some-> (worker-visual-doc/get-doc visual-doc-db page-uuid)
             ((fn [{:keys [page_uuid doc_type content updated_at storage_format] :as doc}]
@@ -577,24 +577,25 @@
                                         (or (worker-visual-doc/get-doc visual-doc-db page-uuid)
                                             doc')
                                         doc')]
-                 {:page-uuid      (:page_uuid latest-doc)
-                  :doc-type       (:doc_type latest-doc)
-                  :content        (:content latest-doc)
-                  :updated-at     (:updated_at latest-doc)
-                  :schema-version (:schema_version latest-doc)
-                  :storage-format (:storage_format latest-doc)
-                  :storage        :sidecar}))))))
+                 (clj->js {:page-uuid      (:page_uuid latest-doc)
+                           :doc-type       (:doc_type latest-doc)
+                           :content        (:content latest-doc)
+                           :updated-at     (:updated_at latest-doc)
+                           :schema-version (:schema_version latest-doc)
+                           :storage-format (:storage_format latest-doc)
+                           :storage        "sidecar"})))))))
 
 (def-thread-api :thread-api/visual-doc-upsert
   [repo page-uuid doc-type content]
   (when (and (seq repo) (seq page-uuid) (seq content))
     (p/let [visual-doc-db (<get-visual-doc-db repo)
             updated-at    (common-util/time-ms)]
-      (worker-visual-doc/upsert-doc! visual-doc-db
-                                     {:page-uuid  page-uuid
-                                      :doc-type   (name doc-type)
-                                      :content    content
-                                      :updated-at updated-at}))))
+      (some-> (worker-visual-doc/upsert-doc! visual-doc-db
+                                             {:page-uuid  page-uuid
+                                              :doc-type   doc-type
+                                              :content    content
+                                              :updated-at updated-at})
+              clj->js))))
 
 (def-thread-api :thread-api/visual-doc-delete
   [repo page-uuid]

@@ -116,12 +116,21 @@
 
 (defn- normalize-worker-result
   [result]
-  (when (map? result)
-    {:page-uuid  (:page-uuid result)
-     :doc-type   (:doc-type result)
-     :content    (:content result)
-     :updated-at (:updated-at result)
-     :storage    (:storage result)}))
+  (let [result' (cond
+                  (map? result)
+                  result
+
+                  (some? result)
+                  (js->clj result :keywordize-keys true)
+
+                  :else
+                  nil)]
+    (when (map? result')
+      {:page-uuid  (:page-uuid result')
+       :doc-type   (:doc-type result')
+       :content    (:content result')
+       :updated-at (:updated-at result')
+       :storage    (some-> (:storage result') name keyword)})))
 
 (defn <load-doc
   "Loads the visual document payload from the worker sidecar first.
@@ -133,11 +142,10 @@
     (p/resolved {:source :empty
                  :json nil
                  :needs-flush? false})
-    (p/let [result (some-> (state/<invoke-db-worker :thread-api/visual-doc-get
-                                                    repo
-                                                    page-uuid
-                                                    (attr->doc-type attr)
-                                                    attr)
+    (p/let [result (some-> (state/<invoke-db-worker-direct-pass :thread-api/visual-doc-get
+                                                                repo
+                                                                page-uuid
+                                                                (name (attr->doc-type attr)))
                            normalize-worker-result)
             cache  (read-doc-cache cache-prefix page-uuid)]
       (assoc (choose-newer-source {:db-json       (:content result)
@@ -165,11 +173,12 @@
     (p/let [page-id (<ensure-page-id repo page-uuid)]
       (if-not page-id
         false
-        (p/let [sidecar-result (state/<invoke-db-worker :thread-api/visual-doc-upsert
-                                                        repo
-                                                        page-uuid
-                                                        (attr->doc-type attr)
-                                                        json-str)
+        (p/let [sidecar-result (some-> (state/<invoke-db-worker-direct-pass :thread-api/visual-doc-upsert
+                                                                            repo
+                                                                            page-uuid
+                                                                            (name (attr->doc-type attr))
+                                                                            json-str)
+                                       normalize-worker-result)
                 updated-at    (or (:updated-at sidecar-result) (.now js/Date))
                 _             (db/transact! repo
                                             [[:db/retract page-id attr]
@@ -184,6 +193,6 @@
   [repo page-uuid cache-prefix]
   (if-not (and (seq repo) (seq page-uuid))
     (p/resolved false)
-    (p/let [result (state/<invoke-db-worker :thread-api/visual-doc-delete repo page-uuid)]
+    (p/let [result (state/<invoke-db-worker-direct-pass :thread-api/visual-doc-delete repo page-uuid)]
       (clear-doc-cache! cache-prefix page-uuid)
       result)))
