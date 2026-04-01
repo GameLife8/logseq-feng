@@ -1,7 +1,12 @@
 (ns frontend.handler.visual-doc
-  "Shared helpers for visual documents backed by a page-level JSON blob."
+  "VISUAL-DOC-SIDECAR: shared helpers for whiteboard and mind-map documents.
+
+   Page entities keep only lightweight manifest metadata in DataScript.
+   The full document payload lives in the worker sqlite sidecar and is loaded
+   on demand without transacting that payload back into the main-thread replica."
   (:require [frontend.db :as db]
             [frontend.db.async :as db-async]
+            [frontend.state :as state]
             [promesa.core :as p]))
 
 (def ^:private cache-version 1)
@@ -9,6 +14,11 @@
 (defn cache-key
   [cache-prefix page-uuid]
   (str cache-prefix "-" page-uuid))
+
+(defn clear-doc-cache!
+  [cache-prefix page-uuid]
+  (when (seq page-uuid)
+    (.removeItem js/localStorage (cache-key cache-prefix page-uuid))))
 
 (defn- wrapped-cache?
   [value]
@@ -97,20 +107,47 @@
        :cache-saved-at cache-saved-at
        :needs-flush?  false})))
 
+(defn- attr->doc-type
+  [attr]
+  (case attr
+    :block/whiteboard-canvas :whiteboard
+    :block/mind-map-data :mind-map
+    :visual-doc))
+
+(defn- normalize-worker-result
+  [result]
+  (when (map? result)
+    {:page-uuid  (:page-uuid result)
+     :doc-type   (:doc-type result)
+     :content    (:content result)
+     :updated-at (:updated-at result)
+     :storage    (:storage result)}))
+
 (defn <load-doc
-  "Loads a page-level JSON document from the worker DB and local cache."
+  "Loads the visual document payload from the worker sidecar first.
+
+   If the sidecar has no document yet, worker code falls back to the legacy page
+   attribute without transacting that payload into the main-thread DataScript."
   [repo page-uuid attr cache-prefix]
   (if-not (seq page-uuid)
     (p/resolved {:source :empty
                  :json nil
                  :needs-flush? false})
-    (p/let [result (db-async/<pull repo
-                                   [:db/id :block/updated-at attr]
-                                   [:block/uuid (uuid page-uuid)])
+    (p/let [result (some-> (state/<invoke-db-worker :thread-api/visual-doc-get
+                                                    repo
+                                                    page-uuid
+                                                    (attr->doc-type attr)
+                                                    attr)
+                           normalize-worker-result)
             cache  (read-doc-cache cache-prefix page-uuid)]
-      (choose-newer-source {:db-json       (get result attr)
-                            :db-updated-at (:block/updated-at result)
-                            :cache         cache}))))
+      (let [selected       (choose-newer-source {:db-json       (:content result)
+                                                 :db-updated-at (:updated-at result)
+                                                 :cache         cache})
+            legacy-source? (= :legacy-db (:storage result))]
+        (assoc selected
+               :storage (:storage result)
+               :needs-flush? (or (:needs-flush? selected)
+                                 legacy-source?))))))
 
 (defn- <ensure-page-id
   [repo page-uuid]
@@ -121,17 +158,36 @@
       (:db/id page))))
 
 (defn <flush-doc!
-  "Writes a page-level JSON document to the DB and bumps :block/updated-at."
+  "Writes the visual document payload to the worker sidecar and updates only the
+   page manifest metadata in DataScript.
+
+   The legacy page attribute is retracted after a successful sidecar write so the
+   page entity no longer carries the large payload."
   [repo page-uuid attr json-str]
   (if-not (and (seq repo) (seq page-uuid) (seq json-str))
     (p/resolved false)
     (p/let [page-id (<ensure-page-id repo page-uuid)]
       (if-not page-id
         false
-        (let [updated-at (.now js/Date)]
-          (p/let [_ (db/transact! repo
-                                  [{:db/id            page-id
-                                    attr              json-str
-                                    :block/updated-at updated-at}]
-                                  {:outliner-op :save-block})]
-            {:updated-at updated-at}))))))
+        (p/let [sidecar-result (state/<invoke-db-worker :thread-api/visual-doc-upsert
+                                                        repo
+                                                        page-uuid
+                                                        (attr->doc-type attr)
+                                                        json-str)
+                updated-at    (or (:updated-at sidecar-result) (.now js/Date))
+                _             (db/transact! repo
+                                            [[:db/retract page-id attr]
+                                             {:db/id            page-id
+                                              :block/updated-at updated-at}]
+                                            {:outliner-op :save-block})]
+          {:updated-at updated-at})))))
+
+(defn <delete-doc!
+  "Deletes the visual document payload from the worker sidecar and clears the
+   local draft cache. Callers should delete the page manifest afterwards."
+  [repo page-uuid cache-prefix]
+  (if-not (and (seq repo) (seq page-uuid))
+    (p/resolved false)
+    (p/let [result (state/<invoke-db-worker :thread-api/visual-doc-delete repo page-uuid)]
+      (clear-doc-cache! cache-prefix page-uuid)
+      result)))

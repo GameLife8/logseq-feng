@@ -2,10 +2,11 @@
   "Handlers for creating, opening and managing whiteboard pages.
 
    Whiteboard pages are tagged with :logseq.class/Whiteboard in :block/tags
-   so they are queryable from DataScript and visible in the Pages view.
+   so they remain queryable from DataScript and visible in the Pages view.
 
-   Canvas data is stored directly on the page entity as :block/whiteboard-canvas
-   (a plain string attribute), persisted via db/transact!."
+   VISUAL-DOC-SIDECAR: the page entity is a lightweight manifest only.
+   The full Excalidraw payload lives in the worker sqlite sidecar. Legacy
+   :block/whiteboard-canvas reads remain as a temporary migration fallback."
   (:require [clojure.string :as string]
              [datascript.core :as d]
              [frontend.db :as db]
@@ -89,10 +90,15 @@
   (visual-doc/<load-doc (state/get-current-repo) page-uuid canvas-attr canvas-cache-prefix))
 
 (defn load-canvas-from-db
-  "Returns the canvas JSON string stored on the page entity, or nil."
+  "Best-effort preview reader for gallery thumbnails.
+
+   Prefer the local draft cache because it already mirrors the sidecar payload.
+   If the cache is missing, fall back to the legacy page attribute while old
+   graphs are being migrated."
   [page-uuid]
   (when (seq page-uuid)
-    (canvas-attr (db/entity [:block/uuid (uuid page-uuid)]))))
+    (or (some-> (visual-doc/read-doc-cache canvas-cache-prefix page-uuid) :data)
+        (canvas-attr (db/entity [:block/uuid (uuid page-uuid)])))))
 
 ;; ── tag management ────────────────────────────────────────────────────────────
 
@@ -183,7 +189,7 @@
             :path-params {:name (str (:block/uuid page))}})
           page)))))
 
-(defn <delete-whiteboard!
+#_(defn <delete-whiteboard!
   "Deletes a whiteboard page. Shows success notification on completion."
   [page-uuid-str]
   (let [page (db/entity [:block/uuid (uuid page-uuid-str)])]
@@ -226,3 +232,27 @@
   [block-id-str]
   (when (seq block-id-str)
     (editor-handler/open-block-in-sidebar! (uuid block-id-str))))
+
+;; VISUAL-DOC-SIDECAR: redefine delete flow near EOF so the sidecar payload is
+;; removed before the page manifest, without rewriting the whole file again.
+(defn <delete-whiteboard!
+  "Deletes a whiteboard page after removing its sidecar payload."
+  [page-uuid-str]
+  (let [page (db/entity [:block/uuid (uuid page-uuid-str)])]
+    (cond
+      (nil? page)
+      (do
+        (notification/show! "白板页面未找到" :warning)
+        (p/resolved false))
+
+      (:db/ident page)
+      (do
+        (notification/show! "内置白板页面不能删除" :warning)
+        (p/resolved false))
+
+      :else
+      (p/do!
+       (visual-doc/<delete-doc! (state/get-current-repo) page-uuid-str canvas-cache-prefix)
+       (common-page-handler/<delete!
+        (uuid page-uuid-str)
+        (fn [] (notification/show! "白板已删除" :success)))))))

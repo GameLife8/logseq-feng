@@ -20,7 +20,9 @@
 (def mind-map-attr :block/mind-map-data)
 (def mind-map-cache-prefix "mind-map-data")
 
-(defn get-all-mind-maps
+(declare mind-map-name-exists?)
+
+#_(defn get-all-mind-maps
   "返回所有思维导图页面实体（按更新时间倒序）。"
   []
   (when-let [database (db/get-db)]
@@ -31,13 +33,13 @@
          (filter :block/title)
          (sort-by #(or (:block/updated-at %) 0) >))))
 
-(defn- mind-map-name-exists?
+#_(defn- mind-map-name-exists?
   [title]
   (some #(= (string/lower-case (or (:block/title %) ""))
             (string/lower-case title))
         (get-all-mind-maps)))
 
-(defn save-mind-map-to-db!
+#_(defn save-mind-map-to-db!
   "将思维导图 JSON 存储到对应 page 实体的 :block/mind-map-data。
    Returns a promise that resolves truthy only after the DB flush completes."
   [page-uuid json-str]
@@ -49,13 +51,13 @@
                    (js/console.error "[mind-map] save-mind-map-to-db! failed:" error)
                    false)))))
 
-(defn <load-mind-map-doc
+#_(defn <load-mind-map-doc
   "Loads the mind map document using the worker DB first, then resolves
    whether DB or local cache is newer."
   [page-uuid]
   (visual-doc/<load-doc (state/get-current-repo) page-uuid mind-map-attr mind-map-cache-prefix))
 
-(defn load-mind-map-from-db
+#_(defn load-mind-map-from-db
   "从 page 实体读取思维导图 JSON，若不存在则返回 nil。"
   [page-uuid]
   (when (seq page-uuid)
@@ -81,7 +83,7 @@
       (do (js/console.log "[mind-map] creating MindMap class tag")
           (common-page-handler/<create! "MindMap" {:redirect? false :class? true})))))
 
-(defn <create-mind-map!
+#_(defn <create-mind-map!
   "创建新的思维导图页面，并跳转到编辑器。"
   [name]
   (let [title (string/trim (or name "新思维导图"))]
@@ -105,7 +107,7 @@
             :path-params {:name (str (:block/uuid page))}})
           page)))))
 
-(defn <delete-mind-map!
+#_(defn <delete-mind-map!
   "删除思维导图页面。"
   [page-uuid-str]
   (let [page (db/entity [:block/uuid (uuid page-uuid-str)])]
@@ -142,3 +144,116 @@
   (route-handler/redirect!
    {:to          :mind-map
     :path-params {:name (str page-uuid)}}))
+
+;; VISUAL-DOC-SIDECAR: append clean manifest-first definitions near EOF so the
+;; sidecar storage model is isolated from the older page-blob implementation.
+
+(defn get-all-mind-maps
+  "Returns all mind-map page manifests from the local DataScript replica."
+  []
+  (when-let [database (db/get-db)]
+    (let [with-class (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
+                                 :where [?class :block/title "MindMap"]
+                                        [?class :block/tags :logseq.class/Tag]
+                                        [?b :block/tags ?class]]
+                               database)
+                          (map first))
+          with-legacy (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
+                                  :where [?b :block/mind-map-data _]]
+                                database)
+                           (map first))]
+      (->> (concat with-class with-legacy)
+           (into {} (map (juxt :db/id identity)))
+           vals
+           (filter #(and (:block/title %)
+                         (:block/uuid %)
+                         (not (:db/ident %))))
+           (sort-by #(or (:block/updated-at %) 0) >)))))
+
+(defn- mind-map-name-exists?
+  [title]
+  (some #(= (string/lower-case (or (:block/title %) ""))
+            (string/lower-case title))
+        (get-all-mind-maps)))
+
+(defn save-mind-map-to-db!
+  "Writes the mind-map payload to sidecar storage and updates only the page
+   manifest metadata."
+  [page-uuid json-str]
+  (if-not (and (seq page-uuid) (seq json-str))
+    (p/resolved false)
+    (-> (visual-doc/<flush-doc! (state/get-current-repo) page-uuid mind-map-attr json-str)
+        (p/then boolean)
+        (p/catch (fn [error]
+                   (js/console.error "[mind-map] save-mind-map-to-db! failed:" error)
+                   false)))))
+
+(defn <load-mind-map-doc
+  "Loads the mind-map payload from sidecar storage first, then resolves whether
+   sidecar, legacy DB, or local cache should seed the editor."
+  [page-uuid]
+  (visual-doc/<load-doc (state/get-current-repo) page-uuid mind-map-attr mind-map-cache-prefix))
+
+(defn load-mind-map-from-db
+  "Best-effort preview reader for mind-map payloads.
+
+   Prefer the local draft cache because it mirrors the sidecar content. If the
+   cache is missing, fall back to the legacy page attribute while old graphs are
+   being migrated."
+  [page-uuid]
+  (when (seq page-uuid)
+    (or (some-> (visual-doc/read-doc-cache mind-map-cache-prefix page-uuid) :data)
+        (let [data (mind-map-attr (db/entity [:block/uuid (uuid page-uuid)]))]
+          (when (seq data) data)))))
+
+(defn <create-mind-map!
+  "Creates a new mind-map page manifest and stores the initial JSON in the
+   worker sidecar before navigating to the editor."
+  [name]
+  (let [title (string/trim (or name "新思维导图"))]
+    (if (mind-map-name-exists? title)
+      (do
+        (notification/show! (str "思维导图“" title "”已存在，请使用不同的名称") :warning)
+        nil)
+      (p/let [page (common-page-handler/<create! title {:redirect? false})
+              tag  (<ensure-mindmap-class-tag!)]
+        (when page
+          (let [repo       (state/get-current-repo)
+                page-uuid  (str (:block/uuid page))
+                initial-js (js/JSON.stringify
+                            (clj->js {:data {:text title}
+                                      :children []}))]
+            (when tag
+              (db/transact! repo
+                            [{:db/id      (:db/id page)
+                              :block/tags #{(:db/id tag)}}]
+                            {:outliner-op :save-block}))
+            (visual-doc/save-doc-cache! mind-map-cache-prefix page-uuid initial-js)
+            (p/let [_ (visual-doc/<flush-doc! repo page-uuid mind-map-attr initial-js)]
+              (route-handler/redirect!
+               {:to          :mind-map
+                :path-params {:name page-uuid}})
+              page)))))))
+
+(defn <delete-mind-map!
+  "Deletes a mind-map page after removing its sidecar payload and local cache."
+  [page-uuid-str]
+  (let [page (db/entity [:block/uuid (uuid page-uuid-str)])]
+    (cond
+      (nil? page)
+      (do
+        (notification/show! "思维导图页面未找到" :warning)
+        (p/resolved false))
+
+      (:db/ident page)
+      (do
+        (notification/show! "内置思维导图页面不能删除" :warning)
+        (p/resolved false))
+
+      :else
+      (p/do!
+       (visual-doc/<delete-doc! (state/get-current-repo) page-uuid-str mind-map-cache-prefix)
+       (.removeItem js/localStorage (str "mind-map-thumb-" page-uuid-str))
+       (common-page-handler/<delete!
+        (uuid page-uuid-str)
+        (fn [] (notification/show! "思维导图已删除" :success)))))))
