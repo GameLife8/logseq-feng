@@ -635,16 +635,15 @@
 ;; ── whiteboard gallery ────────────────────────────────────────────────────────
 
 (rum/defcs whiteboard-thumbnail
-  "Renders an SVG thumbnail for a whiteboard from localStorage.
-   Falls back to an icon placeholder if ExcalidrawLib is not loaded or data absent."
+  "Renders an SVG thumbnail for a whiteboard from the sidecar payload, with
+   local cache and legacy page-attribute fallbacks during migration."
   < rum/reactive
   (rum/local nil ::svg-html)
   {:did-mount
    (fn [state]
      (let [page-uuid (-> state :rum/args first)
            *svg      (::svg-html state)
-           gen-svg!  (fn []
-                       (let [raw (whiteboard-handler/load-canvas-from-db page-uuid)]
+           render-raw! (fn [raw]
                          (js/console.log "[wb] thumbnail" page-uuid "raw canvas len:" (some-> raw count))
                          (if-not raw
                            (js/console.log "[wb] thumbnail: no canvas data, using placeholder")
@@ -672,7 +671,12 @@
                                                (js/console.warn "[wb] SVG thumbnail export failed" err))))
                                  (js/console.log "[wb] thumbnail: empty elements or no ExcalidrawLib")))
                              (catch :default err
-                               (js/console.warn "[wb] Thumbnail parse error" err))))))]
+                               (js/console.warn "[wb] Thumbnail parse error" err)))))
+           gen-svg!  (fn []
+                       (p/let [doc-info (whiteboard-handler/<load-canvas-doc page-uuid)
+                               raw      (or (:json doc-info)
+                                            (whiteboard-handler/load-canvas-from-db page-uuid))]
+                         (render-raw! raw)))]
        ;; Ensure the Excalidraw bundle (which exposes ExcalidrawLib) is loaded
        ;; before attempting SVG export. On first visit the bundle isn't loaded yet.
        (ensure-excalidraw-loaded! gen-svg!))
