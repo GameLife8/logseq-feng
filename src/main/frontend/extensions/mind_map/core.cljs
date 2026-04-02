@@ -1611,18 +1611,18 @@
         (fn []
           (when on-add-note-block
             (js/console.log "[mind-map] add-note-block! called")
-            (let [p (on-add-note-block)]
-              (when p
-                (.then p (fn [new-uuid]
-                           (js/console.log "[mind-map] add-note-block! got uuid:" new-uuid)
-                           (when (seq new-uuid)
-                             (let [cur-ids @(::note-block-ids state)
-                                   new-ids (conj cur-ids new-uuid)]
-                               (reset! (::note-block-ids state) new-ids)
-                               (when-let [i @*instance]
-                                 (when-let [node (aget (.. ^js i -renderer -activeNodeList) 0)]
-                                   (.execCommand ^js i "SET_NODE_DATA" node
-                                                 #js {:noteBlockIds (js/JSON.stringify (clj->js new-ids))})))))))))))]
+            (-> (p/let [new-uuid (on-add-note-block)]
+                  (js/console.log "[mind-map] add-note-block! got uuid:" new-uuid)
+                  (when (seq new-uuid)
+                    (let [cur-ids @(::note-block-ids state)
+                          new-ids (conj cur-ids new-uuid)]
+                      (reset! (::note-block-ids state) new-ids)
+                      (when-let [i @*instance]
+                        (when-let [node (aget (.. ^js i -renderer -activeNodeList) 0)]
+                          (.execCommand ^js i "SET_NODE_DATA" node
+                                        #js {:noteBlockIds (js/JSON.stringify (clj->js new-ids))}))))))
+                (p/catch (fn [err]
+                           (js/console.error "[mind-map] add-note-block! failed:" err))))))]
 
     [:div.mind-map-wrapper
      {:style {:width "100%" :height "100%" :display "flex" :flexDirection "column"

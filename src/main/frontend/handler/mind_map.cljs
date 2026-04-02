@@ -130,7 +130,7 @@
 (defn <rename-mind-map!
   "重命名思维导图页面。"
   [page-uuid-str new-name]
-  (let [trimmed (string/trim new-name)]
+  (let [trimmed (string/trim (or new-name ""))]
     (if (mind-map-name-exists? trimmed)
       (do (notification/show! (str "思维导图「" trimmed "」已存在，请使用不同的名称") :warning)
           nil)
