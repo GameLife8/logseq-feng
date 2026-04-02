@@ -219,6 +219,7 @@
   (rum/local nil ::editing-uid)    ; uid currently being renamed (nil = none)
   (rum/local :linked ::editing-type) ; :linked or :note
   (rum/local "" ::editing-val)     ; current text in rename input
+  (rum/local nil ::prev-el-id)     ; track previous el-id for did-update
   {:did-mount
    (fn [state]
      (let [{:keys [api el-id]} (-> state :rum/args first)
@@ -227,7 +228,21 @@
        (reset! (::linked-ids state)     (ex-api/get-linked-block-ids el))
        (reset! (::note-ids state)       (ex-api/get-note-block-ids el))
        (reset! (::linked-aliases state) (or (ex-api/get-block-aliases el) {}))
-       (reset! (::note-aliases state)   (or (ex-api/get-note-aliases el) {})))
+       (reset! (::note-aliases state)   (or (ex-api/get-note-aliases el) {}))
+       (reset! (::prev-el-id state)     el-id))
+     state)
+   :did-update
+   (fn [state]
+     (let [{:keys [api el-id]} (-> state :rum/args first)
+           prev-el-id          (::prev-el-id state)]
+       (when (not= el-id @prev-el-id)
+         (reset! prev-el-id el-id)
+         (let [el (ex-api/get-element-by-id api el-id)]
+           (js/console.log "[wb-panel] did-update el-id:" el-id "found?" (boolean el))
+           (reset! (::linked-ids state)     (ex-api/get-linked-block-ids el))
+           (reset! (::note-ids state)       (ex-api/get-note-block-ids el))
+           (reset! (::linked-aliases state) (or (ex-api/get-block-aliases el) {}))
+           (reset! (::note-aliases state)   (or (ex-api/get-note-aliases el) {})))))
      state)}
   [state {:keys [api el-id page-uuid on-close on-open-block on-add-note-block]}]
   (let [*linked-ids    (::linked-ids state)
@@ -737,20 +752,21 @@
         (fn []
           (let [trimmed (string/trim new-name)]
             (when (seq trimmed)
-              (when (whiteboard-handler/<create-whiteboard! trimmed)
+              (p/let [result (whiteboard-handler/<create-whiteboard! trimmed)]
                 ;; <create-whiteboard! returns nil on duplicate (shows notification)
                 ;; Only close input when the promise resolves to a page
-                (reset! *creating? false)
-                (reset! *new-name "")))))
+                (when result
+                  (reset! *creating? false)
+                  (reset! *new-name ""))))))
 
         ;; Commit rename
         do-rename!
         (fn []
           (let [trimmed (string/trim rename-val)]
             (when (and (seq trimmed) editing-uuid)
-              (whiteboard-handler/<rename-whiteboard! editing-uuid trimmed)
-              (reset! *editing-uuid nil)
-              (reset! *rename-val ""))))
+              (p/let [_ (whiteboard-handler/<rename-whiteboard! editing-uuid trimmed)]
+                (reset! *editing-uuid nil)
+                (reset! *rename-val "")))))
 
         cancel-rename!
         (fn [] (reset! *editing-uuid nil) (reset! *rename-val ""))]

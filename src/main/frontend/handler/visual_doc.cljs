@@ -179,14 +179,17 @@
                                                                             page-uuid
                                                                             (name (attr->doc-type attr))
                                                                             json-str)
-                                       normalize-worker-result)
-                updated-at    (or (:updated-at sidecar-result) (.now js/Date))
-                _             (db/transact! repo
-                                            [[:db/retract page-id attr]
-                                             {:db/id            page-id
-                                              :block/updated-at updated-at}]
-                                            {:outliner-op :save-block})]
-          {:updated-at updated-at})))))
+                                       normalize-worker-result)]
+          (if-not sidecar-result
+            ;; Sidecar write failed — keep legacy attribute intact to avoid data loss
+            false
+            (p/let [updated-at (or (:updated-at sidecar-result) (.now js/Date))
+                    _          (db/transact! repo
+                                             [[:db/retract page-id attr]
+                                              {:db/id            page-id
+                                               :block/updated-at updated-at}]
+                                             {:outliner-op :save-block})]
+              {:updated-at updated-at})))))))
 
 (defn <delete-doc!
   "Deletes the visual document payload from the worker sidecar and clears the
