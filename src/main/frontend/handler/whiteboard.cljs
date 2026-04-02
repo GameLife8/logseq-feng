@@ -47,7 +47,7 @@
                       (into {} (map (juxt :db/id identity)))  ; deduplicate by :db/id
                       vals
                       (filter :block/title)
-                      (sort-by :block/updated-at >))]
+                      (sort-by #(or (:block/updated-at %) 0) >))]
       result)))
 
 (defn- whiteboard-name-exists?

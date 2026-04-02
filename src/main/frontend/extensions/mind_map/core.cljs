@@ -234,7 +234,8 @@
 
 (defn- ctx-item [label shortcut handler & {:keys [danger? disabled?]}]
   [:div
-   {:on-click       (when-not disabled?
+   {:key            label
+    :on-click       (when-not disabled?
                       (fn [^js e] (.stopPropagation e) (handler)))
     :on-mouse-enter (when-not disabled?
                       (fn [^js e]
@@ -260,8 +261,9 @@
      [:span {:style {:fontSize "11px" :color "var(--lx-gray-08,#9ca3af)"}}
       shortcut])])
 
-(defn- ctx-sep []
-  [:div {:style {:height "1px" :background "var(--lx-gray-04,#f3f4f6)" :margin "3px 0"}}])
+(defn- ctx-sep
+  ([] (ctx-sep "sep"))
+  ([k] [:div {:key k :style {:height "1px" :background "var(--lx-gray-04,#f3f4f6)" :margin "3px 0"}}]))
 
 (defn- ctx-menu-panel
   [menu _node-active? _is-root? close! cmd! instance-atom]
@@ -301,27 +303,27 @@
            (ctx-item "插入父节点"   ""       (na! #(cmd! "INSERT_PARENT_NODE"))
                      :disabled? is-root?)
            (ctx-item "插入概要"     "Ctrl+G" (na! #(cmd! "ADD_GENERALIZATION")))
-           (ctx-sep)
+           (ctx-sep "sep-1")
            (ctx-item "上移节点" "" (na! #(cmd! "UP_NODE"))
                      :disabled? is-root?)
            (ctx-item "下移节点" "" (na! #(cmd! "DOWN_NODE"))
                      :disabled? is-root?)
-           (ctx-sep)
+           (ctx-sep "sep-2")
            (ctx-item "删除节点"       "Delete"         (na! #(cmd! "REMOVE_NODE"))
                      :danger? true :disabled? is-root?)
            (ctx-item "仅删除当前节点" "Shift+Backspace" (na! #(cmd! "REMOVE_CURRENT_NODE"))
                      :danger? true :disabled? is-root?)
-           (ctx-sep)
+           (ctx-sep "sep-3")
            (ctx-item "复制节点" "Ctrl+C"
                      (na! #(when-let [i @instance-atom]
                              (.copy ^js (.-renderer ^js i)))))
            (ctx-item "剪切节点" "Ctrl+X" (na! #(cmd! "CUT_NODE"))
                      :disabled? is-root?)
            (ctx-item "粘贴节点" "Ctrl+V" (na! #(cmd! "PASTE_NODE")))
-           (ctx-sep)
+           (ctx-sep "sep-4")
            (ctx-item "去除自定义样式" "" (na! #(cmd! "REMOVE_CUSTOM_STYLES")))
            (when assoc-avail?
-             (ctx-sep))
+             (ctx-sep "sep-5"))
            (when assoc-avail?
              (ctx-item "添加关联线" ""
                        (na! #(when-let [i @instance-atom]
@@ -335,15 +337,15 @@
                                    uid    (some-> data .-data .-uid)]
                                (when uid
                                  (.execCommand ^js i "GO_TARGET_NODE" uid))))))
-           (ctx-sep)
+           (ctx-sep "csep-1")
            (ctx-item "展开所有节点" "" (na! #(cmd! "EXPAND_ALL")))
            (ctx-item "折叠所有节点" "" (na! #(cmd! "UNEXPAND_ALL")))
-           (ctx-sep)
+           (ctx-sep "csep-2")
            (ctx-item "一键整理布局" "Ctrl+L" (na! #(cmd! "RESET_LAYOUT")))
            (ctx-item "适应画布"     "Ctrl+I"
                      (na! #(when-let [i @instance-atom]
                              (.fit ^js (.-view ^js i)))))
-           (ctx-sep)
+           (ctx-sep "csep-3")
            (ctx-item "去除所有自定义样式" ""
                      (na! #(cmd! "REMOVE_ALL_NODE_CUSTOM_STYLES")))))]])))
 
@@ -1054,6 +1056,8 @@
   (rum/local []    ::node-linked-blocks)   ; [{:block-id :block-title :page-title :alias}]
   (rum/local false ::show-block-picker?)
   (rum/local false ::show-blocks-panel?)
+  (rum/local nil   ::current-save-fn)
+  (rum/local nil   ::current-map-id)
   {:did-mount
    (fn [state]
      (let [args         (-> state :rum/args first)
@@ -1061,6 +1065,8 @@
            initial-json (:initial-json args)
            on-save-data (:on-save-data args)
            needs-initial-flush? (boolean (:needs-initial-flush? args))
+           _            (do (reset! (::current-save-fn state) on-save-data)
+                            (reset! (::current-map-id state)  map-id))
            container    @(::container-ref state)
            MindMapCtor  (get-mind-map-ctor)]
        (when (and container MindMapCtor)
@@ -1146,7 +1152,9 @@
                persist!   (fn [inst]
                             (if inst
                               (let [data     (.getData ^js inst)
-                                    json-str (js/JSON.stringify data)]
+                                    json-str (js/JSON.stringify data)
+                                    map-id   @(::current-map-id state)
+                                    on-save-data @(::current-save-fn state)]
                                 (save-to-ls! map-id data)
                                 (save-thumbnail! inst map-id)
                                 (reset! (::cached? state) true)
@@ -1170,8 +1178,9 @@
                             (fn []
                               (when-let [inst @(::instance state)]
                                 (when @(::cache-dirty? state)
-                                  (save-to-ls! map-id (.getData ^js inst))
-                                  (save-thumbnail! inst map-id)
+                                  (let [mid @(::current-map-id state)]
+                                    (save-to-ls! mid (.getData ^js inst))
+                                    (save-thumbnail! inst mid))
                                   (reset! (::cached? state) true)
                                   (reset! (::cache-dirty? state) false))))
                             3000)
@@ -1422,6 +1431,14 @@
              (reset! (::ctx-md-handler state) md-handler)
              (reset! (::ctx-handler state)    ctx-handler)))))
      state)
+   :did-update
+   (fn [state]
+     ;; Keep save-fn / map-id atoms in sync with latest props so that
+     ;; timer closures created in did-mount always use current values.
+     (let [args (-> state :rum/args first)]
+       (reset! (::current-save-fn state) (:on-save-data args))
+       (reset! (::current-map-id state)  (:map-id args)))
+     state)
    :will-unmount
    (fn [state]
      (let [args         (-> state :rum/args first)
@@ -1566,9 +1583,11 @@
             (persist-note-aliases! new-aliases)))
         add-linked-block!
         (fn [block-map]
-          (let [new-blocks (conj (or @(::node-linked-blocks state) []) block-map)]
-            (reset! (::node-linked-blocks state) new-blocks)
-            (persist-linked-blocks! new-blocks)))
+          (let [existing (or @(::node-linked-blocks state) [])]
+            (when-not (some #(= (:block-id %) (:block-id block-map)) existing)
+              (let [new-blocks (conj existing block-map)]
+                (reset! (::node-linked-blocks state) new-blocks)
+                (persist-linked-blocks! new-blocks)))))
         remove-linked-block!
         (fn [block-id]
           (let [new-blocks (filterv #(not= (:block-id %) block-id)

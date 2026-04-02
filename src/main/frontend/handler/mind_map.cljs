@@ -210,11 +210,12 @@
                 initial-js (js/JSON.stringify
                             (clj->js {:data {:text title}
                                       :children []}))]
-            (when tag
+            (if tag
               (db/transact! repo
                             [{:db/id      (:db/id page)
                               :block/tags #{(:db/id tag)}}]
-                            {:outliner-op :save-block}))
+                            {:outliner-op :save-block})
+              (notification/show! "MindMap 标签创建失败，页面可能不会出现在思维导图列表中" :warning))
             (visual-doc/save-doc-cache! mind-map-cache-prefix page-uuid initial-js)
             (p/let [_ (visual-doc/<flush-doc! repo page-uuid mind-map-attr initial-js)]
               (route-handler/redirect!

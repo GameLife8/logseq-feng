@@ -106,7 +106,7 @@
         build-node (fn build-node [node-id]
                      (when-let [node (get node-by-id node-id)]
                        (let [child-rows (sort-by :child_order (get children-by-parent node-id))]
-                         (assoc node :children (mapv #(build-node (:node_id %)) child-rows)))))
+                         (assoc node :children (into [] (keep #(build-node (:node_id %))) child-rows)))))
         root-id    (some->> (get children-by-parent nil)
                             (sort-by :child_order)
                             first
@@ -271,19 +271,21 @@
                         (or (nil? existing-row)
                             (changed-row? existing-row incoming
                                           [:parent_id :child_order :node_json :node_text]))))]
-      (delete-missing-rows! db "mind_map_nodes" page-uuid "node_id" stale-ids)
-      (doseq [row rows
-              :when (changed? row)]
-        (upsert-mind-map-node-row! db page-uuid row))
-      (.exec db #js {:sql "insert into visual_docs (page_uuid, doc_type, content, updated_at, schema_version, storage_format)
-                           values (?, ?, ?, ?, ?, ?)
-                           on conflict(page_uuid) do update set
-                             doc_type = excluded.doc_type,
-                             content = excluded.content,
-                             updated_at = excluded.updated_at,
-                             schema_version = excluded.schema_version,
-                             storage_format = excluded.storage_format"
-                     :bind #js [page-uuid doc-type content' updated-at current-schema-version mind-map-node-storage-format]})
+      (.transaction db
+        (fn [tx]
+          (delete-missing-rows! tx "mind_map_nodes" page-uuid "node_id" stale-ids)
+          (doseq [row rows
+                  :when (changed? row)]
+            (upsert-mind-map-node-row! tx page-uuid row))
+          (.exec tx #js {:sql "insert into visual_docs (page_uuid, doc_type, content, updated_at, schema_version, storage_format)
+                               values (?, ?, ?, ?, ?, ?)
+                               on conflict(page_uuid) do update set
+                                 doc_type = excluded.doc_type,
+                                 content = excluded.content,
+                                 updated_at = excluded.updated_at,
+                                 schema_version = excluded.schema_version,
+                                 storage_format = excluded.storage_format"
+                         :bind #js [page-uuid doc-type content' updated-at current-schema-version mind-map-node-storage-format]})))
       {:page-uuid      page-uuid
        :doc-type       doc-type
        :updated-at     updated-at
@@ -313,25 +315,27 @@
                            (or (nil? existing-row)
                                (changed-row? existing-row incoming
                                              [:element_type :element_order :element_json]))))]
-      (delete-missing-rows! db "whiteboard_elements" page-uuid "element_id" stale-ids)
-      (doseq [row elements
-              :when (changed? row)]
-        (upsert-whiteboard-element-row! db page-uuid row))
-      (when (not= (:app_state_json scene-meta) app-state-js)
-        (.exec db #js {:sql "insert into whiteboard_scene_meta (page_uuid, app_state_json)
-                             values (?, ?)
-                             on conflict(page_uuid) do update set
-                               app_state_json = excluded.app_state_json"
-                       :bind #js [page-uuid app-state-js]}))
-      (.exec db #js {:sql "insert into visual_docs (page_uuid, doc_type, content, updated_at, schema_version, storage_format)
-                           values (?, ?, ?, ?, ?, ?)
-                           on conflict(page_uuid) do update set
-                             doc_type = excluded.doc_type,
-                             content = excluded.content,
-                             updated_at = excluded.updated_at,
-                             schema_version = excluded.schema_version,
-                             storage_format = excluded.storage_format"
-                     :bind #js [page-uuid doc-type content' updated-at current-schema-version whiteboard-element-storage-format]})
+      (.transaction db
+        (fn [tx]
+          (delete-missing-rows! tx "whiteboard_elements" page-uuid "element_id" stale-ids)
+          (doseq [row elements
+                  :when (changed? row)]
+            (upsert-whiteboard-element-row! tx page-uuid row))
+          (when (not= (:app_state_json scene-meta) app-state-js)
+            (.exec tx #js {:sql "insert into whiteboard_scene_meta (page_uuid, app_state_json)
+                                 values (?, ?)
+                                 on conflict(page_uuid) do update set
+                                   app_state_json = excluded.app_state_json"
+                           :bind #js [page-uuid app-state-js]}))
+          (.exec tx #js {:sql "insert into visual_docs (page_uuid, doc_type, content, updated_at, schema_version, storage_format)
+                               values (?, ?, ?, ?, ?, ?)
+                               on conflict(page_uuid) do update set
+                                 doc_type = excluded.doc_type,
+                                 content = excluded.content,
+                                 updated_at = excluded.updated_at,
+                                 schema_version = excluded.schema_version,
+                                 storage_format = excluded.storage_format"
+                         :bind #js [page-uuid doc-type content' updated-at current-schema-version whiteboard-element-storage-format]})))
       {:page-uuid      page-uuid
        :doc-type       doc-type
        :updated-at     updated-at
@@ -377,13 +381,15 @@
 
 (defn delete-doc!
   [^js db page-uuid]
-  (when (seq page-uuid)
-    (.exec db #js {:sql "delete from mind_map_nodes where page_uuid = ?"
-                   :bind #js [page-uuid]})
-    (.exec db #js {:sql "delete from whiteboard_elements where page_uuid = ?"
-                   :bind #js [page-uuid]})
-    (.exec db #js {:sql "delete from whiteboard_scene_meta where page_uuid = ?"
-                   :bind #js [page-uuid]})
-    (.exec db #js {:sql "delete from visual_docs where page_uuid = ?"
-                   :bind #js [page-uuid]}))
-  true)
+  (if (seq page-uuid)
+    (do
+      (.exec db #js {:sql "delete from mind_map_nodes where page_uuid = ?"
+                     :bind #js [page-uuid]})
+      (.exec db #js {:sql "delete from whiteboard_elements where page_uuid = ?"
+                     :bind #js [page-uuid]})
+      (.exec db #js {:sql "delete from whiteboard_scene_meta where page_uuid = ?"
+                     :bind #js [page-uuid]})
+      (.exec db #js {:sql "delete from visual_docs where page_uuid = ?"
+                     :bind #js [page-uuid]})
+      true)
+    false))

@@ -131,10 +131,13 @@
           [open?     set-open!]    (rum/use-state false)
           [editing?  set-editing!] (rum/use-state false)
           [input-val set-input!]   (rum/use-state page-title)
+          committed-ref (rum/use-ref false)
           commit!  (fn []
-                     (let [t (.trim input-val)]
-                       (when (and (seq t) on-rename) (on-rename t)))
-                     (set-editing! false))]
+                     (when-not (rum/deref committed-ref)
+                       (rum/set-ref! committed-ref true)
+                       (let [t (.trim input-val)]
+                         (when (and (seq t) on-rename) (on-rename t)))
+                       (set-editing! false)))]
       ;; Sync the rename input when the upstream page-title prop changes
       (js/React.useEffect (fn [] (set-input! page-title) js/undefined)
                           #js [page-title])
@@ -195,7 +198,7 @@
            (js/React.createElement
             "span"
             #js {:title   "点击重命名"
-                 :onClick (fn [] (set-input! page-title) (set-editing! true))
+                 :onClick (fn [] (set-input! page-title) (rum/set-ref! committed-ref false) (set-editing! true))
                  :style   #js {:padding "4px 10px"
                                :background "var(--lx-gray-02,#f9fafb)"
                                :border "1px solid var(--lx-gray-05,#e5e7eb)"
@@ -274,6 +277,8 @@
   (rum/local nil    ::pagehide-handler)
   (rum/local nil    ::visibility-handler)
   (rum/local nil    ::library-items)
+  (rum/local nil    ::current-save-fn)
+  (rum/local nil    ::current-page-uuid)
   {:did-mount
    (fn [state]
       (let [*cache-timer        (::cache-timer-id state)
@@ -288,14 +293,18 @@
             *visibility         (::visibility-handler state)
             *api                (::api state)
             *library            (::library-items state)
+            *save-fn            (::current-save-fn state)
+            *p-uuid             (::current-page-uuid state)
             args                (first (:rum/args state))
-            p-uuid              (:page-uuid args)
-            save-fn             (:on-save-data args)
             initial-json        (:initial-json args)
             needs-initial-flush? (boolean (:needs-initial-flush? args))
+            _                   (do (reset! *save-fn (:on-save-data args))
+                                    (reset! *p-uuid  (:page-uuid args)))
             persist!            (fn []
                                   (if-let [api @*api]
-                                    (let [json-str (canvas-json api)]
+                                    (let [json-str (canvas-json api)
+                                          p-uuid   @*p-uuid
+                                          save-fn  @*save-fn]
                                       (save-to-ls! p-uuid api)
                                       (reset! *last-cached-json json-str)
                                       (reset! *cached? true)
@@ -323,7 +332,7 @@
                             (fn []
                               (when (and @*cache-dirty? @*api)
                                 (let [json-str (canvas-json @*api)]
-                                  (save-to-ls! p-uuid @*api)
+                                  (save-to-ls! @*p-uuid @*api)
                                   (reset! *last-cached-json json-str))
                                 (reset! *cached? true)
                                 (reset! *cache-dirty? false)))
@@ -402,6 +411,11 @@
      state)
    :did-update
    (fn [state]
+     ;; Keep save-fn / page-uuid atoms in sync with latest props so that
+     ;; timer closures created in did-mount always use current values.
+     (let [args (first (:rum/args state))]
+       (reset! (::current-save-fn state)   (:on-save-data args))
+       (reset! (::current-page-uuid state) (:page-uuid args)))
      ;; Re-inject @font-face CSS when custom-fonts prop changes (e.g. after
      ;; async config load in the parent causes a re-render with real paths).
      (let [args      (first (:rum/args state))
