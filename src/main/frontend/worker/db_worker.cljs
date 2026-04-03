@@ -590,12 +590,27 @@
   (when (and (seq repo) (seq page-uuid) (seq content))
     (p/let [visual-doc-db (<get-visual-doc-db repo)
             updated-at    (common-util/time-ms)]
-      (some-> (worker-visual-doc/upsert-doc! visual-doc-db
-                                             {:page-uuid  page-uuid
-                                              :doc-type   doc-type
-                                              :content    content
-                                              :updated-at updated-at})
-              clj->js))))
+      (let [result (try
+                     (worker-visual-doc/upsert-doc! visual-doc-db
+                                                    {:page-uuid  page-uuid
+                                                     :doc-type   doc-type
+                                                     :content    content
+                                                     :updated-at updated-at})
+                     (catch :default e
+                       (js/console.error "[visual-doc-upsert] upsert-doc! threw:" (.-message e)
+                                         "\n  page-uuid=" page-uuid
+                                         "\n  doc-type=" doc-type
+                                         "\n  updated-at type=" (type updated-at) "val=" updated-at
+                                         "\n  content length=" (count content)
+                                         "\n  db type=" (type visual-doc-db))
+                       (throw e)))]
+        (try
+          (some-> result clj->js)
+          (catch :default e
+            (js/console.error "[visual-doc-upsert] clj->js threw:" (.-message e)
+                              "\n  result keys=" (keys result)
+                              "\n  result=" (pr-str (dissoc result :content)))
+            (throw e)))))))
 
 (def-thread-api :thread-api/visual-doc-delete
   [repo page-uuid]
