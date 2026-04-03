@@ -7,9 +7,11 @@
   (:require [frontend.db :as db]
             [frontend.db.async :as db-async]
             [frontend.state :as state]
+            [goog.object]
             [promesa.core :as p]))
 
 (def ^:private cache-version 1)
+(def ^:private lru-max-entries 5)
 
 (defn cache-key
   [cache-prefix page-uuid]
@@ -55,8 +57,39 @@
          :saved-at nil
          :data     raw}))))
 
+(defn- evict-lru-caches!
+  "Keeps only the `lru-max-entries` most-recently-saved cache entries for `cache-prefix`.
+   Scans localStorage for keys matching `cache-prefix-*`, reads their `saved-at`
+   timestamps, and removes the oldest entries that exceed the limit.
+   Also removes associated thumbnail entries for mind-map caches."
+  [cache-prefix]
+  (let [prefix  (str cache-prefix "-")
+        n       (.-length js/localStorage)
+        entries (loop [i 0 acc []]
+                  (if (>= i n)
+                    acc
+                    (let [k (.key js/localStorage i)]
+                      (if (and k (.startsWith k prefix))
+                        (let [saved-at (try
+                                         (-> (.getItem js/localStorage k)
+                                             js/JSON.parse
+                                             (goog.object/get "saved-at"))
+                                         (catch :default _ nil))]
+                          (recur (inc i) (conj acc {:key k
+                                                    :uuid (subs k (count prefix))
+                                                    :saved-at (or saved-at 0)})))
+                        (recur (inc i) acc)))))
+        sorted  (->> entries (sort-by :saved-at >) vec)]
+    (when (> (count sorted) lru-max-entries)
+      (doseq [{:keys [key uuid]} (subvec sorted lru-max-entries)]
+        (.removeItem js/localStorage key)
+        ;; Also clean up mind-map thumbnails if this is a mind-map cache
+        (when (= cache-prefix "mind-map-data")
+          (.removeItem js/localStorage (str "mind-map-thumb-" uuid)))))))
+
 (defn save-doc-cache!
-  "Writes a timestamped localStorage cache entry and returns the saved payload."
+  "Writes a timestamped localStorage cache entry and returns the saved payload.
+   Also evicts stale entries beyond the LRU limit for this cache prefix."
   [cache-prefix page-uuid json-str]
   (when (and (seq page-uuid) (seq json-str))
     (let [payload {:version  cache-version
@@ -65,6 +98,7 @@
       (.setItem js/localStorage
                 (cache-key cache-prefix page-uuid)
                 (js/JSON.stringify (clj->js payload)))
+      (evict-lru-caches! cache-prefix)
       payload)))
 
 (defn choose-newer-source
