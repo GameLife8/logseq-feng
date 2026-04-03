@@ -80,7 +80,9 @@
     {:title (str draft-label ": " draft-state
                  " | " graph-label ": " graph-state)
      :label (str draft-label " " draft-state
-                 " | " graph-label " " graph-state)}))
+                 " | " graph-label " " graph-state)
+     :draft (str draft-label " " draft-state)
+     :graph (str graph-label " " graph-state)}))
 
 (defn- scene-json
   [elements app-state]
@@ -124,9 +126,6 @@
           render-tags         (gobj/get props "renderTags")
           on-show-linked      (gobj/get props "onShowLinkedBlocks")
           sel-el-id           (gobj/get props "selElId")
-          cached?             (boolean (gobj/get props "cached"))
-          persisted?          (boolean (gobj/get props "persisted"))
-          sync-status         (sync-status-copy cached? persisted?)
           ;; hooks – must be unconditionally at top level
           [open?     set-open!]    (rum/use-state false)
           [editing?  set-editing!] (rum/use-state false)
@@ -207,19 +206,6 @@
                                :overflow "hidden" :textOverflow "ellipsis"
                                :whiteSpace "nowrap" :cursor "pointer"}}
             page-title))
-
-         (js/React.createElement
-          "span"
-          #js {:title (:title sync-status)
-               :style #js {:padding "4px 8px"
-                           :borderRadius "999px"
-                           :fontSize "11px"
-                           :background (if persisted?
-                                         "rgba(16,185,129,0.12)"
-                                         "rgba(245,158,11,0.12)")
-                           :color (if persisted? "#047857" "#b45309")
-                           :whiteSpace "nowrap"}}
-          (:label sync-status))
 
          ;; 🔗 链接块 — shown only when exactly one element is selected
          (when (and sel-el-id on-show-linked)
@@ -592,14 +578,31 @@
               toolbar-buttons
               #js {:pageTitle          page-title
                    :saveAndBack        save-and-back!
-                   :cached             @*cached?
-                   :persisted          @*persisted?
                    :onRename           on-rename
                    :renderTags         render-tags
                    :onShowLinkedBlocks (fn [el-id]
                                          (when on-show-linked-blocks
                                            (on-show-linked-blocks el-id)))
-                   :selElId            @*sel-el-id}))})]))
+                   :selElId            @*sel-el-id}))})
+
+     ;; ── bottom-right sync status overlay ─────────────────────────────────
+     (let [cached?     @*cached?
+           persisted?  @*persisted?
+           sync-status (sync-status-copy cached? persisted?)]
+       [:div {:style {:position   "absolute"
+                      :bottom     "8px"
+                      :right      "8px"
+                      :display    "flex"
+                      :gap        "8px"
+                      :fontSize   "11px"
+                      :zIndex     "3"
+                      :pointerEvents "none"}}
+        [:span {:style {:color (if cached? "#0369a1" "#b45309")}
+                :title (:title sync-status)}
+         (:draft sync-status)]
+        [:span {:style {:color (if persisted? "#047857" "#b45309")}
+                :title (:title sync-status)}
+         (:graph sync-status)]])]))
 
 ;; Export for shadow.lazy loadable
 (def ^:export editor excalidraw-editor)
