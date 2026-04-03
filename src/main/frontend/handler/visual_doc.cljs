@@ -143,12 +143,12 @@
     (p/resolved {:source :empty
                  :json nil
                  :needs-flush? false})
-    (p/let [result (some-> (state/<invoke-db-worker-direct-pass :thread-api/visual-doc-get
-                                                                repo
-                                                                page-uuid
-                                                                (name (attr->doc-type attr)))
-                           normalize-worker-result)
-            cache  (read-doc-cache cache-prefix page-uuid)]
+    (p/let [raw-result (state/<invoke-db-worker-direct-pass :thread-api/visual-doc-get
+                                                            repo
+                                                            page-uuid
+                                                            (name (attr->doc-type attr)))
+            result     (normalize-worker-result raw-result)
+            cache      (read-doc-cache cache-prefix page-uuid)]
       (assoc (choose-newer-source {:db-json       (:content result)
                                    :db-updated-at (:updated-at result)
                                    :cache         cache})
@@ -174,12 +174,12 @@
     (p/let [page-id (<ensure-page-id repo page-uuid)]
       (if-not page-id
         false
-        (p/let [sidecar-result (some-> (state/<invoke-db-worker-direct-pass :thread-api/visual-doc-upsert
-                                                                            repo
-                                                                            page-uuid
-                                                                            (name (attr->doc-type attr))
-                                                                            json-str)
-                                       normalize-worker-result)]
+        (p/let [raw-result     (state/<invoke-db-worker-direct-pass :thread-api/visual-doc-upsert
+                                                                    repo
+                                                                    page-uuid
+                                                                    (name (attr->doc-type attr))
+                                                                    json-str)
+                sidecar-result (normalize-worker-result raw-result)]
           (if-not sidecar-result
             ;; Sidecar write failed — keep legacy attribute intact to avoid data loss
             false
