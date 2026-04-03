@@ -32,7 +32,9 @@
     (let [;; Strategy 1: system class tag
           with-class  (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
                                    :where [?b :block/tags ?t]
-                                          [?t :db/ident :logseq.class/Whiteboard]]
+                                          [?t :db/ident :logseq.class/Whiteboard]
+                                          [(missing? $ ?b :db/ident)]
+                                          [(missing? $ ?b :logseq.property/deleted-at)]]
                                  database)
                            (map first))
           ;; Strategy 2: user tag named "Whiteboard"
@@ -40,7 +42,8 @@
                                      :where [?t :block/title "Whiteboard"]
                                             [(missing? $ ?t :db/ident)]
                                             [?b :block/tags ?t]
-                                            [(missing? $ ?b :db/ident)]]
+                                            [(missing? $ ?b :db/ident)]
+                                            [(missing? $ ?b :logseq.property/deleted-at)]]
                                    database)
                              (map first))
           result (->> (concat with-class with-user-tag)
@@ -239,9 +242,15 @@
         (notification/show! "内置白板页面不能删除" :warning)
         (p/resolved false))
 
+      (:logseq.property/deleted-at page)
+      (do
+        (notification/show! "该白板已被删除" :warning)
+        (p/resolved false))
+
       :else
       (p/do!
        (visual-doc/<delete-doc! (state/get-current-repo) page-uuid-str canvas-cache-prefix)
        (common-page-handler/<delete!
         (uuid page-uuid-str)
-        (fn [] (notification/show! "白板已删除" :success)))))))
+        (fn [] (notification/show! "白板已删除" :success))
+        :error-handler (fn [] (notification/show! "删除白板失败" :error)))))))

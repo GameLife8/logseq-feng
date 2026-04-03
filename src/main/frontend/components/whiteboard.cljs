@@ -742,7 +742,8 @@
                                       (->> result
                                            (filter #(and (:block/title %)
                                                          (:block/uuid %)
-                                                         (not (:db/ident %))))
+                                                         (not (:db/ident %))
+                                                         (not (:logseq.property/deleted-at %))))
                                            (sort-by #(or (:block/updated-at %) 0) >))))}
                                  nil))
         whiteboards   (or (some-> wb-atom rum/react) [])

@@ -155,7 +155,8 @@
     (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
                 :where [?class :block/title "MindMap"]
                        [?class :block/tags :logseq.class/Tag]
-                       [?b :block/tags ?class]]
+                       [?b :block/tags ?class]
+                       [(missing? $ ?b :logseq.property/deleted-at)]]
               database)
          (map first)
          (filter #(and (:block/title %)
@@ -238,10 +239,16 @@
         (notification/show! "内置思维导图页面不能删除" :warning)
         (p/resolved false))
 
+      (:logseq.property/deleted-at page)
+      (do
+        (notification/show! "该思维导图已被删除" :warning)
+        (p/resolved false))
+
       :else
       (p/do!
        (visual-doc/<delete-doc! (state/get-current-repo) page-uuid-str mind-map-cache-prefix)
        (.removeItem js/localStorage (str "mind-map-thumb-" page-uuid-str))
        (common-page-handler/<delete!
         (uuid page-uuid-str)
-        (fn [] (notification/show! "思维导图已删除" :success)))))))
+        (fn [] (notification/show! "思维导图已删除" :success))
+        :error-handler (fn [] (notification/show! "删除思维导图失败" :error)))))))
