@@ -1661,12 +1661,7 @@
                 :textOverflow "ellipsis"
                 :whiteSpace   "nowrap"
                 :color        "var(--lx-gray-11,#374151)"}}
-       (or map-title "思维导图")
-        [:span {:style {:marginLeft "6px"
-                        :fontSize   "10px"
-                        :color      (if persisted? "#047857" "#b45309")}
-                :title  (:title sync-status)}
-         (:label sync-status)]]
+       (or map-title "思维导图")]
 
       (tb-sep)
 

@@ -204,27 +204,39 @@
    page entity no longer carries the large payload."
   [repo page-uuid attr json-str]
   (if-not (and (seq repo) (seq page-uuid) (seq json-str))
-    (p/resolved false)
+    (do (js/console.warn "[visual-doc] <flush-doc! skipped: missing args"
+                         "repo=" (boolean (seq repo))
+                         "uuid=" (boolean (seq page-uuid))
+                         "json=" (boolean (seq json-str)))
+        (p/resolved false))
     (p/let [page-id (<ensure-page-id repo page-uuid)]
       (if-not page-id
-        false
-        (p/let [raw-result     (state/<invoke-db-worker-direct-pass :thread-api/visual-doc-upsert
-                                                                    repo
-                                                                    page-uuid
-                                                                    (name (attr->doc-type attr))
-                                                                    json-str)
-                sidecar-result (normalize-worker-result raw-result)]
-          (if-not sidecar-result
-            ;; Sidecar write failed — keep legacy attribute intact to avoid data loss
-            false
-            (p/let [updated-at (or (:updated-at sidecar-result) (.now js/Date))
-                    _          (db/transact! repo
-                                             [[:db/retract page-id attr]
-                                              {:db/id            page-id
-                                               :block/updated-at updated-at}]
-                                             {:outliner-op :save-block})]
-              {:updated-at updated-at})))))))
-
+        (do (js/console.warn "[visual-doc] <flush-doc! failed: page-id is nil for uuid=" page-uuid)
+            false)
+        (-> (p/let [raw-result     (state/<invoke-db-worker-direct-pass :thread-api/visual-doc-upsert
+                                                                        repo
+                                                                        page-uuid
+                                                                        (name (attr->doc-type attr))
+                                                                        json-str)
+                    _              (js/console.log "[visual-doc] raw-result type=" (type raw-result)
+                                                   "truthy=" (boolean raw-result)
+                                                   "val=" raw-result)
+                    sidecar-result (normalize-worker-result raw-result)
+                    _              (js/console.log "[visual-doc] sidecar-result=" (pr-str sidecar-result))]
+              (if-not sidecar-result
+                (do (js/console.warn "[visual-doc] <flush-doc! failed: sidecar-result is nil")
+                    false)
+                (p/let [updated-at (or (:updated-at sidecar-result) (.now js/Date))
+                        _          (db/transact! repo
+                                                 [[:db/retract page-id attr]
+                                                  {:db/id            page-id
+                                                   :block/updated-at updated-at}]
+                                                 {:outliner-op :save-block})]
+                  (js/console.log "[visual-doc] <flush-doc! success, updated-at=" updated-at)
+                  {:updated-at updated-at})))
+            (p/catch (fn [err]
+                       (js/console.error "[visual-doc] <flush-doc! exception:" err)
+                       false)))))))
 (defn <delete-doc!
   "Deletes the visual document payload from the worker sidecar and clears the
    local draft cache. Callers should delete the page manifest afterwards."
