@@ -58,11 +58,12 @@
   (let [node'    (normalize-mind-map-node node nil)
         node-id  (get-in node' [:data :uid])
         children (vec (:children node'))
-        row      {:node_id     node-id
-                  :parent_id   parent-id
-                  :child_order child-order
+        row      {:node_id     (str node-id)
+                  :parent_id   (some-> parent-id str)
+                  :child_order (js/Number child-order)
                   :node_json   (stringify (dissoc node' :children))
-                  :node_text   (get-in node' [:data :text])}]
+                  :node_text   (let [t (get-in node' [:data :text])]
+                                 (when (some? t) (str t)))}]
     (into [row]
           (mapcat (fn [[idx child]]
                     (flatten-mind-map-node child node-id idx)))
@@ -77,8 +78,8 @@
   [row]
   (some-> row
           bean/->clj
-          (update :updated_at #(when (some? %) (long %)))
-          (update :schema_version #(when (some? %) (long %)))))
+          (update :updated_at #(when (some? %) (js/Number %)))
+          (update :schema_version #(when (some? %) (js/Number %)))))
 
 (defn- mind-map-node-rows
   [^js db page-uuid]
@@ -127,7 +128,7 @@
   [^js db table page-uuid id-column stale-ids]
   (doseq [stale-id stale-ids]
     (.exec db #js {:sql (str "delete from " table " where page_uuid = ? and " id-column " = ?")
-                   :bind #js [page-uuid stale-id]})))
+                   :bind #js [(str page-uuid) (str stale-id)]})))
 
 (defn- upsert-mind-map-node-row!
   [^js db page-uuid {:keys [node_id parent_id child_order node_json node_text]}]
@@ -138,16 +139,21 @@
                          child_order = excluded.child_order,
                          node_json = excluded.node_json,
                          node_text = excluded.node_text"
-                 :bind #js [page-uuid node_id parent_id child_order node_json node_text]}))
+                 :bind #js [(str page-uuid)
+                            (str node_id)
+                            (some-> parent_id str)
+                            (js/Number child_order)
+                            (str node_json)
+                            node_text]}))
 
 (defn- flatten-whiteboard
   [json-str]
   (when-let [scene (some-> json-str parse-json)]
     {:elements (mapv (fn [[idx element]]
                        (let [element' (assoc element :id (or (:id element) (str (random-uuid))))]
-                         {:element_id    (:id element')
-                          :element_type  (:type element')
-                          :element_order idx
+                         {:element_id    (str (:id element'))
+                          :element_type  (some-> (:type element') str)
+                          :element_order (js/Number idx)
                           :element_json  (stringify element')}))
                      (map-indexed vector (vec (or (:elements scene) []))))
      :app-state (or (:appState scene) {})}))
@@ -191,7 +197,11 @@
                          element_type = excluded.element_type,
                          element_order = excluded.element_order,
                          element_json = excluded.element_json"
-                 :bind #js [page-uuid element_id element_type element_order element_json]}))
+                 :bind #js [(str page-uuid)
+                            (str element_id)
+                            (some-> element_type str)
+                            (js/Number element_order)
+                            (str element_json)]}))
 
 (defn- ensure-doc-columns!
   [^js db]
@@ -240,8 +250,9 @@
   (.exec db (str "pragma user_version = " current-schema-version))
   db)
 
-(defn- upsert-blob-doc!
-  [^js db {:keys [page-uuid doc-type content updated-at]}]
+(defn- upsert-visual-docs-row!
+  "Shared helper to insert/update the visual_docs manifest row."
+  [^js db page-uuid doc-type content updated-at storage-format]
   (.exec db #js {:sql "insert into visual_docs (page_uuid, doc_type, content, updated_at, schema_version, storage_format)
                        values (?, ?, ?, ?, ?, ?)
                        on conflict(page_uuid) do update set
@@ -250,10 +261,19 @@
                          updated_at = excluded.updated_at,
                          schema_version = excluded.schema_version,
                          storage_format = excluded.storage_format"
-                 :bind #js [page-uuid doc-type content (int updated-at) current-schema-version blob-storage-format]})
+                 :bind #js [(str page-uuid)
+                            (str doc-type)
+                            (str content)
+                            (js/Number updated-at)
+                            current-schema-version
+                            (str storage-format)]}))
+
+(defn- upsert-blob-doc!
+  [^js db {:keys [page-uuid doc-type content updated-at]}]
+  (upsert-visual-docs-row! db page-uuid doc-type content updated-at blob-storage-format)
   {:page-uuid      page-uuid
    :doc-type       doc-type
-   :updated-at     (int updated-at)
+   :updated-at     updated-at
    :schema-version current-schema-version
    :storage-format blob-storage-format})
 
@@ -271,21 +291,18 @@
                         (or (nil? existing-row)
                             (changed-row? existing-row incoming
                                           [:parent_id :child_order :node_json :node_text]))))]
-      (.transaction db
-        (fn [tx]
-          (delete-missing-rows! tx "mind_map_nodes" page-uuid "node_id" stale-ids)
-          (doseq [row rows
-                  :when (changed? row)]
-            (upsert-mind-map-node-row! tx page-uuid row))
-          (.exec tx #js {:sql "insert into visual_docs (page_uuid, doc_type, content, updated_at, schema_version, storage_format)
-                               values (?, ?, ?, ?, ?, ?)
-                               on conflict(page_uuid) do update set
-                                 doc_type = excluded.doc_type,
-                                 content = excluded.content,
-                                 updated_at = excluded.updated_at,
-                                 schema_version = excluded.schema_version,
-                                 storage_format = excluded.storage_format"
-                         :bind #js [page-uuid doc-type content' (int updated-at) current-schema-version mind-map-node-storage-format]})))
+      ;; Use explicit BEGIN/COMMIT instead of .transaction which fails on OpfsSAHPoolDb
+      (.exec db "BEGIN")
+      (try
+        (delete-missing-rows! db "mind_map_nodes" page-uuid "node_id" stale-ids)
+        (doseq [row rows
+                :when (changed? row)]
+          (upsert-mind-map-node-row! db page-uuid row))
+        (upsert-visual-docs-row! db page-uuid doc-type content' updated-at mind-map-node-storage-format)
+        (.exec db "COMMIT")
+        (catch :default e
+          (exec-ignore-error! db "ROLLBACK")
+          (throw e)))
       {:page-uuid      page-uuid
        :doc-type       doc-type
        :updated-at     updated-at
@@ -315,27 +332,24 @@
                            (or (nil? existing-row)
                                (changed-row? existing-row incoming
                                              [:element_type :element_order :element_json]))))]
-      (.transaction db
-        (fn [tx]
-          (delete-missing-rows! tx "whiteboard_elements" page-uuid "element_id" stale-ids)
-          (doseq [row elements
-                  :when (changed? row)]
-            (upsert-whiteboard-element-row! tx page-uuid row))
-          (when (not= (:app_state_json scene-meta) app-state-js)
-            (.exec tx #js {:sql "insert into whiteboard_scene_meta (page_uuid, app_state_json)
-                                 values (?, ?)
-                                 on conflict(page_uuid) do update set
-                                   app_state_json = excluded.app_state_json"
-                           :bind #js [page-uuid app-state-js]}))
-          (.exec tx #js {:sql "insert into visual_docs (page_uuid, doc_type, content, updated_at, schema_version, storage_format)
-                               values (?, ?, ?, ?, ?, ?)
+      ;; Use explicit BEGIN/COMMIT instead of .transaction which fails on OpfsSAHPoolDb
+      (.exec db "BEGIN")
+      (try
+        (delete-missing-rows! db "whiteboard_elements" page-uuid "element_id" stale-ids)
+        (doseq [row elements
+                :when (changed? row)]
+          (upsert-whiteboard-element-row! db page-uuid row))
+        (when (not= (:app_state_json scene-meta) app-state-js)
+          (.exec db #js {:sql "insert into whiteboard_scene_meta (page_uuid, app_state_json)
+                               values (?, ?)
                                on conflict(page_uuid) do update set
-                                 doc_type = excluded.doc_type,
-                                 content = excluded.content,
-                                 updated_at = excluded.updated_at,
-                                 schema_version = excluded.schema_version,
-                                 storage_format = excluded.storage_format"
-                         :bind #js [page-uuid doc-type content' (int updated-at) current-schema-version whiteboard-element-storage-format]})))
+                                 app_state_json = excluded.app_state_json"
+                         :bind #js [(str page-uuid) (str app-state-js)]}))
+        (upsert-visual-docs-row! db page-uuid doc-type content' updated-at whiteboard-element-storage-format)
+        (.exec db "COMMIT")
+        (catch :default e
+          (exec-ignore-error! db "ROLLBACK")
+          (throw e)))
       {:page-uuid      page-uuid
        :doc-type       doc-type
        :updated-at     updated-at
