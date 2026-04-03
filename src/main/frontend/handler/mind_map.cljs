@@ -78,10 +78,8 @@
                                             [?tag :db/ident :logseq.class/Tag]]
                                    database)))]
     (if existing-eid
-      (do (js/console.log "[mind-map] found existing MindMap class tag, id=" existing-eid)
-          (p/resolved (db/entity existing-eid)))
-      (do (js/console.log "[mind-map] creating MindMap class tag")
-          (common-page-handler/<create! "MindMap" {:redirect? false :class? true})))))
+      (p/resolved (db/entity existing-eid))
+      (common-page-handler/<create! "MindMap" {:redirect? false :class? true}))))
 
 #_(defn <create-mind-map!
   "创建新的思维导图页面，并跳转到编辑器。"

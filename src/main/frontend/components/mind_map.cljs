@@ -108,7 +108,6 @@
          ;; Returns a Promise resolving to the new block's UUID string.
          :on-add-note-block
          (fn []
-           (js/console.log "[mind-map] on-add-note-block called, page-uuid:" page-uuid)
            (let [repo (state/get-current-repo)]
              (p/let [result (editor-handler/api-insert-new-block!
                              ""
@@ -116,7 +115,6 @@
                               :edit-block?  false
                               :end?         true
                               :container-id :unknown-container})]
-               (js/console.log "[mind-map] on-add-note-block result:" (clj->js result))
                (when result
                  (state/sidebar-add-block! repo (:db/id result) :block)
                  (str (:block/uuid result))))))

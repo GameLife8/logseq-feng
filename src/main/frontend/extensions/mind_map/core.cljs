@@ -1318,7 +1318,7 @@
                       ;; Protect active line from being cleared by the upcoming renderAllLines
                       ;; (triggered by CLEAR_ACTIVE_NODE inside setActiveLine)
                       (when-let [al (.-associativeLine ^js instance)]
-                        (js/console.log "[mind-map] assoc line click: setting isNotRenderAllLines=true")
+                        ;; Set isNotRenderAllLines=true on assoc line click
                         (set! (.-isNotRenderAllLines al) true))))))
            ;; Guard: ignore deactivate fired within 400 ms of a click
            ;; (SimpleMindMap sometimes fires both events in one tick)
@@ -1352,11 +1352,6 @@
                          al           (when inst (.. ^js inst -renderer -activeNodeList))
                          node-active? (boolean (and al (pos? (.-length al))))
                          in-canvas?   (.contains container target)]
-                     (js/console.log "[mind-map] keydown" (.-key e)
-                                     "node-active?" node-active?
-                                     "in-canvas?" in-canvas?
-                                     "text-input?" text-input?
-                                     "target" (.-tagName target))
                      (when (and (or node-active? in-canvas?)
                                 (not text-input?)
                                 (not (.-isComposing e)))
@@ -1374,7 +1369,6 @@
                                                (and (.-shiftKey e) (= key "Z")))) "FORWARD"
                                       (and ctrl (= key "g"))                  "ADD_GENERALIZATION"
                                       :else nil)]
-                           (js/console.log "[mind-map] execCommand" cmd)
                            (.preventDefault e)
                            (.stopPropagation e)
                            (when-let [i @(::instance state)]
@@ -1410,7 +1404,6 @@
                      (let [inst @(::instance state)
                            al   (when inst (.. ^js inst -renderer -activeNodeList))
                            node (when (and al (pos? (.-length al))) (aget al 0))]
-                       (js/console.log "[mind-map] mousedown-capture node?" (boolean node) "al-len" (when al (.-length al)))
                        (set! (.-active snap) (boolean node))
                        (set! (.-root   snap) (boolean (when node (.-isRoot ^js node)))))))
                  ctx-handler
@@ -1420,7 +1413,6 @@
                      (.stopPropagation e)
                      (let [active? (.-active snap)
                            root?   (.-root   snap)]
-                       (js/console.log "[mind-map] contextmenu node-active?" active? "is-root?" root?)
                        (reset! (::ctx-menu state)
                                {:x            (.-clientX e)
                                 :y            (.-clientY e)
@@ -1603,16 +1595,13 @@
                 (.execCommand ^js i "SET_NODE_DATA" node
                               #js {:noteBlockIds (js/JSON.stringify (clj->js new-ids))})))))
         open-linked-block! (fn [block-id]
-                             (js/console.log "[mind-map] open-linked-block! called, block-id:" block-id "on-open-block:" (boolean on-open-block))
                              (when (and (seq block-id) on-open-block)
                                (on-open-block block-id)))
         ;; Always creates a new note block and appends its UUID to the node data array
         add-note-block!
         (fn []
           (when on-add-note-block
-            (js/console.log "[mind-map] add-note-block! called")
             (-> (p/let [new-uuid (on-add-note-block)]
-                  (js/console.log "[mind-map] add-note-block! got uuid:" new-uuid)
                   (when (seq new-uuid)
                     (let [cur-ids @(::note-block-ids state)
                           new-ids (conj cur-ids new-uuid)]

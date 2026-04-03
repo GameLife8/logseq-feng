@@ -406,8 +406,7 @@
                           (set! (.-id new-el) "excalidraw-custom-fonts")
                           (.. js/document -head (appendChild new-el))
                           new-el))]
-             (set! (.-textContent fe) face-rules)
-             (js/console.log "[excalidraw] injected custom @font-face rules")))))
+             (set! (.-textContent fe) face-rules)))))
      state)
    :did-update
    (fn [state]

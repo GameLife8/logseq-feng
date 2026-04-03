@@ -73,8 +73,6 @@
       (p/resolved false))
     (-> (visual-doc/<flush-doc! (state/get-current-repo) page-uuid canvas-attr canvas-json)
         (p/then (fn [result]
-                  (when result
-                    (js/console.log "[whiteboard] canvas flushed to DB, page-uuid:" page-uuid))
                   (boolean result)))
         (p/catch (fn [error]
                    (js/console.error "[whiteboard] save-canvas-to-db! failed:" error)
@@ -152,13 +150,11 @@
       (do (notification/show! (str "白板「" title "」已存在，请使用不同的名称") :warning)
           nil)
       (p/let [page (common-page-handler/<create! title {:redirect? false})]
-        (js/console.log "[wb] <create-whiteboard! created page:" (some-> page :db/id))
         (when page
           (let [repo     (state/get-current-repo)
                 tags-ids (atom #{})]
             ;; Strategy 1: system class tag
             (when-let [wclass (db/entity :logseq.class/Whiteboard)]
-              (js/console.log "[wb] applying :logseq.class/Whiteboard tag, id=" (:db/id wclass))
               (swap! tags-ids conj (:db/id wclass)))
              ;; Strategy 2: user tag page named "Whiteboard"
              (let [database (db/get-db)
@@ -166,10 +162,8 @@
                                          :where [?e :block/title "Whiteboard"]
                                                 [(missing? $ ?e :db/ident)]]
                                        database))]
-              (if tag-eid
-                (do (js/console.log "[wb] applying user 'Whiteboard' tag, id=" tag-eid)
-                    (swap! tags-ids conj tag-eid))
-                (js/console.log "[wb] no user 'Whiteboard' tag page found; skipping strategy 2")))
+              (when tag-eid
+                (swap! tags-ids conj tag-eid)))
             ;; Apply all collected tags in one transaction
             (when (seq @tags-ids)
               (db/transact! repo

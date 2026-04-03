@@ -224,7 +224,6 @@
    (fn [state]
      (let [{:keys [api el-id]} (-> state :rum/args first)
            el (ex-api/get-element-by-id api el-id)]
-       (js/console.log "[wb-panel] did-mount el-id:" el-id "found?" (boolean el))
        (reset! (::linked-ids state)     (ex-api/get-linked-block-ids el))
        (reset! (::note-ids state)       (ex-api/get-note-block-ids el))
        (reset! (::linked-aliases state) (or (ex-api/get-block-aliases el) {}))
@@ -238,7 +237,6 @@
        (when (not= el-id @prev-el-id)
          (reset! prev-el-id el-id)
          (let [el (ex-api/get-element-by-id api el-id)]
-           (js/console.log "[wb-panel] did-update el-id:" el-id "found?" (boolean el))
            (reset! (::linked-ids state)     (ex-api/get-linked-block-ids el))
            (reset! (::note-ids state)       (ex-api/get-note-block-ids el))
            (reset! (::linked-aliases state) (or (ex-api/get-block-aliases el) {}))
@@ -313,24 +311,20 @@
                         (reset! *search-res []))
 
         do-add-linked! (fn [block-uuid-str]
-                         (js/console.log "[wb-panel] add-linked" block-uuid-str)
                          (ex-api/add-linked-block! api el-id block-uuid-str)
                          (swap! *linked-ids #(if (some #{block-uuid-str} %) %
                                                  (conj % block-uuid-str)))
                          (close-search!))
 
         do-remove-linked! (fn [uid]
-                            (js/console.log "[wb-panel] remove-linked" uid)
                             (ex-api/remove-linked-block! api el-id uid)
                             (reset! *linked-ids (filterv #(not= % uid) linked-ids)))
 
         do-remove-note! (fn [uid]
-                          (js/console.log "[wb-panel] remove-note" uid)
                           (ex-api/remove-note-block! api el-id uid)
                           (reset! *note-ids (filterv #(not= % uid) note-ids)))
 
         open-block!   (fn [uid-str]
-                        (js/console.log "[wb-panel] open-block" uid-str)
                         (on-open-block uid-str))
 
         row-style     {:display      "flex" :alignItems "center" :gap "6px"
@@ -474,10 +468,8 @@
         [:div {:style {:fontSize "12px" :opacity "0.4" :padding "4px 0"}} "暂无备注块"])
       [:button
        {:on-click (fn []
-                    (js/console.log "[wb-panel] add-note-block for el:" el-id "page:" page-uuid)
                     (p/let [uid (on-add-note-block)]
                       (when uid
-                        (js/console.log "[wb-panel] note block created uid:" uid)
                         (ex-api/add-note-block! api el-id uid)
                         (swap! *note-ids conj uid))))
         :style {:marginTop "6px" :background "none" :border "none"
@@ -583,7 +575,6 @@
         ;; (same lazy-DB pattern as the whiteboard and mind-map editors).
         open-block-in-sidebar!
         (fn [uid-str]
-          (js/console.log "[wb] open-block-in-sidebar!" uid-str)
           (when (seq uid-str)
             (let [uid (try (uuid uid-str) (catch :default e
                              (js/console.error "[wb] invalid uuid:" uid-str e) nil))]
@@ -595,14 +586,12 @@
         ;; Returns a Promise resolving to the new block's UUID string.
         add-note-block!
         (fn []
-          (js/console.log "[wb] add-note-block! page:" page-uuid)
           (p/let [result (editor-handler/api-insert-new-block!
                           ""
                           {:page         (uuid page-uuid)
                            :edit-block?  false
                            :end?         true
                            :container-id :unknown-container})]
-            (js/console.log "[wb] note block result:" (clj->js result))
             (when result
               (state/sidebar-add-block! repo (:db/id result) :block)
               (str (:block/uuid result)))))]
@@ -618,7 +607,6 @@
         :page-title            page-title
         :on-back               on-back
         :on-api-ready          (fn [api]
-                                 (js/console.log "[wb] API ready")
                                  (reset! *canvas-api api))
         ;; When user clicks 🔗 in toolbar: open panel for that element
         :on-show-linked-blocks (fn [el-id]
@@ -659,18 +647,14 @@
      (let [page-uuid (-> state :rum/args first)
            *svg      (::svg-html state)
            render-raw! (fn [raw]
-                         (js/console.log "[wb] thumbnail" page-uuid "raw canvas len:" (some-> raw count))
-                         (if-not raw
-                           (js/console.log "[wb] thumbnail: no canvas data, using placeholder")
+                         (when raw
                            (try
                              (let [data     (js/JSON.parse raw)
                                    elements (.-elements data)]
-                               (js/console.log "[wb] thumbnail elements count:"
-                                               (if elements (.-length elements) "nil"))
-                               (if (and elements
-                                        (pos? (.-length elements))
-                                        (exists? js/ExcalidrawLib)
-                                        (.-exportToSvg js/ExcalidrawLib))
+                               (when (and elements
+                                          (pos? (.-length elements))
+                                          (exists? js/ExcalidrawLib)
+                                          (.-exportToSvg js/ExcalidrawLib))
                                  (-> (js/ExcalidrawLib.exportToSvg
                                       #js {:elements elements
                                            :appState #js {:exportWithDarkMode false
@@ -683,8 +667,7 @@
                                               (.setAttribute svg "preserveAspectRatio" "xMidYMid meet")
                                               (reset! *svg (.-outerHTML svg))))
                                      (.catch (fn [err]
-                                               (js/console.warn "[wb] SVG thumbnail export failed" err))))
-                                 (js/console.log "[wb] thumbnail: empty elements or no ExcalidrawLib")))
+                                               (js/console.warn "[wb] SVG thumbnail export failed" err))))))
                              (catch :default err
                                (js/console.warn "[wb] Thumbnail parse error" err)))))
            gen-svg!  (fn []
