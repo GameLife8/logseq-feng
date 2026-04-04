@@ -253,10 +253,11 @@
                     visual-doc-index-rebuild-delay-ms
                     visual-doc-index-rebuild-retry-ms)]
      (js/setTimeout
-      (fn []
+     (fn []
         (-> (p/resolved nil)
             (p/then (fn [_]
-                      (worker-visual-doc/rebuild-derived-index! visual-doc-db doc)))
+                      (worker-visual-doc/rebuild-derived-index! visual-doc-db doc)
+                      nil))
             (p/catch
              (fn [error]
                (if (zero? attempt)
