@@ -159,7 +159,7 @@
                               from mind_map_nodes
                               where page_uuid = ?
                               order by child_order asc"
-                        :bind #js [page-uuid]
+                        :bind #js [(str page-uuid)]
                         :rowMode "object"})
          array-seq
          (map row->clj)
@@ -233,7 +233,7 @@
                               from whiteboard_elements
                               where page_uuid = ?
                               order by element_order asc"
-                        :bind #js [page-uuid]
+                        :bind #js [(str page-uuid)]
                         :rowMode "object"})
          array-seq
          (map row->clj)
@@ -246,7 +246,7 @@
                                     from whiteboard_scene_meta
                                     where page_uuid = ?
                                     limit 1"
-                              :bind #js [page-uuid]
+                              :bind #js [(str page-uuid)]
                               :rowMode "object"})]
       (some-> rows first-row row->clj))))
 
@@ -341,11 +341,12 @@
 (defn- manifest-row
   [^js db page-uuid]
   (when (seq page-uuid)
-    (let [rows (.exec db #js {:sql "select page_uuid, doc_type, content, updated_at, schema_version, storage_format, content_size
+    (let [page-uuid' (str page-uuid)
+          rows (.exec db #js {:sql "select page_uuid, doc_type, content, updated_at, schema_version, storage_format, content_size
                                     from visual_docs
                                     where page_uuid = ?
                                     limit 1"
-                              :bind #js [page-uuid]
+                              :bind #js [page-uuid']
                               :rowMode "object"})]
       (some-> rows first-row row->clj normalize-manifest-row))))
 
@@ -356,7 +357,7 @@
                                     from visual_doc_indexes
                                     where page_uuid = ?
                                     limit 1"
-                              :bind #js [page-uuid]
+                              :bind #js [(str page-uuid)]
                               :rowMode "object"})]
       (some-> rows first-row row->clj))))
 
@@ -440,10 +441,18 @@
 
 (defn- run-in-transaction!
   [^js db f]
-  (.exec db "BEGIN")
+  (try
+    (.exec db "BEGIN")
+    (catch :default e
+      (js/console.error "[run-in-transaction!] BEGIN THREW:" (.-message e))
+      (throw e)))
   (try
     (let [result (f)]
-      (.exec db "COMMIT")
+      (try
+        (.exec db "COMMIT")
+        (catch :default e
+          (js/console.error "[run-in-transaction!] COMMIT THREW:" (.-message e))
+          (throw e)))
       result)
     (catch :default e
       (exec-ignore-error! db "ROLLBACK")
@@ -531,42 +540,61 @@
 
 (defn rebuild-derived-index!
   [^js db {:keys [page-uuid doc-type updated-at]}]
-  (if-let [row (manifest-row db page-uuid)]
-    (cond
-      (not= (:doc_type row) (str doc-type))
-      {:status :stale
-       :page-uuid page-uuid
-       :doc-type (:doc_type row)
-       :updated-at (:updated_at row)}
+  (js/console.log "[rebuild-idx] START"
+                  "page-uuid type=" (str (type page-uuid)) "val=" (str page-uuid)
+                  "doc-type type=" (str (type doc-type)) "val=" (str doc-type)
+                  "updated-at type=" (str (type updated-at)) "val=" (str updated-at)
+                  "db type=" (str (type db)))
+  (let [row (try
+              (manifest-row db page-uuid)
+              (catch :default e
+                (js/console.error "[rebuild-idx] manifest-row THREW:" (.-message e))
+                (throw e)))]
+    (js/console.log "[rebuild-idx] manifest-row returned:"
+                    (if row
+                      (str "doc_type=" (:doc_type row)
+                           " updated_at=" (:updated_at row)
+                           " content_size=" (:content_size row)
+                           " storage_format=" (:storage_format row))
+                      "nil"))
+    (if row
+      (cond
+        (not= (:doc_type row) (str doc-type))
+        (do (js/console.log "[rebuild-idx] stale: doc_type mismatch" (:doc_type row) "vs" (str doc-type))
+            {:status :stale :page-uuid page-uuid :doc-type (:doc_type row) :updated-at (:updated_at row)})
 
-      (not= (:updated_at row) (js/Number updated-at))
-      {:status :stale
-       :page-uuid page-uuid
-       :doc-type (:doc_type row)
-       :updated-at (:updated_at row)}
+        (not= (:updated_at row) (js/Number updated-at))
+        (do (js/console.log "[rebuild-idx] stale: updated_at mismatch" (:updated_at row) "vs" (js/Number updated-at))
+            {:status :stale :page-uuid page-uuid :doc-type (:doc_type row) :updated-at (:updated_at row)})
 
-      (not (wants-derived-index? (:doc_type row) (:content_size row)))
-      (do
-        (clear-derived-index! db page-uuid)
-        {:status :cleared
-         :page-uuid page-uuid
-         :doc-type (:doc_type row)
-         :updated-at (:updated_at row)})
-
-      :else
-      (case (:doc_type row)
-        "mind-map" (rebuild-mind-map-index! db row)
-        "whiteboard" (rebuild-whiteboard-index! db row)
+        (not (wants-derived-index? (:doc_type row) (:content_size row)))
         (do
-          (clear-derived-index! db page-uuid)
-          {:status :unsupported
-           :page-uuid page-uuid
-           :doc-type (:doc_type row)
-           :updated-at (:updated_at row)})))
-    {:status :missing
-     :page-uuid page-uuid
-     :doc-type doc-type
-     :updated-at updated-at}))
+          (js/console.log "[rebuild-idx] clearing (small content, size=" (:content_size row) ")")
+          (try
+            (clear-derived-index! db page-uuid)
+            (catch :default e
+              (js/console.error "[rebuild-idx] clear-derived-index! THREW:" (.-message e))
+              (throw e)))
+          {:status :cleared :page-uuid page-uuid :doc-type (:doc_type row) :updated-at (:updated_at row)})
+
+        :else
+        (do
+          (js/console.log "[rebuild-idx] rebuilding index for" (:doc_type row))
+          (try
+            (case (:doc_type row)
+              "mind-map" (rebuild-mind-map-index! db row)
+              "whiteboard" (rebuild-whiteboard-index! db row)
+              (do
+                (clear-derived-index! db page-uuid)
+                {:status :unsupported :page-uuid page-uuid :doc-type (:doc_type row) :updated-at (:updated_at row)}))
+            (catch :default e
+              (js/console.error "[rebuild-idx] rebuild THREW:" (.-message e)
+                                "\n  doc_type=" (:doc_type row)
+                                "\n  content_size=" (:content_size row))
+              (throw e)))))
+      (do
+        (js/console.log "[rebuild-idx] no manifest row found")
+        {:status :missing :page-uuid page-uuid :doc-type doc-type :updated-at updated-at}))))
 
 (defn get-doc
   [^js db page-uuid]
