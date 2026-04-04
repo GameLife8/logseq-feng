@@ -33,6 +33,22 @@
   (when (pos? (alength rows))
     (aget rows 0)))
 
+(defn- exec-select
+  "Run a SELECT query and return results as a vector of CLJS maps.
+   Avoids rowMode:'object' which fails on OpfsSAHPoolDb in setTimeout contexts."
+  [^js db sql bind-arr]
+  (let [results  (volatile! [])
+        col-arr  #js []]
+    (.exec db #js {:sql         sql
+                   :bind        bind-arr
+                   :columnNames col-arr
+                   :callback    (fn [row]
+                                  (let [obj #js {}]
+                                    (dotimes [i (alength row)]
+                                      (aset obj (aget col-arr i) (aget row i)))
+                                    (vswap! results conj (bean/->clj obj))))})
+    @results))
+
 (defn- parse-json
   [json-str]
   (when (seq json-str)
@@ -135,15 +151,24 @@
   (when-let [root-node (some-> json-str parse-json)]
     (flatten-mind-map-node root-node nil 0)))
 
+(defn- normalize-number-fields
+  "Coerce known numeric fields to js/Number to avoid 32-bit int truncation."
+  [m]
+  (cond-> m
+    (some? (:updated_at m))        (update :updated_at js/Number)
+    (some? (:schema_version m))    (update :schema_version js/Number)
+    (some? (:content_size m))      (update :content_size js/Number)
+    (some? (:source_updated_at m)) (update :source_updated_at js/Number)
+    (some? (:built_at m))          (update :built_at js/Number)
+    (some? (:child_order m))       (update :child_order js/Number)
+    (some? (:element_order m))     (update :element_order js/Number)))
+
 (defn- row->clj
+  "Convert a raw JS object row to CLJS map with number coercion."
   [row]
   (some-> row
           bean/->clj
-          (update :updated_at #(when (some? %) (js/Number %)))
-          (update :schema_version #(when (some? %) (js/Number %)))
-          (update :content_size #(when (some? %) (js/Number %)))
-          (update :source_updated_at #(when (some? %) (js/Number %)))
-          (update :built_at #(when (some? %) (js/Number %)))))
+          normalize-number-fields))
 
 (defn- normalize-manifest-row
   [row]
@@ -155,15 +180,11 @@
 (defn- mind-map-node-rows
   [^js db page-uuid]
   (when (seq page-uuid)
-    (->> (.exec db #js {:sql "select page_uuid, node_id, parent_id, child_order, node_json, node_text
-                              from mind_map_nodes
-                              where page_uuid = ?
-                              order by child_order asc"
-                        :bind #js [(str page-uuid)]
-                        :rowMode "object"})
-         array-seq
-         (map row->clj)
-         vec)))
+    (mapv normalize-number-fields
+          (exec-select db
+            "select page_uuid, node_id, parent_id, child_order, node_json, node_text
+             from mind_map_nodes where page_uuid = ? order by child_order asc"
+            #js [(str page-uuid)]))))
 
 (defn- hydrate-mind-map
   [rows]
@@ -229,26 +250,18 @@
 (defn- whiteboard-element-rows
   [^js db page-uuid]
   (when (seq page-uuid)
-    (->> (.exec db #js {:sql "select page_uuid, element_id, element_type, element_order, element_json
-                              from whiteboard_elements
-                              where page_uuid = ?
-                              order by element_order asc"
-                        :bind #js [(str page-uuid)]
-                        :rowMode "object"})
-         array-seq
-         (map row->clj)
-         vec)))
+    (mapv normalize-number-fields
+          (exec-select db
+            "select page_uuid, element_id, element_type, element_order, element_json
+             from whiteboard_elements where page_uuid = ? order by element_order asc"
+            #js [(str page-uuid)]))))
 
 (defn- whiteboard-scene-meta
   [^js db page-uuid]
   (when (seq page-uuid)
-    (let [rows (.exec db #js {:sql "select page_uuid, app_state_json
-                                    from whiteboard_scene_meta
-                                    where page_uuid = ?
-                                    limit 1"
-                              :bind #js [(str page-uuid)]
-                              :rowMode "object"})]
-      (some-> rows first-row row->clj))))
+    (first (exec-select db
+             "select page_uuid, app_state_json from whiteboard_scene_meta where page_uuid = ? limit 1"
+             #js [(str page-uuid)]))))
 
 (defn- hydrate-whiteboard
   [element-rows scene-meta]
@@ -341,47 +354,20 @@
 (defn- manifest-row
   [^js db page-uuid]
   (when (seq page-uuid)
-    (let [page-uuid' (str page-uuid)]
-      ;; Test 1: basic exec with plain string
-      (try
-        (.exec db "select 1")
-        (js/console.log "[manifest-row] basic exec OK")
-        (catch :default e
-          (js/console.error "[manifest-row] basic exec FAILED:" (.-message e))))
-      ;; Test 2: exec with bind but no rowMode
-      (try
-        (.exec db #js {:sql "select count(*) from visual_docs where page_uuid = ?"
-                       :bind #js [page-uuid']})
-        (js/console.log "[manifest-row] bind-only exec OK")
-        (catch :default e
-          (js/console.error "[manifest-row] bind-only exec FAILED:" (.-message e))))
-      ;; Test 3: actual query
-      (let [rows (try
-                   (.exec db #js {:sql "select page_uuid, doc_type, content, updated_at, schema_version, storage_format, content_size
-                                        from visual_docs
-                                        where page_uuid = ?
-                                        limit 1"
-                                  :bind #js [page-uuid']
-                                  :rowMode "object"})
-                   (catch :default e
-                     (js/console.error "[manifest-row] full query FAILED:" (.-message e)
-                                       "\n  page-uuid'=" page-uuid'
-                                       "\n  typeof page-uuid'=" (js/typeof page-uuid')
-                                       "\n  typeof db=" (js/typeof db)
-                                       "\n  db.exec exists?=" (boolean (.-exec db)))
-                     (throw e)))]
-        (some-> rows first-row row->clj normalize-manifest-row)))))
+    (let [rows (exec-select db
+                 "select page_uuid, doc_type, content, updated_at, schema_version, storage_format, content_size
+                  from visual_docs where page_uuid = ? limit 1"
+                 #js [(str page-uuid)])]
+      (some-> (first rows) normalize-number-fields normalize-manifest-row))))
 
 (defn- index-state
   [^js db page-uuid]
   (when (seq page-uuid)
-    (let [rows (.exec db #js {:sql "select page_uuid, doc_type, index_format, source_updated_at, built_at
-                                    from visual_doc_indexes
-                                    where page_uuid = ?
-                                    limit 1"
-                              :bind #js [(str page-uuid)]
-                              :rowMode "object"})]
-      (some-> rows first-row row->clj))))
+    (some-> (first (exec-select db
+                     "select page_uuid, doc_type, index_format, source_updated_at, built_at
+                      from visual_doc_indexes where page_uuid = ? limit 1"
+                     #js [(str page-uuid)]))
+            normalize-number-fields)))
 
 (defn- upsert-visual-docs-row!
   "Shared helper to insert/update the visual_docs manifest row."
@@ -463,18 +449,10 @@
 
 (defn- run-in-transaction!
   [^js db f]
-  (try
-    (.exec db "BEGIN")
-    (catch :default e
-      (js/console.error "[run-in-transaction!] BEGIN THREW:" (.-message e))
-      (throw e)))
+  (.exec db "BEGIN")
   (try
     (let [result (f)]
-      (try
-        (.exec db "COMMIT")
-        (catch :default e
-          (js/console.error "[run-in-transaction!] COMMIT THREW:" (.-message e))
-          (throw e)))
+      (.exec db "COMMIT")
       result)
     (catch :default e
       (exec-ignore-error! db "ROLLBACK")
@@ -562,61 +540,42 @@
 
 (defn rebuild-derived-index!
   [^js db {:keys [page-uuid doc-type updated-at]}]
-  (js/console.log "[rebuild-idx] START"
-                  "page-uuid type=" (str (type page-uuid)) "val=" (str page-uuid)
-                  "doc-type type=" (str (type doc-type)) "val=" (str doc-type)
-                  "updated-at type=" (str (type updated-at)) "val=" (str updated-at)
-                  "db type=" (str (type db)))
-  (let [row (try
-              (manifest-row db page-uuid)
-              (catch :default e
-                (js/console.error "[rebuild-idx] manifest-row THREW:" (.-message e))
-                (throw e)))]
-    (js/console.log "[rebuild-idx] manifest-row returned:"
-                    (if row
-                      (str "doc_type=" (:doc_type row)
-                           " updated_at=" (:updated_at row)
-                           " content_size=" (:content_size row)
-                           " storage_format=" (:storage_format row))
-                      "nil"))
-    (if row
-      (cond
-        (not= (:doc_type row) (str doc-type))
-        (do (js/console.log "[rebuild-idx] stale: doc_type mismatch" (:doc_type row) "vs" (str doc-type))
-            {:status :stale :page-uuid page-uuid :doc-type (:doc_type row) :updated-at (:updated_at row)})
+  (if-let [row (manifest-row db page-uuid)]
+    (cond
+      (not= (:doc_type row) (str doc-type))
+      {:status :stale
+       :page-uuid page-uuid
+       :doc-type (:doc_type row)
+       :updated-at (:updated_at row)}
 
-        (not= (:updated_at row) (js/Number updated-at))
-        (do (js/console.log "[rebuild-idx] stale: updated_at mismatch" (:updated_at row) "vs" (js/Number updated-at))
-            {:status :stale :page-uuid page-uuid :doc-type (:doc_type row) :updated-at (:updated_at row)})
+      (not= (:updated_at row) (js/Number updated-at))
+      {:status :stale
+       :page-uuid page-uuid
+       :doc-type (:doc_type row)
+       :updated-at (:updated_at row)}
 
-        (not (wants-derived-index? (:doc_type row) (:content_size row)))
-        (do
-          (js/console.log "[rebuild-idx] clearing (small content, size=" (:content_size row) ")")
-          (try
-            (clear-derived-index! db page-uuid)
-            (catch :default e
-              (js/console.error "[rebuild-idx] clear-derived-index! THREW:" (.-message e))
-              (throw e)))
-          {:status :cleared :page-uuid page-uuid :doc-type (:doc_type row) :updated-at (:updated_at row)})
-
-        :else
-        (do
-          (js/console.log "[rebuild-idx] rebuilding index for" (:doc_type row))
-          (try
-            (case (:doc_type row)
-              "mind-map" (rebuild-mind-map-index! db row)
-              "whiteboard" (rebuild-whiteboard-index! db row)
-              (do
-                (clear-derived-index! db page-uuid)
-                {:status :unsupported :page-uuid page-uuid :doc-type (:doc_type row) :updated-at (:updated_at row)}))
-            (catch :default e
-              (js/console.error "[rebuild-idx] rebuild THREW:" (.-message e)
-                                "\n  doc_type=" (:doc_type row)
-                                "\n  content_size=" (:content_size row))
-              (throw e)))))
+      (not (wants-derived-index? (:doc_type row) (:content_size row)))
       (do
-        (js/console.log "[rebuild-idx] no manifest row found")
-        {:status :missing :page-uuid page-uuid :doc-type doc-type :updated-at updated-at}))))
+        (clear-derived-index! db page-uuid)
+        {:status :cleared
+         :page-uuid page-uuid
+         :doc-type (:doc_type row)
+         :updated-at (:updated_at row)})
+
+      :else
+      (case (:doc_type row)
+        "mind-map" (rebuild-mind-map-index! db row)
+        "whiteboard" (rebuild-whiteboard-index! db row)
+        (do
+          (clear-derived-index! db page-uuid)
+          {:status :unsupported
+           :page-uuid page-uuid
+           :doc-type (:doc_type row)
+           :updated-at (:updated_at row)})))
+    {:status :missing
+     :page-uuid page-uuid
+     :doc-type doc-type
+     :updated-at updated-at}))
 
 (defn get-doc
   [^js db page-uuid]
