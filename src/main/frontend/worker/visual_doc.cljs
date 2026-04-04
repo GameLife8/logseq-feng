@@ -45,6 +45,44 @@
   [value]
   (js/JSON.stringify (clj->js value)))
 
+(defn- error-message
+  [error]
+  (or (some-> error ex-message)
+      (some-> error .-message)
+      (str error)))
+
+(defn- value-debug
+  [value]
+  {:type    (str (type value))
+   :nil?    (nil? value)
+   :string? (string? value)
+   :number? (number? value)
+   :map?    (map? value)
+   :vector? (vector? value)
+   :count   (when (or (string? value) (vector? value) (seqable? value))
+              (count value))})
+
+(defn- log-derived-index-error!
+  [stage payload error]
+  (js/console.error
+   (str "[visual-doc-debug] " stage)
+   (clj->js (assoc payload :message (error-message error)))))
+
+(defn- mind-map-row-debug
+  [{:keys [node_id parent_id child_order node_json node_text]}]
+  {:node-id     (value-debug node_id)
+   :parent-id   (value-debug parent_id)
+   :child-order (value-debug child_order)
+   :node-json   (value-debug node_json)
+   :node-text   (value-debug node_text)})
+
+(defn- whiteboard-row-debug
+  [{:keys [element_id element_type element_order element_json]}]
+  {:element-id    (value-debug element_id)
+   :element-type  (value-debug element_type)
+   :element-order (value-debug element_order)
+   :element-json  (value-debug element_json)})
+
 (defn- content-size-bytes
   [content]
   (let [content' (str (or content ""))]
@@ -150,19 +188,31 @@
 
 (defn- upsert-mind-map-node-row!
   [^js db page-uuid {:keys [node_id parent_id child_order node_json node_text]}]
-  (.exec db #js {:sql "insert into mind_map_nodes (page_uuid, node_id, parent_id, child_order, node_json, node_text)
-                       values (?, ?, ?, ?, ?, ?)
-                       on conflict(page_uuid, node_id) do update set
-                         parent_id = excluded.parent_id,
-                         child_order = excluded.child_order,
-                         node_json = excluded.node_json,
-                         node_text = excluded.node_text"
-                 :bind #js [(str page-uuid)
-                            (str node_id)
-                            (some-> parent_id str)
-                            (js/Number child_order)
-                            (str node_json)
-                            node_text]}))
+  (try
+    (.exec db #js {:sql "insert into mind_map_nodes (page_uuid, node_id, parent_id, child_order, node_json, node_text)
+                         values (?, ?, ?, ?, ?, ?)
+                         on conflict(page_uuid, node_id) do update set
+                           parent_id = excluded.parent_id,
+                           child_order = excluded.child_order,
+                           node_json = excluded.node_json,
+                           node_text = excluded.node_text"
+                   :bind #js [(str page-uuid)
+                              (str node_id)
+                              (some-> parent_id str)
+                              (js/Number child_order)
+                              (str node_json)
+                              node_text]})
+    (catch :default error
+      (log-derived-index-error!
+       "mind-map node upsert failed"
+       {:page-uuid (value-debug page-uuid)
+        :row       (mind-map-row-debug {:node_id node_id
+                                        :parent_id parent_id
+                                        :child_order child_order
+                                        :node_json node_json
+                                        :node_text node_text})}
+       error)
+      (throw error))))
 
 (defn- flatten-whiteboard
   [json-str]
@@ -209,17 +259,28 @@
 
 (defn- upsert-whiteboard-element-row!
   [^js db page-uuid {:keys [element_id element_type element_order element_json]}]
-  (.exec db #js {:sql "insert into whiteboard_elements (page_uuid, element_id, element_type, element_order, element_json)
-                       values (?, ?, ?, ?, ?)
-                       on conflict(page_uuid, element_id) do update set
-                         element_type = excluded.element_type,
-                         element_order = excluded.element_order,
-                         element_json = excluded.element_json"
-                 :bind #js [(str page-uuid)
-                            (str element_id)
-                            (some-> element_type str)
-                            (js/Number element_order)
-                            (str element_json)]}))
+  (try
+    (.exec db #js {:sql "insert into whiteboard_elements (page_uuid, element_id, element_type, element_order, element_json)
+                         values (?, ?, ?, ?, ?)
+                         on conflict(page_uuid, element_id) do update set
+                           element_type = excluded.element_type,
+                           element_order = excluded.element_order,
+                           element_json = excluded.element_json"
+                   :bind #js [(str page-uuid)
+                              (str element_id)
+                              (some-> element_type str)
+                              (js/Number element_order)
+                              (str element_json)]})
+    (catch :default error
+      (log-derived-index-error!
+       "whiteboard element upsert failed"
+       {:page-uuid (value-debug page-uuid)
+        :row       (whiteboard-row-debug {:element_id element_id
+                                          :element_type element_type
+                                          :element_order element_order
+                                          :element_json element_json})}
+       error)
+      (throw error))))
 
 (defn- ensure-doc-columns!
   [^js db]
@@ -322,18 +383,29 @@
 (defn- set-index-state!
   [^js db page-uuid doc-type source-updated-at built-at]
   (when-let [index-format (index-format-for-doc-type doc-type)]
-    (.exec db #js {:sql "insert into visual_doc_indexes (page_uuid, doc_type, index_format, source_updated_at, built_at)
-                         values (?, ?, ?, ?, ?)
-                         on conflict(page_uuid) do update set
-                           doc_type = excluded.doc_type,
-                           index_format = excluded.index_format,
-                           source_updated_at = excluded.source_updated_at,
-                           built_at = excluded.built_at"
-                   :bind #js [(str page-uuid)
-                              (str doc-type)
-                              (str index-format)
-                              (js/Number source-updated-at)
-                              (js/Number built-at)]})))
+    (try
+      (.exec db #js {:sql "insert into visual_doc_indexes (page_uuid, doc_type, index_format, source_updated_at, built_at)
+                           values (?, ?, ?, ?, ?)
+                           on conflict(page_uuid) do update set
+                             doc_type = excluded.doc_type,
+                             index_format = excluded.index_format,
+                             source_updated_at = excluded.source_updated_at,
+                             built_at = excluded.built_at"
+                     :bind #js [(str page-uuid)
+                                (str doc-type)
+                                (str index-format)
+                                (js/Number source-updated-at)
+                                (js/Number built-at)]})
+      (catch :default error
+        (log-derived-index-error!
+         "index-state upsert failed"
+         {:page-uuid         (value-debug page-uuid)
+          :doc-type          (value-debug doc-type)
+          :index-format      (value-debug index-format)
+          :source-updated-at (value-debug source-updated-at)
+          :built-at          (value-debug built-at)}
+         error)
+        (throw error)))))
 
 (defn- clear-derived-index-state!
   [^js db page-uuid]
@@ -379,12 +451,20 @@
 
 (defn- upsert-whiteboard-scene-meta!
   [^js db page-uuid app-state]
-  (.exec db #js {:sql "insert into whiteboard_scene_meta (page_uuid, app_state_json)
-                       values (?, ?)
-                       on conflict(page_uuid) do update set
-                         app_state_json = excluded.app_state_json"
-                 :bind #js [(str page-uuid)
-                            (str (stringify app-state))]}))
+  (try
+    (.exec db #js {:sql "insert into whiteboard_scene_meta (page_uuid, app_state_json)
+                         values (?, ?)
+                         on conflict(page_uuid) do update set
+                           app_state_json = excluded.app_state_json"
+                   :bind #js [(str page-uuid)
+                              (str (stringify app-state))]})
+    (catch :default error
+      (log-derived-index-error!
+       "whiteboard scene meta upsert failed"
+       {:page-uuid (value-debug page-uuid)
+        :app-state (value-debug app-state)}
+       error)
+      (throw error))))
 
 (defn- upsert-blob-doc!
   [^js db {:keys [page-uuid doc-type content updated-at]}]
