@@ -19,3 +19,17 @@
                                    :logseq.property.reaction/target target-id}])
           affected (worker-react/get-affected-queries-keys tx-report)]
       (is (some #{[:frontend.worker.react/block-reactions target-id]} affected)))))
+
+(deftest affected-keys-objects-on-soft-delete
+  (testing "soft deleting a tagged object invalidates object query keys"
+    (let [conn             (db-test/create-conn-with-blocks
+                            [{:page {:block/title "Board"}}])
+          page             (db-test/find-page-by-title @conn "Board")
+          whiteboard-class (d/entity @conn :logseq.class/Whiteboard)
+          _                (d/transact! conn [{:db/id      (:db/id page)
+                                               :block/tags #{(:db/id whiteboard-class)}}])
+          tx-report        (d/transact! conn [{:db/id                        (:db/id page)
+                                               :logseq.property/deleted-at  1
+                                               :block/updated-at            1}])
+          affected         (worker-react/get-affected-queries-keys tx-report)]
+      (is (some #{[:frontend.worker.react/objects (:db/id whiteboard-class)]} affected)))))

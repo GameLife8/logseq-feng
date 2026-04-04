@@ -9,9 +9,9 @@ Use this note when working on Logseq whiteboard, Excalidraw integration, whitebo
 - Whiteboard page = manifest only.
 - Page entities should stay lightweight: title, tags, updated-at, and other small metadata.
 - Full scene JSON lives in the worker sqlite sidecar implemented in `src/main/frontend/worker/visual_doc.cljs`.
-- The authoritative sidecar format is now normalized scene storage:
-  `whiteboard_elements` rows plus `whiteboard_scene_meta`.
-- Sidecar writes should update `whiteboard_elements` incrementally by `element_id`, not by recreating the whole scene table on every save.
+- The authoritative durable payload is the blob snapshot stored in `visual_docs.content`.
+- `whiteboard_elements` and `whiteboard_scene_meta` are non-authoritative derived tables.
+- Derived tables may be rebuilt from the blob snapshot and must not determine save success.
 - Main-thread code must load payloads through `frontend.handler.visual-doc/<load-doc`.
 - Main-thread code must save payloads through `frontend.handler.visual-doc/<flush-doc!`.
 - `localStorage` is only the draft cache layer.
@@ -24,12 +24,11 @@ Use this note when working on Logseq whiteboard, Excalidraw integration, whitebo
 3. Editor mounts with `:initial-json` from sidecar, cache, or legacy fallback.
 4. Draft cache writes every few seconds into `localStorage`.
 5. Durable flush writes sidecar content and only touches manifest metadata in DataScript.
-6. Worker-side save normalizes the scene into `whiteboard_elements` plus `whiteboard_scene_meta`.
-7. Worker-side load reconstructs Excalidraw JSON from normalized rows.
-8. Worker-side updates should diff rows by `element_id` so inserts, deletes, reorder changes, and element edits stay incremental.
-9. Older blob sidecar records are auto-migrated into normalized scene rows on first read.
-10. Successful sidecar flush retracts the legacy `:block/whiteboard-canvas` page payload.
-11. Back navigation must await flush success before leaving.
+6. The authoritative save path should depend only on the sidecar blob snapshot succeeding.
+7. Worker-side load may reconstruct Excalidraw JSON from normalized rows when those rows match the latest blob version.
+8. If normalized rows are stale or missing, read paths should fall back to the blob snapshot.
+9. Successful sidecar flush retracts the legacy `:block/whiteboard-canvas` page payload.
+10. Back navigation must await flush success before leaving.
 
 ## Delete Order
 
@@ -50,4 +49,5 @@ Use this note when working on Logseq whiteboard, Excalidraw integration, whitebo
 
 - Search for `VISUAL-DOC-SIDECAR` before resolving merge conflicts.
 - Prefer preserving sidecar thread APIs and manifest-only page writes.
+- Prefer `blob snapshot = truth`, `normalized rows = derived index`.
 - Do not reintroduce page-level scene JSON as the primary store.

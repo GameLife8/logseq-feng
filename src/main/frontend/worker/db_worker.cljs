@@ -117,6 +117,8 @@
 (def repo-path "/db.sqlite")
 
 (def ^:private visual-doc-path worker-visual-doc/sidecar-path)
+(def ^:private visual-doc-index-rebuild-delay-ms 0)
+(def ^:private visual-doc-index-rebuild-retry-ms 1500)
 
 (defn- <export-db-file
   ([repo]
@@ -242,6 +244,33 @@
           (worker-visual-doc/ensure-table! visual-doc-db)
           (swap! *visual-doc-conns assoc repo visual-doc-db)
           visual-doc-db))))
+
+(defn- schedule-visual-doc-index-rebuild!
+  ([repo ^js visual-doc-db doc]
+   (schedule-visual-doc-index-rebuild! repo visual-doc-db doc 0))
+  ([repo ^js visual-doc-db {:keys [page-uuid doc-type updated-at] :as doc} attempt]
+   (let [delay-ms (if (zero? attempt)
+                    visual-doc-index-rebuild-delay-ms
+                    visual-doc-index-rebuild-retry-ms)]
+     (js/setTimeout
+      (fn []
+        (-> (p/resolved nil)
+            (p/then (fn [_]
+                      (worker-visual-doc/rebuild-derived-index! visual-doc-db doc)))
+            (p/catch
+             (fn [error]
+               (if (zero? attempt)
+                 (schedule-visual-doc-index-rebuild! repo visual-doc-db doc 1)
+                 (js/console.warn
+                  "[visual-doc] derived index rebuild failed"
+                  (clj->js {:repo repo
+                            :page-uuid page-uuid
+                            :doc-type doc-type
+                            :updated-at updated-at
+                            :message (or (some-> error ex-message)
+                                         (some-> error .-message)
+                                         (str error))})))))))
+      delay-ms))))
 
 (defn reset-db!
   [repo db-transit-str]
@@ -565,18 +594,24 @@
                (let [expected-format (worker-visual-doc/expected-storage-format doc_type)
                      needs-migration? (and (not= storage_format expected-format)
                                            (seq content))
+                     migration-doc    {:page-uuid  page_uuid
+                                       :doc-type   doc_type
+                                       :content    content
+                                       :updated-at updated_at}
                      doc'             (if needs-migration?
-                                        (or (worker-visual-doc/upsert-doc! visual-doc-db
-                                                                          {:page-uuid  page_uuid
-                                                                           :doc-type   doc_type
-                                                                           :content    content
-                                                                           :updated-at updated_at})
+                                        (or (worker-visual-doc/upsert-doc! visual-doc-db migration-doc)
                                             doc)
                                         doc)
                      latest-doc       (if needs-migration?
                                         (or (worker-visual-doc/get-doc visual-doc-db page-uuid)
                                             doc')
                                         doc')]
+                 (when needs-migration?
+                   (schedule-visual-doc-index-rebuild! repo
+                                                       visual-doc-db
+                                                       {:page-uuid  (:page_uuid latest-doc)
+                                                        :doc-type   (:doc_type latest-doc)
+                                                        :updated-at (:updated_at latest-doc)}))
                  (clj->js {:page-uuid      (:page_uuid latest-doc)
                            :doc-type       (:doc_type latest-doc)
                            :content        (:content latest-doc)
@@ -589,28 +624,19 @@
   [repo page-uuid doc-type content]
   (when (and (seq repo) (seq page-uuid) (seq content))
     (p/let [visual-doc-db (<get-visual-doc-db repo)
-            updated-at    (common-util/time-ms)]
-      (let [result (try
-                     (worker-visual-doc/upsert-doc! visual-doc-db
-                                                    {:page-uuid  page-uuid
-                                                     :doc-type   doc-type
-                                                     :content    content
-                                                     :updated-at updated-at})
-                     (catch :default e
-                       (js/console.error "[visual-doc-upsert] upsert-doc! threw:" (.-message e)
-                                         "\n  page-uuid=" page-uuid
-                                         "\n  doc-type=" doc-type
-                                         "\n  updated-at type=" (type updated-at) "val=" updated-at
-                                         "\n  content length=" (count content)
-                                         "\n  db type=" (type visual-doc-db))
-                       (throw e)))]
-        (try
-          (some-> result clj->js)
-          (catch :default e
-            (js/console.error "[visual-doc-upsert] clj->js threw:" (.-message e)
-                              "\n  result keys=" (keys result)
-                              "\n  result=" (pr-str (dissoc result :content)))
-            (throw e)))))))
+            updated-at    (common-util/time-ms)
+            doc-request   {:page-uuid  page-uuid
+                           :doc-type   doc-type
+                           :content    content
+                           :updated-at updated-at}
+            stored-doc    (worker-visual-doc/upsert-doc! visual-doc-db doc-request)]
+      (when stored-doc
+        (schedule-visual-doc-index-rebuild! repo
+                                            visual-doc-db
+                                            {:page-uuid  page-uuid
+                                             :doc-type   doc-type
+                                             :updated-at updated-at}))
+      (some-> stored-doc clj->js))))
 
 (def-thread-api :thread-api/visual-doc-delete
   [repo page-uuid]

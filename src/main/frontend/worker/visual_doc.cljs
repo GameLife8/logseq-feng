@@ -3,23 +3,23 @@
    content. These records must stay out of DataScript so page manifests remain
    lightweight in both worker and main-thread replicas.
 
-   Schema v3 introduces normalized mind-map node rows and normalized whiteboard
-   element rows so visual docs are no longer stored only as single blobs."
-  (:require [cljs-bean.core :as bean]))
+   Schema v4 keeps the durable manifest row as a blob snapshot while normalized
+   rows become derived indexes for large documents. Saves must succeed on the
+   blob path even when background index rebuilds fail."
+  (:require [cljs-bean.core :as bean]
+            [logseq.common.util :as common-util]))
 
 (def sidecar-path "/visual-doc.sqlite")
 
-(def ^:private current-schema-version 3)
+(def ^:private current-schema-version 4)
 (def ^:private blob-storage-format "blob")
 (def ^:private mind-map-node-storage-format "mind_map_nodes")
 (def ^:private whiteboard-element-storage-format "whiteboard_elements")
+(def ^:private normalized-min-content-bytes (* 256 1024))
 
 (defn expected-storage-format
-  [doc-type]
-  (case doc-type
-    "mind-map" mind-map-node-storage-format
-    "whiteboard" whiteboard-element-storage-format
-    blob-storage-format))
+  [_doc-type]
+  blob-storage-format)
 
 (defn- exec-ignore-error!
   [^js db sql]
@@ -44,6 +44,29 @@
 (defn- stringify
   [value]
   (js/JSON.stringify (clj->js value)))
+
+(defn- content-size-bytes
+  [content]
+  (let [content' (str (or content ""))]
+    (if (exists? js/TextEncoder)
+      (.-length (.encode (js/TextEncoder.) content'))
+      (count content'))))
+
+(defn- supports-derived-index?
+  [doc-type]
+  (contains? #{"mind-map" "whiteboard"} (str doc-type)))
+
+(defn- index-format-for-doc-type
+  [doc-type]
+  (case (str doc-type)
+    "mind-map" mind-map-node-storage-format
+    "whiteboard" whiteboard-element-storage-format
+    nil))
+
+(defn- wants-derived-index?
+  [doc-type content-size]
+  (and (supports-derived-index? doc-type)
+       (>= (or content-size 0) normalized-min-content-bytes)))
 
 (defn- normalize-mind-map-node
   [node fallback-id]
@@ -79,7 +102,17 @@
   (some-> row
           bean/->clj
           (update :updated_at #(when (some? %) (js/Number %)))
-          (update :schema_version #(when (some? %) (js/Number %)))))
+          (update :schema_version #(when (some? %) (js/Number %)))
+          (update :content_size #(when (some? %) (js/Number %)))
+          (update :source_updated_at #(when (some? %) (js/Number %)))
+          (update :built_at #(when (some? %) (js/Number %)))))
+
+(defn- normalize-manifest-row
+  [row]
+  (let [content-size (:content_size row)]
+    (if (and row (seq (:content row)) (or (nil? content-size) (zero? content-size)))
+      (assoc row :content_size (content-size-bytes (:content row)))
+      row)))
 
 (defn- mind-map-node-rows
   [^js db page-uuid]
@@ -114,21 +147,6 @@
                             :node_id)]
     (when root-id
       (build-node root-id))))
-
-(defn- by-id
-  [rows id-key]
-  (into {} (map (juxt id-key identity)) rows))
-
-(defn- changed-row?
-  [existing incoming fields]
-  (boolean
-   (some #(not= (get existing %) (get incoming %)) fields)))
-
-(defn- delete-missing-rows!
-  [^js db table page-uuid id-column stale-ids]
-  (doseq [stale-id stale-ids]
-    (.exec db #js {:sql (str "delete from " table " where page_uuid = ? and " id-column " = ?")
-                   :bind #js [(str page-uuid) (str stale-id)]})))
 
 (defn- upsert-mind-map-node-row!
   [^js db page-uuid {:keys [node_id parent_id child_order node_json node_text]}]
@@ -207,6 +225,7 @@
   [^js db]
   (exec-ignore-error! db "alter table visual_docs add column schema_version integer not null default 1")
   (exec-ignore-error! db "alter table visual_docs add column storage_format text not null default 'blob'")
+  (exec-ignore-error! db "alter table visual_docs add column content_size integer not null default 0")
   db)
 
 (defn ensure-table!
@@ -217,11 +236,19 @@
                content text not null,
                updated_at integer not null,
                schema_version integer not null default 1,
-               storage_format text not null default 'blob'
+               storage_format text not null default 'blob',
+               content_size integer not null default 0
              )")
   (ensure-doc-columns! db)
   (.exec db "create index if not exists idx_visual_docs_type_updated_at
              on visual_docs(doc_type, updated_at desc)")
+  (.exec db "create table if not exists visual_doc_indexes (
+               page_uuid text primary key,
+               doc_type text not null,
+               index_format text not null,
+               source_updated_at integer not null,
+               built_at integer not null
+             )")
   (.exec db "create table if not exists mind_map_nodes (
                page_uuid text not null,
                node_id text not null,
@@ -250,160 +277,243 @@
   (.exec db (str "pragma user_version = " current-schema-version))
   db)
 
+(defn- manifest-row
+  [^js db page-uuid]
+  (when (seq page-uuid)
+    (let [rows (.exec db #js {:sql "select page_uuid, doc_type, content, updated_at, schema_version, storage_format, content_size
+                                    from visual_docs
+                                    where page_uuid = ?
+                                    limit 1"
+                              :bind #js [page-uuid]
+                              :rowMode "object"})]
+      (some-> rows first-row row->clj normalize-manifest-row))))
+
+(defn- index-state
+  [^js db page-uuid]
+  (when (seq page-uuid)
+    (let [rows (.exec db #js {:sql "select page_uuid, doc_type, index_format, source_updated_at, built_at
+                                    from visual_doc_indexes
+                                    where page_uuid = ?
+                                    limit 1"
+                              :bind #js [page-uuid]
+                              :rowMode "object"})]
+      (some-> rows first-row row->clj))))
+
 (defn- upsert-visual-docs-row!
   "Shared helper to insert/update the visual_docs manifest row."
-  [^js db page-uuid doc-type content updated-at storage-format]
-  (.exec db #js {:sql "insert into visual_docs (page_uuid, doc_type, content, updated_at, schema_version, storage_format)
-                       values (?, ?, ?, ?, ?, ?)
+  [^js db page-uuid doc-type content updated-at storage-format content-size]
+  (.exec db #js {:sql "insert into visual_docs (page_uuid, doc_type, content, updated_at, schema_version, storage_format, content_size)
+                       values (?, ?, ?, ?, ?, ?, ?)
                        on conflict(page_uuid) do update set
                          doc_type = excluded.doc_type,
                          content = excluded.content,
                          updated_at = excluded.updated_at,
                          schema_version = excluded.schema_version,
-                         storage_format = excluded.storage_format"
+                         storage_format = excluded.storage_format,
+                         content_size = excluded.content_size"
                  :bind #js [(str page-uuid)
                             (str doc-type)
                             (str content)
                             (js/Number updated-at)
                             current-schema-version
-                            (str storage-format)]}))
+                            (str storage-format)
+                            (js/Number content-size)]}))
+
+(defn- set-index-state!
+  [^js db page-uuid doc-type source-updated-at built-at]
+  (when-let [index-format (index-format-for-doc-type doc-type)]
+    (.exec db #js {:sql "insert into visual_doc_indexes (page_uuid, doc_type, index_format, source_updated_at, built_at)
+                         values (?, ?, ?, ?, ?)
+                         on conflict(page_uuid) do update set
+                           doc_type = excluded.doc_type,
+                           index_format = excluded.index_format,
+                           source_updated_at = excluded.source_updated_at,
+                           built_at = excluded.built_at"
+                   :bind #js [(str page-uuid)
+                              (str doc-type)
+                              (str index-format)
+                              (js/Number source-updated-at)
+                              (js/Number built-at)]})))
+
+(defn- clear-derived-index-state!
+  [^js db page-uuid]
+  (when (seq page-uuid)
+    (.exec db #js {:sql "delete from visual_doc_indexes where page_uuid = ?"
+                   :bind #js [(str page-uuid)]})))
+
+(defn- derived-index-current?
+  [^js db {:keys [page_uuid doc_type updated_at content_size]}]
+  (when (wants-derived-index? doc_type content_size)
+    (let [expected-format (index-format-for-doc-type doc_type)
+          state           (index-state db page_uuid)]
+      (and state
+           (= (:doc_type state) (str doc_type))
+           (= (:index_format state) expected-format)
+           (= (:source_updated_at state) updated_at)))))
+
+(defn- clear-derived-index-rows!
+  [^js db page-uuid]
+  (let [page-uuid' (str page-uuid)]
+    (.exec db #js {:sql "delete from mind_map_nodes where page_uuid = ?"
+                   :bind #js [page-uuid']})
+    (.exec db #js {:sql "delete from whiteboard_elements where page_uuid = ?"
+                   :bind #js [page-uuid']})
+    (.exec db #js {:sql "delete from whiteboard_scene_meta where page_uuid = ?"
+                   :bind #js [page-uuid']})))
+
+(defn- clear-derived-index!
+  [^js db page-uuid]
+  (clear-derived-index-state! db page-uuid)
+  (clear-derived-index-rows! db page-uuid))
+
+(defn- run-in-transaction!
+  [^js db f]
+  (.exec db "BEGIN")
+  (try
+    (let [result (f)]
+      (.exec db "COMMIT")
+      result)
+    (catch :default e
+      (exec-ignore-error! db "ROLLBACK")
+      (throw e))))
+
+(defn- upsert-whiteboard-scene-meta!
+  [^js db page-uuid app-state]
+  (.exec db #js {:sql "insert into whiteboard_scene_meta (page_uuid, app_state_json)
+                       values (?, ?)
+                       on conflict(page_uuid) do update set
+                         app_state_json = excluded.app_state_json"
+                 :bind #js [(str page-uuid)
+                            (str (stringify app-state))]}))
 
 (defn- upsert-blob-doc!
   [^js db {:keys [page-uuid doc-type content updated-at]}]
-  (upsert-visual-docs-row! db page-uuid doc-type content updated-at blob-storage-format)
-  {:page-uuid      page-uuid
-   :doc-type       doc-type
-   :updated-at     updated-at
-   :schema-version current-schema-version
-   :storage-format blob-storage-format})
+  (let [content'      (str content)
+        content-size  (content-size-bytes content')
+        needs-index?  (wants-derived-index? doc-type content-size)]
+    (upsert-visual-docs-row! db page-uuid doc-type content' updated-at blob-storage-format content-size)
+    (if needs-index?
+      (clear-derived-index-state! db page-uuid)
+      (clear-derived-index! db page-uuid))
+    {:page-uuid      page-uuid
+     :doc-type       doc-type
+     :updated-at     updated-at
+     :schema-version current-schema-version
+     :storage-format blob-storage-format
+     :content-size   content-size}))
 
-(defn- upsert-mind-map-doc!
-  [^js db {:keys [page-uuid doc-type content updated-at]}]
+(defn- rebuild-mind-map-index!
+  [^js db {:keys [page_uuid doc_type content updated_at]}]
   (if-let [rows (flatten-mind-map content)]
-    (let [root-node (hydrate-mind-map rows)
-          content'  (or (some-> root-node stringify) content)
-          existing  (mind-map-node-rows db page-uuid)
-          old-by-id (by-id existing :node_id)
-          new-by-id (by-id rows :node_id)
-          stale-ids (remove #(contains? new-by-id %) (keys old-by-id))
-          changed?  (fn [incoming]
-                      (let [existing-row (get old-by-id (:node_id incoming))]
-                        (or (nil? existing-row)
-                            (changed-row? existing-row incoming
-                                          [:parent_id :child_order :node_json :node_text]))))]
-      ;; Use explicit BEGIN/COMMIT instead of .transaction which fails on OpfsSAHPoolDb
-      (.exec db "BEGIN")
-      (try
-        (delete-missing-rows! db "mind_map_nodes" page-uuid "node_id" stale-ids)
-        (doseq [row rows
-                :when (changed? row)]
-          (upsert-mind-map-node-row! db page-uuid row))
-        (upsert-visual-docs-row! db page-uuid doc-type content' updated-at mind-map-node-storage-format)
-        (.exec db "COMMIT")
-        (catch :default e
-          (exec-ignore-error! db "ROLLBACK")
-          (throw e)))
-      {:page-uuid      page-uuid
-       :doc-type       doc-type
-       :updated-at     updated-at
-       :schema-version current-schema-version
-       :storage-format mind-map-node-storage-format
-       :content        content'})
-    (upsert-blob-doc! db {:page-uuid page-uuid
-                          :doc-type doc-type
-                          :content content
-                          :updated-at updated-at})))
+    (run-in-transaction!
+     db
+     (fn []
+       (clear-derived-index-rows! db page_uuid)
+       (doseq [row rows]
+         (upsert-mind-map-node-row! db page_uuid row))
+       (set-index-state! db page_uuid doc_type updated_at (common-util/time-ms))
+       {:status     :rebuilt
+        :page-uuid  page_uuid
+        :doc-type   doc_type
+        :updated-at updated_at}))
+    (do
+      (clear-derived-index! db page_uuid)
+      {:status :invalid-content
+       :page-uuid page_uuid
+       :doc-type doc_type
+       :updated-at updated_at})))
 
-(defn- upsert-whiteboard-doc!
-  [^js db {:keys [page-uuid doc-type content updated-at]}]
+(defn- rebuild-whiteboard-index!
+  [^js db {:keys [page_uuid doc_type content updated_at]}]
   (if-let [{:keys [elements app-state]} (flatten-whiteboard content)]
-    (let [content'     (stringify {:elements (mapv (fn [{:keys [element_json]}]
-                                                    (or (parse-json element_json) {}))
-                                                  (sort-by :element_order elements))
-                                   :appState app-state})
-          existing     (whiteboard-element-rows db page-uuid)
-          old-by-id    (by-id existing :element_id)
-          new-by-id    (by-id elements :element_id)
-          stale-ids    (remove #(contains? new-by-id %) (keys old-by-id))
-          app-state-js (stringify app-state)
-          scene-meta   (whiteboard-scene-meta db page-uuid)
-          changed?     (fn [incoming]
-                         (let [existing-row (get old-by-id (:element_id incoming))]
-                           (or (nil? existing-row)
-                               (changed-row? existing-row incoming
-                                             [:element_type :element_order :element_json]))))]
-      ;; Use explicit BEGIN/COMMIT instead of .transaction which fails on OpfsSAHPoolDb
-      (.exec db "BEGIN")
-      (try
-        (delete-missing-rows! db "whiteboard_elements" page-uuid "element_id" stale-ids)
-        (doseq [row elements
-                :when (changed? row)]
-          (upsert-whiteboard-element-row! db page-uuid row))
-        (when (not= (:app_state_json scene-meta) app-state-js)
-          (.exec db #js {:sql "insert into whiteboard_scene_meta (page_uuid, app_state_json)
-                               values (?, ?)
-                               on conflict(page_uuid) do update set
-                                 app_state_json = excluded.app_state_json"
-                         :bind #js [(str page-uuid) (str app-state-js)]}))
-        (upsert-visual-docs-row! db page-uuid doc-type content' updated-at whiteboard-element-storage-format)
-        (.exec db "COMMIT")
-        (catch :default e
-          (exec-ignore-error! db "ROLLBACK")
-          (throw e)))
-      {:page-uuid      page-uuid
-       :doc-type       doc-type
-       :updated-at     updated-at
-       :schema-version current-schema-version
-       :storage-format whiteboard-element-storage-format
-       :content        content'})
-    (upsert-blob-doc! db {:page-uuid page-uuid
-                          :doc-type doc-type
-                          :content content
-                          :updated-at updated-at})))
+    (run-in-transaction!
+     db
+     (fn []
+       (clear-derived-index-rows! db page_uuid)
+       (doseq [row elements]
+         (upsert-whiteboard-element-row! db page_uuid row))
+       (upsert-whiteboard-scene-meta! db page_uuid app-state)
+       (set-index-state! db page_uuid doc_type updated_at (common-util/time-ms))
+       {:status     :rebuilt
+        :page-uuid  page_uuid
+        :doc-type   doc_type
+        :updated-at updated_at}))
+    (do
+      (clear-derived-index! db page_uuid)
+      {:status :invalid-content
+       :page-uuid page_uuid
+       :doc-type doc_type
+       :updated-at updated_at})))
 
 (defn upsert-doc!
-  [^js db {:keys [doc-type] :as doc}]
-  (case doc-type
-    "mind-map" (upsert-mind-map-doc! db doc)
-    "whiteboard" (upsert-whiteboard-doc! db doc)
-    (upsert-blob-doc! db doc)))
+  [^js db doc]
+  (upsert-blob-doc! db doc))
+
+(defn rebuild-derived-index!
+  [^js db {:keys [page-uuid doc-type updated-at]}]
+  (if-let [row (manifest-row db page-uuid)]
+    (cond
+      (not= (:doc_type row) (str doc-type))
+      {:status :stale
+       :page-uuid page-uuid
+       :doc-type (:doc_type row)
+       :updated-at (:updated_at row)}
+
+      (not= (:updated_at row) (js/Number updated-at))
+      {:status :stale
+       :page-uuid page-uuid
+       :doc-type (:doc_type row)
+       :updated-at (:updated_at row)}
+
+      (not (wants-derived-index? (:doc_type row) (:content_size row)))
+      (do
+        (clear-derived-index! db page-uuid)
+        {:status :cleared
+         :page-uuid page-uuid
+         :doc-type (:doc_type row)
+         :updated-at (:updated_at row)})
+
+      :else
+      (case (:doc_type row)
+        "mind-map" (rebuild-mind-map-index! db row)
+        "whiteboard" (rebuild-whiteboard-index! db row)
+        (do
+          (clear-derived-index! db page-uuid)
+          {:status :unsupported
+           :page-uuid page-uuid
+           :doc-type (:doc_type row)
+           :updated-at (:updated_at row)})))
+    {:status :missing
+     :page-uuid page-uuid
+     :doc-type doc-type
+     :updated-at updated-at}))
 
 (defn get-doc
   [^js db page-uuid]
-  (when (seq page-uuid)
-    (let [rows (.exec db #js {:sql "select page_uuid, doc_type, content, updated_at, schema_version, storage_format
-                                    from visual_docs
-                                    where page_uuid = ?
-                                    limit 1"
-                              :bind #js [page-uuid]
-                              :rowMode "object"})
-          row  (some-> rows first-row row->clj)]
-      (when row
-        (case (:storage_format row)
-          "mind_map_nodes"
-          (let [root-node (some-> (mind-map-node-rows db page-uuid) hydrate-mind-map)]
-            (assoc row :content (or (some-> root-node stringify)
-                                    (:content row))))
+  (when-let [row (manifest-row db page-uuid)]
+    (let [row' (cond-> row
+                 (derived-index-current? db row)
+                 (assoc :derived_index_current true))]
+      (case (:storage_format row')
+      "mind_map_nodes"
+      (let [root-node (some-> (mind-map-node-rows db page-uuid) hydrate-mind-map)]
+        (assoc row' :content (or (some-> root-node stringify)
+                                 (:content row'))))
 
-          "whiteboard_elements"
-          (let [scene (hydrate-whiteboard (or (whiteboard-element-rows db page-uuid) [])
-                                          (whiteboard-scene-meta db page-uuid))]
-            (assoc row :content (or (some-> scene stringify)
-                                    (:content row))))
+      "whiteboard_elements"
+      (let [scene (hydrate-whiteboard (or (whiteboard-element-rows db page-uuid) [])
+                                      (whiteboard-scene-meta db page-uuid))]
+        (assoc row' :content (or (some-> scene stringify)
+                                 (:content row'))))
 
-          row)))))
+      row'))))
 
 (defn delete-doc!
   [^js db page-uuid]
   (if (seq page-uuid)
     (do
-      (.exec db #js {:sql "delete from mind_map_nodes where page_uuid = ?"
-                     :bind #js [page-uuid]})
-      (.exec db #js {:sql "delete from whiteboard_elements where page_uuid = ?"
-                     :bind #js [page-uuid]})
-      (.exec db #js {:sql "delete from whiteboard_scene_meta where page_uuid = ?"
-                     :bind #js [page-uuid]})
+      (clear-derived-index! db page-uuid)
       (.exec db #js {:sql "delete from visual_docs where page_uuid = ?"
-                     :bind #js [page-uuid]})
+                     :bind #js [(str page-uuid)]})
       true)
     false))

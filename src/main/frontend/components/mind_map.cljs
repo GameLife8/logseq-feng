@@ -182,17 +182,18 @@
         (fn []
           (let [trimmed (clojure.string/trim new-name)]
             (when (seq trimmed)
-              (mind-map-handler/<create-mind-map! trimmed)
-              (reset! *creating? false)
-              (reset! *new-name ""))))
+              (p/let [result (mind-map-handler/<create-mind-map! trimmed)]
+                (when result
+                  (reset! *creating? false)
+                  (reset! *new-name ""))))))
 
         do-rename!
         (fn []
           (let [trimmed (clojure.string/trim rename-val)]
             (when (and (seq trimmed) editing-uuid)
-              (mind-map-handler/<rename-mind-map! editing-uuid trimmed)
-              (reset! *editing-uuid nil)
-              (reset! *rename-val ""))))
+              (p/let [_ (mind-map-handler/<rename-mind-map! editing-uuid trimmed)]
+                (reset! *editing-uuid nil)
+                (reset! *rename-val "")))))
 
         cancel-rename!
         (fn [] (reset! *editing-uuid nil) (reset! *rename-val ""))]

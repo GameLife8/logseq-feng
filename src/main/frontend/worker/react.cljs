@@ -49,6 +49,7 @@
                   (distinct))
         object-membership-attrs #{:block/title
                                   :block/updated-at
+                                  :logseq.property/deleted-at
                                   :block/whiteboard-canvas
                                   :block/mind-map-data}
         object-tags (->> (filter (fn [datom]
