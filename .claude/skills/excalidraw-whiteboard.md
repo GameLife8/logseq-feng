@@ -1,53 +1,150 @@
-﻿# excalidraw-whiteboard
+# excalidraw-whiteboard
 
 ## When To Use
 
-Use this note when working on Logseq whiteboard, Excalidraw integration, whiteboard gallery behavior, linked blocks, or whiteboard persistence.
+Use this note when working on Logseq whiteboard, Excalidraw integration, whiteboard gallery, linked blocks, or whiteboard persistence.
+
+## Architecture Overview
+
+```
+┌─ localStorage (draft cache, every 3s) ───┐
+│  Key: "whiteboard-data-{page-uuid}"       │
+│  Value: {version:1, saved-at, data: json} │
+│  LRU: keeps last 5 entries                │
+└──────────────┬────────────────────────────┘
+               ↕
+┌─ Worker SQLite Sidecar (/visual-doc.sqlite) ──────┐
+│  visual_docs            — blob manifest row        │
+│  whiteboard_elements    — derived index (≥256KB)   │
+│  whiteboard_scene_meta  — appState (scroll, zoom)  │
+│  visual_doc_indexes     — index state tracker      │
+└──────────────┬─────────────────────────────────────┘
+               ↕
+┌─ DataScript (main thread) ────────────────┐
+│  Page entity: title, tags, updated-at     │
+│  NO large payload (retracted after save)  │
+└───────────────────────────────────────────┘
+```
 
 ## Storage Model
 
-- Whiteboard page = manifest only.
-- Page entities should stay lightweight: title, tags, updated-at, and other small metadata.
-- Full scene JSON lives in the worker sqlite sidecar implemented in `src/main/frontend/worker/visual_doc.cljs`.
-- The authoritative durable payload is the blob snapshot stored in `visual_docs.content`.
-- `whiteboard_elements` and `whiteboard_scene_meta` are non-authoritative derived tables.
-- Derived tables may be rebuilt from the blob snapshot and must not determine save success.
-- Main-thread code must load payloads through `frontend.handler.visual-doc/<load-doc`.
-- Main-thread code must save payloads through `frontend.handler.visual-doc/<flush-doc!`.
-- `localStorage` is only the draft cache layer.
-- `:block/whiteboard-canvas` is legacy fallback only during migration. It is not the source of truth anymore.
+- Whiteboard page = manifest only in DataScript.
+- Full scene JSON lives in the worker SQLite sidecar (`visual_docs.content`).
+- The authoritative durable payload is the blob snapshot — it determines save success.
+- `whiteboard_elements` + `whiteboard_scene_meta` are non-authoritative derived tables, rebuilt in background for docs ≥ 256 KB.
+- Derived index rebuild is non-blocking — failures do not break saves.
+- Main-thread load: `frontend.handler.visual-doc/<load-doc`.
+- Main-thread save: `frontend.handler.visual-doc/<flush-doc!`.
+- `localStorage` is the draft cache layer with LRU eviction (5 entries).
+- `:block/whiteboard-canvas` is legacy fallback only — retracted after sidecar save succeeds.
 
 ## Read And Save Flow
 
-1. Route resolves the page manifest from DataScript.
-2. Parent component loads the whiteboard payload worker-first through `whiteboard-handler/<load-canvas-doc`.
-3. Editor mounts with `:initial-json` from sidecar, cache, or legacy fallback.
-4. Draft cache writes every few seconds into `localStorage`.
-5. Durable flush writes sidecar content and only touches manifest metadata in DataScript.
-6. The authoritative save path should depend only on the sidecar blob snapshot succeeding.
-7. Worker-side load may reconstruct Excalidraw JSON from normalized rows when those rows match the latest blob version.
-8. If normalized rows are stale or missing, read paths should fall back to the blob snapshot.
-9. Successful sidecar flush retracts the legacy `:block/whiteboard-canvas` page payload.
-10. Back navigation must await flush success before leaving.
+### Save Path (auto every 9s + explicit)
+```
+Excalidraw onChange → mark persist-dirty
+  → Timer 3s: save-to-ls! → localStorage + *cached?=true
+  → Timer 9s: persist! → on-save-data(page-uuid, json-str)
+    → handler/whiteboard/save-canvas-to-db!
+      → handler/visual-doc/<flush-doc! repo page-uuid :block/whiteboard-canvas json-str
+        → Worker :thread-api/visual-doc-upsert
+          → worker/visual-doc/upsert-doc! (blob write)
+          → schedule-visual-doc-index-rebuild! (background)
+        → Main: retract :block/whiteboard-canvas, update :block/updated-at
+      → *persisted?=true
+```
 
-## Delete Order
+### Load Path
+```
+Component mount
+  → handler/whiteboard/<load-canvas-doc page-uuid
+    → handler/visual-doc/<load-doc repo page-uuid :block/whiteboard-canvas "whiteboard-data"
+      → Worker :thread-api/visual-doc-get (reads sidecar)
+      → localStorage read (draft cache)
+      → choose-newer-source → winner
+    → Pass initial-json + needs-initial-flush? to Excalidraw
+```
 
-1. Delete sidecar payload through `frontend.handler.visual-doc/<delete-doc!`.
-2. Clear local draft cache.
-3. Delete the page manifest.
+### Delete Order
+1. `visual-doc/<delete-doc!` — remove sidecar payload + localStorage cache
+2. Delete the page manifest
+
+## Sync Status UI
+
+Bottom-right overlay (not in toolbar):
+```
+Draft: 草稿 已缓存 / 草稿 待缓存
+Graph: 图谱 已保存 / 图谱 待保存
+```
+
+Tracked atoms: `*cached?`, `*persisted?`, `*cache-dirty?`, `*persist-dirty?`
+
+## Key Constants
+
+| Constant | Value | Location |
+|----------|-------|----------|
+| `sidecar-path` | `/visual-doc.sqlite` | `worker/visual_doc.cljs` |
+| `schema-version` | 4 | `worker/visual_doc.cljs` |
+| `normalized-min-content-bytes` | 256 KB | `worker/visual_doc.cljs` |
+| `cache-version` | 1 | `handler/visual_doc.cljs` |
+| `lru-max-entries` | 5 | `handler/visual_doc.cljs` |
+| Draft cache interval | 3000 ms | `excalidraw/core.cljs` |
+| DB flush interval | 9000 ms | `excalidraw/core.cljs` |
+| Index rebuild delay | 0ms (first) / 1500ms (retry) | `worker/db_worker.cljs` |
+
+## Whiteboard JSON Format
+
+```json
+{
+  "elements": [
+    { "id": "uuid", "type": "rectangle", "x": 0, "y": 0, ... }
+  ],
+  "appState": {
+    "scrollX": 0, "scrollY": 0,
+    "zoom": { "value": 1 }
+  }
+}
+```
+
+## Known Pitfalls
+
+- **`rowMode: "object"` crashes on OpfsSAHPoolDb** in setTimeout contexts. All SELECT queries must use `exec-select` (callback + columnNames approach) instead.
+- **`(int x)` / `(long x)` in CLJS** truncate to 32-bit signed integer via `(x | 0)`. Timestamps overflow. Always use `(js/Number x)`.
+- **SQL bind values** must be JS primitives (string, number, null). Wrap with `(str x)`, `(js/Number x)`, `(some-> x str)`.
+- **`.transaction` on OpfsSAHPoolDb** throws "Cannot convert object to primitive value". Use explicit `BEGIN`/`COMMIT`/`ROLLBACK` via `run-in-transaction!`.
+- **`remote-function` in `thread_api.cljc`** transit-encodes errors even in `direct-pass?` mode — main thread receives transit string instead of rejected promise.
+- **Excalidraw `onChange`** fires very frequently — only do lightweight work (flag dirty bits), defer heavy writes to timers.
+
+## Props Interface (core.cljs)
+
+```clojure
+:page-uuid              — UUID string
+:page-title             — display title
+:initial-json           — preloaded scene JSON
+:needs-initial-flush?   — boolean (cache newer than sidecar)
+:on-save-data           — fn(page-uuid, json-str) → promise
+:on-back                — fn() after save completes
+:on-api-ready           — fn(api) for external hooks
+:custom-fonts           — {:virgil :helvetica :cascadia} → paths
+:render-tags            — fn() → React component
+:on-rename              — fn(new-title)
+:on-show-linked-blocks  — fn(element-id)
+:on-selection-change    — fn(element-id | nil)
+```
 
 ## Current Hotspots
 
-- `src/main/frontend/worker/visual_doc.cljs`
-- `src/main/frontend/worker/db_worker.cljs`
-- `src/main/frontend/handler/visual_doc.cljs`
-- `src/main/frontend/handler/whiteboard.cljs`
-- `src/main/frontend/components/whiteboard.cljs`
-- `src/main/frontend/extensions/excalidraw/core.cljs`
+- `src/main/frontend/worker/visual_doc.cljs` — SQLite sidecar ops (exec-select, upsert, index rebuild)
+- `src/main/frontend/worker/db_worker.cljs` — Thread API handlers, index rebuild scheduling
+- `src/main/frontend/handler/visual_doc.cljs` — Three-source reconciliation, cache, flush
+- `src/main/frontend/handler/whiteboard.cljs` — Whiteboard specific handlers
+- `src/main/frontend/components/whiteboard.cljs` — Gallery + editor mount
+- `src/main/frontend/extensions/excalidraw/core.cljs` — Excalidraw wrapper (timers, sync status, lifecycle)
 
 ## Merge Notes
 
 - Search for `VISUAL-DOC-SIDECAR` before resolving merge conflicts.
-- Prefer preserving sidecar thread APIs and manifest-only page writes.
-- Prefer `blob snapshot = truth`, `normalized rows = derived index`.
+- Preserve sidecar thread APIs and manifest-only page writes.
+- `blob snapshot = truth`, `normalized rows = derived index`.
 - Do not reintroduce page-level scene JSON as the primary store.
+- Do not use `rowMode: "object"` in any `.exec` call — use `exec-select` helper.
