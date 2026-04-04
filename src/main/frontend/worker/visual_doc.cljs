@@ -341,14 +341,36 @@
 (defn- manifest-row
   [^js db page-uuid]
   (when (seq page-uuid)
-    (let [page-uuid' (str page-uuid)
-          rows (.exec db #js {:sql "select page_uuid, doc_type, content, updated_at, schema_version, storage_format, content_size
-                                    from visual_docs
-                                    where page_uuid = ?
-                                    limit 1"
-                              :bind #js [page-uuid']
-                              :rowMode "object"})]
-      (some-> rows first-row row->clj normalize-manifest-row))))
+    (let [page-uuid' (str page-uuid)]
+      ;; Test 1: basic exec with plain string
+      (try
+        (.exec db "select 1")
+        (js/console.log "[manifest-row] basic exec OK")
+        (catch :default e
+          (js/console.error "[manifest-row] basic exec FAILED:" (.-message e))))
+      ;; Test 2: exec with bind but no rowMode
+      (try
+        (.exec db #js {:sql "select count(*) from visual_docs where page_uuid = ?"
+                       :bind #js [page-uuid']})
+        (js/console.log "[manifest-row] bind-only exec OK")
+        (catch :default e
+          (js/console.error "[manifest-row] bind-only exec FAILED:" (.-message e))))
+      ;; Test 3: actual query
+      (let [rows (try
+                   (.exec db #js {:sql "select page_uuid, doc_type, content, updated_at, schema_version, storage_format, content_size
+                                        from visual_docs
+                                        where page_uuid = ?
+                                        limit 1"
+                                  :bind #js [page-uuid']
+                                  :rowMode "object"})
+                   (catch :default e
+                     (js/console.error "[manifest-row] full query FAILED:" (.-message e)
+                                       "\n  page-uuid'=" page-uuid'
+                                       "\n  typeof page-uuid'=" (js/typeof page-uuid')
+                                       "\n  typeof db=" (js/typeof db)
+                                       "\n  db.exec exists?=" (boolean (.-exec db)))
+                     (throw e)))]
+        (some-> rows first-row row->clj normalize-manifest-row)))))
 
 (defn- index-state
   [^js db page-uuid]
