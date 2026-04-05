@@ -27,7 +27,14 @@
 
 (defn task-status-ident
   [task]
-  (get-in task [:logseq.property/status :db/ident]))
+  (or
+   (get-in task [:logseq.property/status :db/ident])
+   ;; Agenda pulls raw entities, so built-in default ref values like Status=Todo
+   ;; are not materialized for date-only tasks. Treat Scheduled/Deadline items as
+   ;; Todo so agenda status pills, columns, and filters stay aligned.
+   (when (or (:logseq.property/scheduled task)
+             (:logseq.property/deadline task))
+     :logseq.property/status.todo)))
 
 (defn task-active?
   [task]

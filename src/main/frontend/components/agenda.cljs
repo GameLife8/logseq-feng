@@ -150,18 +150,67 @@
 (def ^:private task-active? agenda-data/task-active?)
 (def ^:private prop->ms agenda-data/prop->ms)
 (def ^:private task-date-info agenda-data/task-date-info)
-(def ^:private task-date-ms agenda-data/task-date-ms)
 
-(defn- group-tasks-by-day
-  "tasks → {[y m d] [tasks...]}"
+(def ^:private display-event-source-order
+  {:created 0
+   :scheduled 1
+   :deadline 2})
+
+(defn- build-display-event
+  [task source ms]
+  (assoc task
+         :agenda/source source
+         :agenda/ms ms
+         :agenda/key (str (:block/uuid task) "-" (name source) "-" ms)))
+
+(defn- task->display-events
+  "Projects one agenda task into agenda display events.
+   - Scheduled + Deadline on the same day collapse into one Deadline event.
+   - Scheduled + Deadline on different days render as two events.
+   - Date-less tasks fall back to created-at."
+  [task]
+  (let [scheduled-ms (prop->ms (:logseq.property/scheduled task))
+        deadline-ms  (prop->ms (:logseq.property/deadline task))
+        created-ms   (:block/created-at task)]
+    (cond
+      (and scheduled-ms deadline-ms)
+      (if (same-day? (ms->ymd scheduled-ms) (ms->ymd deadline-ms))
+        [(build-display-event task :deadline deadline-ms)]
+        [(build-display-event task :scheduled scheduled-ms)
+         (build-display-event task :deadline deadline-ms)])
+
+      deadline-ms
+      [(build-display-event task :deadline deadline-ms)]
+
+      scheduled-ms
+      [(build-display-event task :scheduled scheduled-ms)]
+
+      created-ms
+      [(build-display-event task :created created-ms)]
+
+      :else
+      [])))
+
+(defn- sort-display-events
+  [events]
+  (sort-by (juxt :agenda/ms
+                 #(get display-event-source-order (:agenda/source %) 99)
+                 :block/created-at
+                 :block/title)
+           events))
+
+(defn- group-display-events-by-day
   [tasks]
-  (reduce (fn [acc task]
-            (if-let [ms (task-date-ms task)]
-              (let [ymd (ms->ymd ms)]
-                (update acc ymd (fnil conj []) task))
-              acc))
-          {}
-          tasks))
+  (->> tasks
+       (mapcat task->display-events)
+       (reduce (fn [acc event]
+                 (if-let [ms (:agenda/ms event)]
+                   (update acc (ms->ymd ms) (fnil conj []) event)
+                   acc))
+               {})
+       (into {}
+             (map (fn [[ymd events]]
+                    [ymd (vec (sort-display-events events))])))))
 
 ;; ── 项目视图数据 ──────────────────────────────────────────────────────────────
 
@@ -606,6 +655,13 @@
       ds
       (str ds " " (util/zero-pad h) ":" (util/zero-pad mi)))))
 
+(defn- task-display-date-info
+  [task]
+  (if-let [ms (:agenda/ms task)]
+    {:ms ms
+     :source (:agenda/source task)}
+    (task-date-info task)))
+
 (rum/defcs task-card
   "任务卡片：
    - 点击状态圆点/标签 → 展开状态选择器
@@ -622,7 +678,7 @@
         color   (get status-color ident "#94a3b8")
         label   (get status-label ident "无状态")
         p-title (:block/title page)
-        dinfo   (task-date-info task)
+        dinfo   (task-display-date-info task)
         src-tip (case (:source dinfo)
                   :scheduled "计划日期" :deadline "截止日期"
                   :journal "日记页日期" :created "创建时间" "")]
@@ -677,6 +733,7 @@
       (case (:source dinfo)
         :scheduled (str "📅 " (ms->date-str (:ms dinfo)))
         :deadline  (str "⏰ " (ms->date-str (:ms dinfo)))
+        :created   (str "🕐 " (ms->date-str (:ms dinfo)))
         (or p-title ""))]
 
      ;; ── 状态选择下拉 ──────────────────────────────────────────────────────
@@ -743,7 +800,7 @@
 ;; ── 月历视图 ──────────────────────────────────────────────────────────────────
 
 (rum/defc month-view
-  [tasks-by-day cur-year cur-month selected-ymd on-select-day]
+  [events-by-day cur-year cur-month selected-ymd on-select-day]
   (let [grid       (month-grid-days cur-year cur-month)
         today      (today-ymd)
         weeks      (partition 7 grid)]
@@ -762,11 +819,11 @@
        [:div {:key   week-key
               :style {:display "grid" :gridTemplateColumns "repeat(7, 1fr)"
                       :gap "2px"}}
-        (for [{:keys [ymd current?]} week
-              :let [tasks     (get tasks-by-day ymd [])
+         (for [{:keys [ymd current?]} week
+               :let [events    (get events-by-day ymd [])
                     is-today  (same-day? ymd today)
                     selected  (same-day? ymd selected-ymd)
-                    n-tasks   (count tasks)]]
+                    n-events  (count events)]]
           [:div.agenda-day-cell
            {:key      (str ymd)
             :on-click #(on-select-day ymd)
@@ -788,30 +845,31 @@
                             :fontWeight (if is-today "700" "500")
                             :color      (if is-today "var(--lx-accent-09, #4f46e5)" "inherit")}}
              (last ymd)]
-            (when (pos? n-tasks)
+            (when (pos? n-events)
               [:span {:style {:fontSize "11px" :background "#6366f1" :color "#fff"
                               :borderRadius "10px" :padding "0 5px" :lineHeight "16px"}}
-               n-tasks])]
+               n-events])]
            ;; show up to 2 task dots
-           (for [t (take 2 tasks)
-                 :let [color (get status-color (task-status-ident t) "#94a3b8")]]
-             [:div {:key   (str (:block/uuid t))
+           (for [event (take 2 events)
+                 :let [color (get status-color (task-status-ident event) "#94a3b8")]]
+             [:div {:key   (or (:agenda/key event)
+                               (str (:block/uuid event)))
                     :style {:fontSize "11px" :overflow "hidden"
                             :textOverflow "ellipsis" :whiteSpace "nowrap"
                             :color color :lineHeight "1.4"}}
-              (str "• " (or (:block/title t) "(无标题)"))])
-           (when (> n-tasks 2)
+              (str "• " (or (:block/title event) "(无标题)"))])
+           (when (> n-events 2)
              [:div {:style {:fontSize "10px" :opacity "0.5"}}
-              (str "+" (- n-tasks 2) " 更多")])])])]))
+              (str "+" (- n-events 2) " 更多")])])])]))
 
 ;; ── 周视图 ────────────────────────────────────────────────────────────────────
 
 (rum/defc week-view
-  [tasks-by-day week-ymds]
+  [events-by-day week-ymds]
   (let [today (today-ymd)]
     [:div.agenda-week-view {:style {:display "flex" :gap "8px" :height "100%"}}
      (for [ymd week-ymds
-           :let [tasks    (get tasks-by-day ymd [])
+           :let [events   (get events-by-day ymd [])
                  is-today (same-day? ymd today)
                  [y m d]  ymd]]
        [:div {:key   (str ymd)
@@ -827,16 +885,18 @@
                        :color (if is-today "var(--lx-accent-09, #4f46e5)" "inherit")}}
          (str (nth weekday-names (mod (dec (.getDay (ymd->date ymd))) 7)) " "
               (inc m) "/" d)]
-        (if (seq tasks)
-          (for [t tasks]
-            (rum/with-key (task-card t) (str (:block/uuid t))))
+        (if (seq events)
+          (for [event events]
+            (rum/with-key (task-card event)
+                          (or (:agenda/key event)
+                              (str (:block/uuid event)))))
           [:div {:style {:fontSize "12px" :opacity "0.35" :textAlign "center"
                          :paddingTop "12px"}} "暂无任务"])])]))
 
 ;; ── 看板视图 ──────────────────────────────────────────────────────────────────
 
 (rum/defc kanban-column
-  [title color tasks]
+  [title color items]
   [:div {:style {:flex "1" :minWidth "180px"
                  :background "var(--lx-gray-02, #f9fafb)"
                  :borderRadius "10px"
@@ -848,9 +908,12 @@
                     :background color :flexShrink "0"}}]
     [:span {:style {:fontSize "13px" :fontWeight "600"}} title]
     [:span {:style {:fontSize "12px" :opacity "0.5" :marginLeft "auto"}}
-     (count tasks)]]
-   (if (seq tasks)
-     (for [t tasks] (rum/with-key (task-card t) (str (:block/uuid t))))
+     (count items)]]
+   (if (seq items)
+     (for [item items]
+       (rum/with-key (task-card item)
+                     (or (:agenda/key item)
+                         (str (:block/uuid item)))))
      [:div {:style {:fontSize "12px" :opacity "0.35" :textAlign "center"
                     :paddingTop "12px"}} "暂无"])])
 
@@ -877,11 +940,117 @@
       ;; 无显式日期 → 逾期（兜底）
       :else :no-date)))
 
-(rum/defc kanban-view
+(def ^:private kanban-backlog-window-days 7)
+
+(def ^:private kanban-column-order
+  [{:id :backlog :title "积压中" :color "#94a3b8"}
+   {:id :planned  :title "计划中" :color "#6366f1"}
+   {:id :deadline :title "截止日" :color "#ef4444"}
+   {:id :overdue  :title "逾期" :color "#dc2626"}
+   {:id :closed   :title "已完成/已取消" :color "#10b981"}])
+
+(defn- backlog-cutoff-ms
+  [today-ymd]
+  (- (ymd->day-ms today-ymd)
+     (* kanban-backlog-window-days 86400000)))
+
+(defn- manual-backlog?
+  [task]
+  (= :logseq.property/status.backlog (task-status-ident task)))
+
+(defn- task-closed?
+  [task]
+  (contains? #{:logseq.property/status.done
+               :logseq.property/status.canceled}
+             (task-status-ident task)))
+
+(defn- task-plan-date-info
+  [task]
+  (or
+   (when-let [scheduled-ms (prop->ms (:logseq.property/scheduled task))]
+     {:source :scheduled
+      :ms scheduled-ms})
+   (when-let [created-ms (:block/created-at task)]
+     {:source :created
+      :ms created-ms})))
+
+(defn- task-scheduled-deadline-same-day?
+  [task]
+  (let [scheduled-ms (prop->ms (:logseq.property/scheduled task))
+        deadline-ms  (prop->ms (:logseq.property/deadline task))]
+    (and scheduled-ms
+         deadline-ms
+         (same-day? (ms->ymd scheduled-ms)
+                    (ms->ymd deadline-ms)))))
+
+(defn- build-kanban-item
+  [task column source ms]
+  (assoc (build-display-event task source ms)
+         :agenda/kanban-column column
+         :agenda/key (str (:block/uuid task) "-" (name column) "-" (name source) "-" ms)))
+
+(defn- task->kanban-items
+  [task now-ms backlog-cutoff]
+  (let [plan-info          (task-plan-date-info task)
+        scheduled-ms       (prop->ms (:logseq.property/scheduled task))
+        deadline-ms        (prop->ms (:logseq.property/deadline task))
+        deadline-overdue?  (and deadline-ms (< deadline-ms now-ms))
+        same-day-deadline? (task-scheduled-deadline-same-day? task)
+        plan-column        (when-let [plan-ms (:ms plan-info)]
+                             (if (< plan-ms backlog-cutoff) :backlog :planned))
+        plan-item          (when (and plan-info plan-column)
+                             (build-kanban-item task plan-column (:source plan-info) (:ms plan-info)))
+        backlog-item       (when plan-info
+                             (build-kanban-item task :backlog (:source plan-info) (:ms plan-info)))
+        deadline-item      (when deadline-ms
+                             (build-kanban-item task :deadline :deadline deadline-ms))
+        overdue-item       (when deadline-ms
+                             (build-kanban-item task :overdue :deadline deadline-ms))
+        closed-date-info   (or (task-date-info task)
+                               (task-plan-date-info task))
+        closed-item        (when-let [{:keys [source ms]} closed-date-info]
+                             (build-kanban-item task :closed source ms))]
+    (cond
+      (task-closed? task)
+      (cond-> []
+        closed-item (conj closed-item))
+
+      deadline-overdue?
+      (cond-> []
+        overdue-item (conj overdue-item))
+
+      (manual-backlog? task)
+      (cond-> []
+        backlog-item (conj backlog-item)
+        deadline-item (conj deadline-item))
+
+      (and deadline-ms
+           (or (nil? scheduled-ms)
+               same-day-deadline?))
+      (cond-> []
+        deadline-item (conj deadline-item))
+
+      deadline-ms
+      (cond-> []
+        plan-item (conj plan-item)
+        deadline-item (conj deadline-item))
+
+      plan-item
+      [plan-item]
+
+      :else
+      [])))
+
+(rum/defc kanban-view-legacy
   [all-tasks]
   (let [today-ymd  (today-ymd)
         today-ms   (ymd->day-ms today-ymd)
         today-end  (+ today-ms 86399999)
+        now-ms         (.getTime (js/Date.))
+        backlog-cutoff (backlog-cutoff-ms today-ymd)
+        grouped-items  (->> all-tasks
+                            (mapcat #(task->kanban-items % now-ms backlog-cutoff))
+                            (group-by :agenda/kanban-column))
         ;; 无状态（nil status）→ 单独放"已取消"列
         no-status  (filter #(nil? (task-status-ident %)) all-tasks)
         ;; 有明确状态的任务
@@ -908,6 +1077,22 @@
      (kanban-column "已取消" "#94a3b8" (sort-by :block/created-at no-status))]))
 
 ;; ── 范围过滤辅助 ─────────────────────────────────────────────────────────────
+
+(rum/defc kanban-view-projected
+  [all-tasks]
+  (let [today-ymd      (today-ymd)
+        now-ms         (.getTime (js/Date.))
+        backlog-cutoff (backlog-cutoff-ms today-ymd)
+        grouped-items  (->> all-tasks
+                            (mapcat #(task->kanban-items % now-ms backlog-cutoff))
+                            (group-by :agenda/kanban-column))]
+    [:div.agenda-kanban {:style {:display "flex" :gap "10px" :height "100%"
+                                 :overflowX "auto"}}
+     (for [{:keys [id title color]} kanban-column-order
+           :let [items (vec (sort-display-events (get grouped-items id [])))]]
+       (rum/with-key
+         (kanban-column title color items)
+         (name id)))]))
 
 (defn- all-projects
   "从所有任务中提取去重、排序后的项目标签名列表（以'项目'结尾的标签）"
@@ -975,9 +1160,9 @@
 ;; ── 日任务面板（月视图侧边栏）────────────────────────────────────────────────
 
 (rum/defc day-panel
-  [selected-ymd tasks-by-day]
+  [selected-ymd events-by-day]
   (let [[y m d]  selected-ymd
-        tasks    (get tasks-by-day selected-ymd [])]
+        events   (get events-by-day selected-ymd [])]
     [:div.agenda-day-panel
      {:style {:width         "280px"
               :flexShrink    "0"
@@ -987,8 +1172,11 @@
               :overflowY     "auto"}}
      [:div {:style {:fontSize "14px" :fontWeight "700" :marginBottom "12px"}}
       (str (inc m) "月" d "日")]
-     (if (seq tasks)
-       (for [t tasks] (rum/with-key (task-card t) (str (:block/uuid t))))
+     (if (seq events)
+       (for [event events]
+         (rum/with-key (task-card event)
+                       (or (:agenda/key event)
+                           (str (:block/uuid event)))))
        [:div {:style {:fontSize "13px" :opacity "0.4" :textAlign "center"
                       :paddingTop "24px"}}
         "当日无任务"])]))
@@ -1106,7 +1294,7 @@
         projects   (all-projects (or all-tasks []))
         ;; 按当前 scope 过滤
         tasks      (filter-tasks-by-scope (or all-tasks []) scope)
-        tasks-by-day (group-tasks-by-day tasks)]
+        display-events-by-day (group-display-events-by-day tasks)]
 
     [:div.agenda-page
      {:style {:display       "flex"
@@ -1207,11 +1395,11 @@
         ;; main content
         [:div {:style {:flex "1" :padding "12px 16px" :overflowY "auto"}}
          (case view
-           :month  (month-view tasks-by-day cy cm sel-ymd
+           :month  (month-view display-events-by-day cy cm sel-ymd
                                (fn [ymd] (reset! *sel ymd)))
-           :week   (week-view tasks-by-day week-ymds)
-           :kanban (kanban-view tasks))]
+           :week   (week-view display-events-by-day week-ymds)
+           :kanban (kanban-view-projected tasks))]
 
         ;; 月视图右侧日任务面板
         (when (= view :month)
-          (day-panel sel-ymd tasks-by-day))])]))
+          (day-panel sel-ymd display-events-by-day))])]))
