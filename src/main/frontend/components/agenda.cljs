@@ -581,6 +581,7 @@
   (rum/local nil   ::nt2-priority-ident)
   (rum/local false ::nt2-saving?)
   (rum/local #{}   ::nt2-projects)
+  (rum/local nil   ::nt2-open-panel)
   [state on-close projects]
   (let [*title          (::nt2-title state)
         *scheduled-ms   (::nt2-scheduled-ms state)
@@ -588,12 +589,14 @@
         *priority-ident (::nt2-priority-ident state)
         *saving?        (::nt2-saving? state)
         *projects       (::nt2-projects state)
+        *open-panel     (::nt2-open-panel state)
         title           (rum/react *title)
         scheduled-ms    (rum/react *scheduled-ms)
         deadline-ms     (rum/react *deadline-ms)
         priority-ident  (rum/react *priority-ident)
         saving?         (rum/react *saving?)
         sel-proj        (rum/react *projects)
+        open-panel      (rum/react *open-panel)
         can-save        (and (not (string/blank? title))
                              (some? scheduled-ms))
         btn-base        {:padding "5px 14px" :borderRadius "6px" :fontSize "12px"
@@ -605,6 +608,33 @@
                          :padding "4px 6px"
                          :cursor "pointer"
                          :outline "none"}
+        field-btn-style (fn [panel active-border active-bg]
+                          {:width "100%"
+                           :display "flex"
+                           :alignItems "center"
+                           :justifyContent "space-between"
+                           :gap "8px"
+                           :padding "8px 10px"
+                           :borderRadius "7px"
+                           :border (if (= open-panel panel)
+                                     active-border
+                                     "1px solid var(--lx-gray-05,#e5e7eb)")
+                           :background (if (= open-panel panel)
+                                         active-bg
+                                         "var(--lx-gray-01,#fff)")
+                           :cursor "pointer"
+                           :textAlign "left"})
+        calendar-popover-style
+        {:position "absolute"
+         :left "calc(100% + 12px)"
+         :top "0"
+         :zIndex "30"
+         :width "252px"
+         :padding "12px"
+         :borderRadius "10px"
+         :border "1px solid var(--lx-gray-05,#e5e7eb)"
+         :background "#fff"
+         :boxShadow "0 12px 32px rgba(15,23,42,0.14)"}
         ms->hm          (fn [ms default-h default-m]
                           (if ms
                             [(.getHours (js/Date. ms))
@@ -625,6 +655,12 @@
                                        (doto (js/Date.) (.setHours default-h default-m 0 0)))]
                             (.setHours base new-h new-m 0 0)
                             (reset! setter (.getTime base))))
+        date-summary    (fn [ms h m placeholder]
+                          (if ms
+                            (let [[y mo d] (ms->ymd ms)]
+                              (str y "年" (inc mo) "月" d "日 "
+                                   (util/zero-pad h) ":" (util/zero-pad m)))
+                            placeholder))
         do-save!        (fn []
                           (when can-save
                             (reset! *saving? true)
@@ -643,7 +679,8 @@
                    :borderRadius "12px"
                    :padding "16px"
                    :boxShadow "0 8px 32px rgba(0,0,0,0.15)"
-                   :width "360px"}}
+                   :width "360px"
+                   :overflow "visible"}}
      [:div {:style {:fontSize "14px" :fontWeight "700" :marginBottom "12px"
                     :color "var(--lx-gray-12,#111)"}} "新建任务"]
      [:input {:value       title
@@ -663,17 +700,6 @@
                       :boxSizing "border-box"
                       :marginBottom "12px"
                       :fontFamily "inherit"}}]
-     [:div {:style {:display "flex" :alignItems "center" :gap "8px" :marginBottom "12px"}}
-      [:div {:style {:fontSize "12px"
-                     :fontWeight "600"
-                     :color "var(--lx-accent-11,#4338ca)"
-                     :background "var(--lx-accent-03,#ede9fe)"
-                     :border "1px solid var(--lx-accent-06,#a78bfa)"
-                     :borderRadius "999px"
-                     :padding "5px 10px"}}
-       "☑ 待办"]
-      [:span {:style {:fontSize "11px" :opacity "0.55"}}
-       "统一创建 Todo，计划开始为必填"]]
      [:div {:style {:marginBottom "12px"}}
       [:div {:style {:fontSize "11px" :fontWeight "600" :opacity "0.55" :marginBottom "6px"}}
        "⚡ 重要性"]
@@ -708,95 +734,133 @@
                                       "var(--lx-gray-10,#6b7280)")
                              :fontWeight (if (sel-proj p) "600" "400")}}
             (str "# " p)])]])
-     [:div {:style {:marginBottom "12px"
+     [:div {:style {:position "relative"
+                    :marginBottom "12px"
                     :padding "10px"
                     :background "var(--lx-gray-02,#f9fafb)"
                     :borderRadius "8px"
                     :border "1px solid var(--lx-gray-04,#e8eaed)"}}
-      [:div {:style {:display "flex" :alignItems "center" :justifyContent "space-between"
-                     :marginBottom "8px"}}
+      [:div {:style {:display "flex" :alignItems "center" :justifyContent "space-between"}}
        [:span {:style {:fontSize "11px" :fontWeight "600" :opacity "0.6"}} "📅 计划开始"]
        [:span {:style {:fontSize "11px" :fontWeight "600" :color "#dc2626"}} "* 必填"]]
-      (rum/with-key
-        (mini-date-picker #(select-date! *scheduled-ms scheduled-ms 9 0 %) scheduled-ms)
-        "dp-scheduled")
-      [:div {:style {:display "flex" :alignItems "center" :gap "6px"
-                     :marginTop "10px" :paddingTop "8px"
-                     :borderTop "1px solid var(--lx-gray-04,#e8eaed)"}}
-       [:span {:style {:fontSize "12px" :opacity "0.6" :whiteSpace "nowrap"}} "⏱ 时间："]
-       [:select {:value     scheduled-h
-                 :disabled  (nil? scheduled-ms)
-                 :on-change (fn [e]
-                              (set-time! *scheduled-ms scheduled-ms 9 0
-                                         (js/parseInt (.. e -target -value)) scheduled-m))
-                 :style sel-sty}
-        (for [h (range 24)]
-          [:option {:key h :value h} (util/zero-pad h)])]
-       [:span {:style {:fontWeight "700" :fontSize "14px"}} ":"]
-       [:select {:value     scheduled-m
-                 :disabled  (nil? scheduled-ms)
-                 :on-change (fn [e]
-                              (set-time! *scheduled-ms scheduled-ms 9 0
-                                         scheduled-h (js/parseInt (.. e -target -value))))
-                 :style sel-sty}
-        (for [m (range 60)]
-          [:option {:key m :value m} (util/zero-pad m)])]
-       (when scheduled-ms
-         (let [[y mo d] (ms->ymd scheduled-ms)]
-           [:span {:style {:fontSize "11px"
-                           :marginLeft "auto"
-                           :color "var(--lx-accent-09,#4f46e5)"
-                           :fontWeight "600"}}
-            (str y "年" (inc mo) "月" d "日 "
-                 (util/zero-pad scheduled-h) ":" (util/zero-pad scheduled-m))]))]]
-     [:div {:style {:marginBottom "12px"
+      [:button {:type "button"
+                :on-click #(swap! *open-panel (fn [panel] (if (= panel :scheduled) nil :scheduled)))
+                :style (merge (field-btn-style :scheduled
+                                               "1px solid var(--lx-accent-07,#6366f1)"
+                                               "var(--lx-accent-02,#f5f3ff)")
+                              {:marginTop "8px"})}
+       [:span {:style {:fontSize "12px"
+                       :color (if scheduled-ms
+                                "var(--lx-gray-12,#111)"
+                                "var(--lx-gray-08,#9ca3af)")
+                       :fontWeight (if scheduled-ms "600" "400")
+                       :overflow "hidden"
+                       :textOverflow "ellipsis"
+                       :whiteSpace "nowrap"}}
+        (date-summary scheduled-ms scheduled-h scheduled-m "点击选择计划开始时间")]
+       [:span {:style {:fontSize "11px" :opacity "0.45" :flexShrink "0"}}
+        (if (= open-panel :scheduled) "收起" "选择")]]
+      (when (= open-panel :scheduled)
+        [:div {:style calendar-popover-style}
+         (rum/with-key
+           (mini-date-picker #(select-date! *scheduled-ms scheduled-ms 9 0 %) scheduled-ms)
+           "dp-scheduled")
+         [:div {:style {:display "flex" :alignItems "center" :gap "6px"
+                        :marginTop "10px" :paddingTop "8px"
+                        :borderTop "1px solid var(--lx-gray-04,#e8eaed)"}}
+          [:span {:style {:fontSize "12px" :opacity "0.6" :whiteSpace "nowrap"}} "⏱ 时间："]
+          [:select {:value     scheduled-h
+                    :disabled  (nil? scheduled-ms)
+                    :on-change (fn [e]
+                                 (set-time! *scheduled-ms scheduled-ms 9 0
+                                            (js/parseInt (.. e -target -value)) scheduled-m))
+                    :style sel-sty}
+           (for [h (range 24)]
+             [:option {:key h :value h} (util/zero-pad h)])]
+          [:span {:style {:fontWeight "700" :fontSize "14px"}} ":"]
+          [:select {:value     scheduled-m
+                    :disabled  (nil? scheduled-ms)
+                    :on-change (fn [e]
+                                 (set-time! *scheduled-ms scheduled-ms 9 0
+                                            scheduled-h (js/parseInt (.. e -target -value))))
+                    :style sel-sty}
+           (for [m (range 60)]
+             [:option {:key m :value m} (util/zero-pad m)])]
+          (when scheduled-ms
+            [:span {:style {:fontSize "11px"
+                            :marginLeft "auto"
+                            :color "var(--lx-accent-09,#4f46e5)"
+                            :fontWeight "600"}}
+             (date-summary scheduled-ms scheduled-h scheduled-m "")])]])]
+     [:div {:style {:position "relative"
+                    :marginBottom "12px"
                     :padding "10px"
                     :background "var(--lx-gray-02,#f9fafb)"
                     :borderRadius "8px"
                     :border "1px solid var(--lx-gray-04,#e8eaed)"}}
-      [:div {:style {:display "flex" :alignItems "center" :justifyContent "space-between"
-                     :marginBottom "8px"}}
+      [:div {:style {:display "flex" :alignItems "center" :justifyContent "space-between"}}
        [:span {:style {:fontSize "11px" :fontWeight "600" :opacity "0.6"}} "⏰ 截止时间"]
        (when deadline-ms
-         [:button {:on-click #(reset! *deadline-ms nil)
+         [:button {:on-click (fn [e]
+                               (.stopPropagation e)
+                               (reset! *deadline-ms nil)
+                               (when (= open-panel :deadline)
+                                 (reset! *open-panel nil)))
                    :style {:border "none"
                            :background "transparent"
                            :cursor "pointer"
                            :fontSize "11px"
                            :opacity "0.55"}}
           "清空"])]
-      (rum/with-key
-        (mini-date-picker #(select-date! *deadline-ms deadline-ms 18 0 %) deadline-ms)
-        "dp-deadline")
-      [:div {:style {:display "flex" :alignItems "center" :gap "6px"
-                     :marginTop "10px" :paddingTop "8px"
-                     :borderTop "1px solid var(--lx-gray-04,#e8eaed)"}}
-       [:span {:style {:fontSize "12px" :opacity "0.6" :whiteSpace "nowrap"}} "⏱ 时间："]
-       [:select {:value     deadline-h
-                 :disabled  (nil? deadline-ms)
-                 :on-change (fn [e]
-                              (set-time! *deadline-ms deadline-ms 18 0
-                                         (js/parseInt (.. e -target -value)) deadline-m))
-                 :style sel-sty}
-        (for [h (range 24)]
-          [:option {:key h :value h} (util/zero-pad h)])]
-       [:span {:style {:fontWeight "700" :fontSize "14px"}} ":"]
-       [:select {:value     deadline-m
-                 :disabled  (nil? deadline-ms)
-                 :on-change (fn [e]
-                              (set-time! *deadline-ms deadline-ms 18 0
-                                         deadline-h (js/parseInt (.. e -target -value))))
-                 :style sel-sty}
-        (for [m (range 60)]
-          [:option {:key m :value m} (util/zero-pad m)])]
-       (when deadline-ms
-         (let [[y mo d] (ms->ymd deadline-ms)]
-           [:span {:style {:fontSize "11px"
-                           :marginLeft "auto"
-                           :color "#dc2626"
-                           :fontWeight "600"}}
-            (str y "年" (inc mo) "月" d "日 "
-                 (util/zero-pad deadline-h) ":" (util/zero-pad deadline-m))]))]]
+      [:button {:type "button"
+                :on-click #(swap! *open-panel (fn [panel] (if (= panel :deadline) nil :deadline)))
+                :style (merge (field-btn-style :deadline
+                                               "1px solid #fda4af"
+                                               "#fff1f2")
+                              {:marginTop "8px"})}
+       [:span {:style {:fontSize "12px"
+                       :color (if deadline-ms
+                                "var(--lx-gray-12,#111)"
+                                "var(--lx-gray-08,#9ca3af)")
+                       :fontWeight (if deadline-ms "600" "400")
+                       :overflow "hidden"
+                       :textOverflow "ellipsis"
+                       :whiteSpace "nowrap"}}
+        (date-summary deadline-ms deadline-h deadline-m "可选，点击设置截止时间")]
+       [:span {:style {:fontSize "11px" :opacity "0.45" :flexShrink "0"}}
+        (if (= open-panel :deadline) "收起" "选择")]]
+      (when (= open-panel :deadline)
+        [:div {:style calendar-popover-style}
+         (rum/with-key
+           (mini-date-picker #(select-date! *deadline-ms deadline-ms 18 0 %) deadline-ms)
+           "dp-deadline")
+         [:div {:style {:display "flex" :alignItems "center" :gap "6px"
+                        :marginTop "10px" :paddingTop "8px"
+                        :borderTop "1px solid var(--lx-gray-04,#e8eaed)"}}
+          [:span {:style {:fontSize "12px" :opacity "0.6" :whiteSpace "nowrap"}} "⏱ 时间："]
+          [:select {:value     deadline-h
+                    :disabled  (nil? deadline-ms)
+                    :on-change (fn [e]
+                                 (set-time! *deadline-ms deadline-ms 18 0
+                                            (js/parseInt (.. e -target -value)) deadline-m))
+                    :style sel-sty}
+           (for [h (range 24)]
+             [:option {:key h :value h} (util/zero-pad h)])]
+          [:span {:style {:fontWeight "700" :fontSize "14px"}} ":"]
+          [:select {:value     deadline-m
+                    :disabled  (nil? deadline-ms)
+                    :on-change (fn [e]
+                                 (set-time! *deadline-ms deadline-ms 18 0
+                                            deadline-h (js/parseInt (.. e -target -value))))
+                    :style sel-sty}
+           (for [m (range 60)]
+             [:option {:key m :value m} (util/zero-pad m)])]
+          (when deadline-ms
+            [:span {:style {:fontSize "11px"
+                            :marginLeft "auto"
+                            :color "#dc2626"
+                            :fontWeight "600"}}
+             (date-summary deadline-ms deadline-h deadline-m "")])]])]
      [:div {:style {:display "flex" :gap "6px" :justifyContent "flex-end"}}
       [:button {:on-click on-close
                 :style (merge btn-base
