@@ -51,6 +51,22 @@
    :logseq.property/status.done      "Done"
    :logseq.property/status.canceled  "Canceled"})
 
+(def ^:private priority-api-name
+  {:logseq.property/priority.low    "Low"
+   :logseq.property/priority.medium "Medium"
+   :logseq.property/priority.high   "High"
+   :logseq.property/priority.urgent "Urgent"})
+
+(def ^:private priority-ident-by-api-name
+  (into {} (map (fn [[ident api-name]] [api-name ident]) priority-api-name)))
+
+(def ^:private all-priorities
+  [[nil "未设置"]
+   [:logseq.property/priority.low "低"]
+   [:logseq.property/priority.medium "中"]
+   [:logseq.property/priority.high "高"]
+   [:logseq.property/priority.urgent "紧急"]])
+
 ;; All editable statuses in display order
 (def ^:private all-statuses
   [[:logseq.property/status.backlog   "待办池"]
@@ -254,40 +270,46 @@
 ;; ── 任务创建 ──────────────────────────────────────────────────────────────────
 
 (defn- <create-task!
-  "在指定日期的日记页新建任务块，设置状态、可选日期属性（精确到分钟）和项目标签。
-   type              : :todo | :scheduled | :deadline
-   date-ms           : UTC 毫秒（nil = 今天）
-   selected-projects : 项目名字符串集合（nil = 无归属项目）"
-  [title type date-ms selected-projects]
-  (when-not (string/blank? title)
-    (p/let [page-name (if date-ms
-                        (date/js-date->journal-title (js/Date. date-ms))
-                        (date/today))
-            _         (when-not (db-model/get-journal-page page-name)
-                        (page-handler/<create! page-name {:redirect? false}))
-            target    (db-model/get-journal-page page-name)]
-      (when target
-        (p/let [block (editor-handler/api-insert-new-block!
-                       title {:page (:block/uuid target) :edit-block? false})]
-          (when block
-            (let [uuid (:block/uuid block)]
-              ;; 1. 设置状态（自动加 :logseq.class/Task 标签）
-              (db-property-handler/batch-set-property-closed-value!
-               [uuid] :logseq.property/status "Todo")
-              ;; 2. 设置日期属性
-              (when (and date-ms (#{:scheduled :deadline} type))
-                (db-property-handler/batch-set-property!
-                 [uuid]
-                 (if (= type :scheduled)
-                   :logseq.property/scheduled
-                   :logseq.property/deadline)
-                 date-ms {}))
-              ;; 3. 追加项目标签（cardinality-many，逐个 add，不覆盖 Task 类标签）
-              (doseq [pname selected-projects]
-                (when-let [entity (db/get-page pname)]
-                  (db-property-handler/batch-set-property!
-                   [uuid] :block/tags (:db/id entity) {:entity-id? true})))
-              block)))))))
+  "在 Scheduled 对应的日记页新建 Todo 任务块，并写入优先级/日期属性/项目标签。"
+  ([title {:keys [scheduled-ms deadline-ms priority-ident selected-projects]}]
+   (when-not (string/blank? title)
+     (p/let [page-name (if scheduled-ms
+                         (date/js-date->journal-title (js/Date. scheduled-ms))
+                         (date/today))
+             _         (when-not (db-model/get-journal-page page-name)
+                         (page-handler/<create! page-name {:redirect? false}))
+             target    (db-model/get-journal-page page-name)]
+       (when target
+         (p/let [block (editor-handler/api-insert-new-block!
+                        title {:page (:block/uuid target) :edit-block? false})]
+           (when block
+             (let [uuid (:block/uuid block)]
+               ;; 1. 设置状态（自动加 :logseq.class/Task 标签）
+               (db-property-handler/batch-set-property-closed-value!
+                [uuid] :logseq.property/status "Todo")
+               ;; 2. 设置优先级
+               (when-let [priority-name (get priority-api-name priority-ident)]
+                 (db-property-handler/batch-set-property-closed-value!
+                  [uuid] :logseq.property/priority priority-name))
+               ;; 3. 设置日期属性
+               (when scheduled-ms
+                 (db-property-handler/batch-set-property!
+                  [uuid] :logseq.property/scheduled scheduled-ms {}))
+               (when deadline-ms
+                 (db-property-handler/batch-set-property!
+                  [uuid] :logseq.property/deadline deadline-ms {}))
+               ;; 4. 追加项目标签（cardinality-many，逐个 add，不覆盖 Task 类标签）
+               (doseq [pname selected-projects]
+                 (when-let [entity (db/get-page pname)]
+                   (db-property-handler/batch-set-property!
+                    [uuid] :block/tags (:db/id entity) {:entity-id? true})))
+               block)))))))
+  ([title type date-ms selected-projects]
+   (<create-task!
+    title
+    {:scheduled-ms (when (= type :scheduled) date-ms)
+     :deadline-ms (when (= type :deadline) date-ms)
+     :selected-projects selected-projects})))
 
 ;; ── 小型日历选择器 ─────────────────────────────────────────────────────────────
 
@@ -550,6 +572,249 @@
 
 ;; ── 新建任务按钮（工具栏用）────────────────────────────────────────────────────
 
+(rum/defcs new-task-dialog-v2
+  "Unified todo creation dialog with explicit priority/scheduled/deadline fields."
+  < rum/reactive
+  (rum/local ""    ::nt2-title)
+  (rum/local nil   ::nt2-scheduled-ms)
+  (rum/local nil   ::nt2-deadline-ms)
+  (rum/local nil   ::nt2-priority-ident)
+  (rum/local false ::nt2-saving?)
+  (rum/local #{}   ::nt2-projects)
+  [state on-close projects]
+  (let [*title          (::nt2-title state)
+        *scheduled-ms   (::nt2-scheduled-ms state)
+        *deadline-ms    (::nt2-deadline-ms state)
+        *priority-ident (::nt2-priority-ident state)
+        *saving?        (::nt2-saving? state)
+        *projects       (::nt2-projects state)
+        title           (rum/react *title)
+        scheduled-ms    (rum/react *scheduled-ms)
+        deadline-ms     (rum/react *deadline-ms)
+        priority-ident  (rum/react *priority-ident)
+        saving?         (rum/react *saving?)
+        sel-proj        (rum/react *projects)
+        can-save        (and (not (string/blank? title))
+                             (some? scheduled-ms))
+        btn-base        {:padding "5px 14px" :borderRadius "6px" :fontSize "12px"
+                         :cursor "pointer" :fontWeight "500"}
+        sel-sty         {:border "1px solid var(--lx-gray-05,#e5e7eb)"
+                         :background "var(--lx-gray-01,#fff)"
+                         :borderRadius "6px"
+                         :fontSize "13px"
+                         :padding "4px 6px"
+                         :cursor "pointer"
+                         :outline "none"}
+        ms->hm          (fn [ms default-h default-m]
+                          (if ms
+                            [(.getHours (js/Date. ms))
+                             (.getMinutes (js/Date. ms))]
+                            [default-h default-m]))
+        [scheduled-h scheduled-m] (ms->hm scheduled-ms 9 0)
+        [deadline-h deadline-m]   (ms->hm deadline-ms 18 0)
+        select-date!    (fn [setter current-ms default-h default-m selected-ms]
+                          (let [d (js/Date. selected-ms)]
+                            (if current-ms
+                              (let [current (js/Date. current-ms)]
+                                (.setHours d (.getHours current) (.getMinutes current) 0 0))
+                              (.setHours d default-h default-m 0 0))
+                            (reset! setter (.getTime d))))
+        set-time!       (fn [setter current-ms default-h default-m new-h new-m]
+                          (let [base (if current-ms
+                                       (js/Date. current-ms)
+                                       (doto (js/Date.) (.setHours default-h default-m 0 0)))]
+                            (.setHours base new-h new-m 0 0)
+                            (reset! setter (.getTime base))))
+        do-save!        (fn []
+                          (when can-save
+                            (reset! *saving? true)
+                            (p/let [_ (<create-task!
+                                        title
+                                        {:scheduled-ms scheduled-ms
+                                         :deadline-ms deadline-ms
+                                         :priority-ident priority-ident
+                                         :selected-projects (seq sel-proj)})]
+                              (reset! *saving? false)
+                              (on-close)
+                              (js/setTimeout #(when-let [r! @*global-reload!] (r!)) 300))))]
+    [:div {:on-click #(.stopPropagation %)
+           :style {:background "#fff"
+                   :border "1px solid var(--lx-gray-05,#e5e7eb)"
+                   :borderRadius "12px"
+                   :padding "16px"
+                   :boxShadow "0 8px 32px rgba(0,0,0,0.15)"
+                   :width "360px"}}
+     [:div {:style {:fontSize "14px" :fontWeight "700" :marginBottom "12px"
+                    :color "var(--lx-gray-12,#111)"}} "新建任务"]
+     [:input {:value       title
+              :placeholder "任务标题…"
+              :auto-focus  true
+              :on-change   #(reset! *title (.. % -target -value))
+              :on-key-down (fn [e]
+                             (when (and (= "Enter" (.-key e)) can-save)
+                               (.preventDefault e)
+                               (do-save!)))
+              :style {:width "100%"
+                      :fontSize "13px"
+                      :padding "8px 10px"
+                      :borderRadius "7px"
+                      :border "1px solid var(--lx-gray-05,#e5e7eb)"
+                      :outline "none"
+                      :boxSizing "border-box"
+                      :marginBottom "12px"
+                      :fontFamily "inherit"}}]
+     [:div {:style {:display "flex" :alignItems "center" :gap "8px" :marginBottom "12px"}}
+      [:div {:style {:fontSize "12px"
+                     :fontWeight "600"
+                     :color "var(--lx-accent-11,#4338ca)"
+                     :background "var(--lx-accent-03,#ede9fe)"
+                     :border "1px solid var(--lx-accent-06,#a78bfa)"
+                     :borderRadius "999px"
+                     :padding "5px 10px"}}
+       "☑ 待办"]
+      [:span {:style {:fontSize "11px" :opacity "0.55"}}
+       "统一创建 Todo，计划开始为必填"]]
+     [:div {:style {:marginBottom "12px"}}
+      [:div {:style {:fontSize "11px" :fontWeight "600" :opacity "0.55" :marginBottom "6px"}}
+       "⚡ 重要性"]
+      [:select {:value     (or (get priority-api-name priority-ident) "")
+                :on-change (fn [e]
+                             (let [v (.. e -target -value)]
+                               (reset! *priority-ident
+                                       (get priority-ident-by-api-name v))))
+                :style (merge sel-sty {:width "100%" :padding "8px 10px" :fontSize "12px"})}
+       (for [[ident label] all-priorities]
+         [:option {:key (or ident :none)
+                   :value (or (get priority-api-name ident) "")}
+          label])]]
+     (when (seq projects)
+       [:div {:style {:marginBottom "12px"}}
+        [:div {:style {:fontSize "11px" :fontWeight "600" :opacity "0.5" :marginBottom "5px"}}
+         "# 归属项目（可多选）"]
+        [:div {:style {:display "flex" :flexWrap "wrap" :gap "4px"}}
+         (for [p projects]
+           [:button {:key      p
+                     :on-click #(swap! *projects (fn [ps] (if (ps p) (disj ps p) (conj ps p))))
+                     :style {:padding "3px 9px" :borderRadius "20px" :fontSize "12px"
+                             :cursor "pointer"
+                             :border (if (sel-proj p)
+                                       "1.5px solid var(--lx-accent-07,#6366f1)"
+                                       "1px solid var(--lx-gray-05,#e5e7eb)")
+                             :background (if (sel-proj p)
+                                           "var(--lx-accent-03,#ede9fe)"
+                                           "transparent")
+                             :color (if (sel-proj p)
+                                      "var(--lx-accent-11,#4338ca)"
+                                      "var(--lx-gray-10,#6b7280)")
+                             :fontWeight (if (sel-proj p) "600" "400")}}
+            (str "# " p)])]])
+     [:div {:style {:marginBottom "12px"
+                    :padding "10px"
+                    :background "var(--lx-gray-02,#f9fafb)"
+                    :borderRadius "8px"
+                    :border "1px solid var(--lx-gray-04,#e8eaed)"}}
+      [:div {:style {:display "flex" :alignItems "center" :justifyContent "space-between"
+                     :marginBottom "8px"}}
+       [:span {:style {:fontSize "11px" :fontWeight "600" :opacity "0.6"}} "📅 计划开始"]
+       [:span {:style {:fontSize "11px" :fontWeight "600" :color "#dc2626"}} "* 必填"]]
+      (rum/with-key
+        (mini-date-picker #(select-date! *scheduled-ms scheduled-ms 9 0 %) scheduled-ms)
+        "dp-scheduled")
+      [:div {:style {:display "flex" :alignItems "center" :gap "6px"
+                     :marginTop "10px" :paddingTop "8px"
+                     :borderTop "1px solid var(--lx-gray-04,#e8eaed)"}}
+       [:span {:style {:fontSize "12px" :opacity "0.6" :whiteSpace "nowrap"}} "⏱ 时间："]
+       [:select {:value     scheduled-h
+                 :disabled  (nil? scheduled-ms)
+                 :on-change (fn [e]
+                              (set-time! *scheduled-ms scheduled-ms 9 0
+                                         (js/parseInt (.. e -target -value)) scheduled-m))
+                 :style sel-sty}
+        (for [h (range 24)]
+          [:option {:key h :value h} (util/zero-pad h)])]
+       [:span {:style {:fontWeight "700" :fontSize "14px"}} ":"]
+       [:select {:value     scheduled-m
+                 :disabled  (nil? scheduled-ms)
+                 :on-change (fn [e]
+                              (set-time! *scheduled-ms scheduled-ms 9 0
+                                         scheduled-h (js/parseInt (.. e -target -value))))
+                 :style sel-sty}
+        (for [m (range 60)]
+          [:option {:key m :value m} (util/zero-pad m)])]
+       (when scheduled-ms
+         (let [[y mo d] (ms->ymd scheduled-ms)]
+           [:span {:style {:fontSize "11px"
+                           :marginLeft "auto"
+                           :color "var(--lx-accent-09,#4f46e5)"
+                           :fontWeight "600"}}
+            (str y "年" (inc mo) "月" d "日 "
+                 (util/zero-pad scheduled-h) ":" (util/zero-pad scheduled-m))]))]]
+     [:div {:style {:marginBottom "12px"
+                    :padding "10px"
+                    :background "var(--lx-gray-02,#f9fafb)"
+                    :borderRadius "8px"
+                    :border "1px solid var(--lx-gray-04,#e8eaed)"}}
+      [:div {:style {:display "flex" :alignItems "center" :justifyContent "space-between"
+                     :marginBottom "8px"}}
+       [:span {:style {:fontSize "11px" :fontWeight "600" :opacity "0.6"}} "⏰ 截止时间"]
+       (when deadline-ms
+         [:button {:on-click #(reset! *deadline-ms nil)
+                   :style {:border "none"
+                           :background "transparent"
+                           :cursor "pointer"
+                           :fontSize "11px"
+                           :opacity "0.55"}}
+          "清空"])]
+      (rum/with-key
+        (mini-date-picker #(select-date! *deadline-ms deadline-ms 18 0 %) deadline-ms)
+        "dp-deadline")
+      [:div {:style {:display "flex" :alignItems "center" :gap "6px"
+                     :marginTop "10px" :paddingTop "8px"
+                     :borderTop "1px solid var(--lx-gray-04,#e8eaed)"}}
+       [:span {:style {:fontSize "12px" :opacity "0.6" :whiteSpace "nowrap"}} "⏱ 时间："]
+       [:select {:value     deadline-h
+                 :disabled  (nil? deadline-ms)
+                 :on-change (fn [e]
+                              (set-time! *deadline-ms deadline-ms 18 0
+                                         (js/parseInt (.. e -target -value)) deadline-m))
+                 :style sel-sty}
+        (for [h (range 24)]
+          [:option {:key h :value h} (util/zero-pad h)])]
+       [:span {:style {:fontWeight "700" :fontSize "14px"}} ":"]
+       [:select {:value     deadline-m
+                 :disabled  (nil? deadline-ms)
+                 :on-change (fn [e]
+                              (set-time! *deadline-ms deadline-ms 18 0
+                                         deadline-h (js/parseInt (.. e -target -value))))
+                 :style sel-sty}
+        (for [m (range 60)]
+          [:option {:key m :value m} (util/zero-pad m)])]
+       (when deadline-ms
+         (let [[y mo d] (ms->ymd deadline-ms)]
+           [:span {:style {:fontSize "11px"
+                           :marginLeft "auto"
+                           :color "#dc2626"
+                           :fontWeight "600"}}
+            (str y "年" (inc mo) "月" d "日 "
+                 (util/zero-pad deadline-h) ":" (util/zero-pad deadline-m))]))]]
+     [:div {:style {:display "flex" :gap "6px" :justifyContent "flex-end"}}
+      [:button {:on-click on-close
+                :style (merge btn-base
+                               {:border "1px solid var(--lx-gray-05,#e5e7eb)"
+                                :background "var(--lx-gray-02,#f9fafb)"
+                                :color "var(--lx-gray-10,#6b7280)"})}
+       "取消"]
+      [:button {:on-click do-save!
+                :disabled (or saving? (not can-save))
+                :style (merge btn-base
+                               {:border "none"
+                                :background (if can-save
+                                              "var(--lx-accent-09,#4f46e5)"
+                                              "var(--lx-gray-05,#e5e7eb)")
+                                :color (if can-save "#fff" "var(--lx-gray-08,#9ca3af)")
+                                :cursor (if can-save "pointer" "not-allowed")})}
+       (if saving? "创建中…" "创建")]]]))
+
 (rum/defcs new-task-btn
   < rum/reactive
   (rum/local false ::ntb-open?)
@@ -579,7 +844,7 @@
      (when open?
        [:div {:style {:position "absolute" :top "calc(100% + 6px)" :right "0"
                       :zIndex "499"}}
-        (new-task-dialog #(reset! *open false) projects)])]))
+        (new-task-dialog-v2 #(reset! *open false) projects)])]))
 
 ;; ── 范围下拉（自定义按钮样式）──────────────────────────────────────────────────
 
@@ -828,6 +1093,7 @@
            {:key      (str ymd)
             :on-click #(on-select-day ymd)
             :style    {:minHeight  "72px"
+                       :minWidth   "0"
                        :padding    "4px 6px"
                        :borderRadius "6px"
                        :background (cond selected "var(--lx-accent-04, #e0e7ff)"
@@ -835,9 +1101,10 @@
                                          :else    "var(--lx-gray-02, #f9fafb)")
                        :border     (if selected
                                      "1px solid var(--lx-accent-07, #6366f1)"
-                                     "1px solid transparent")
+                                      "1px solid transparent")
                        :cursor     "pointer"
                        :opacity    (if current? 1 0.45)
+                       :overflow    "hidden"
                        :transition "background 0.1s"}}
            [:div {:style {:display "flex" :justifyContent "space-between"
                           :alignItems "center" :marginBottom "3px"}}
@@ -854,7 +1121,10 @@
                  :let [color (get status-color (task-status-ident event) "#94a3b8")]]
              [:div {:key   (or (:agenda/key event)
                                (str (:block/uuid event)))
-                    :style {:fontSize "11px" :overflow "hidden"
+                    :style {:display "block"
+                            :maxWidth "100%"
+                            :minWidth "0"
+                            :fontSize "11px" :overflow "hidden"
                             :textOverflow "ellipsis" :whiteSpace "nowrap"
                             :color color :lineHeight "1.4"}}
               (str "• " (or (:block/title event) "(无标题)"))])
