@@ -375,6 +375,30 @@ bb dev:test -v frontend.components.agenda-test
 
 If behavior changed in slash-command status bootstrapping, also inspect `commands.cljs` manually even if no dedicated agenda test fails.
 
+## Known Issues and Technical Debt
+
+Issues identified during code audit (2026-04-07). None are blocking; all are edge cases or quality improvements.
+
+### Non-atomic task property writes (MEDIUM)
+
+`<create-task!` (lines 271-305) sets status, priority, scheduled, deadline, and tags in sequential async calls with no transaction wrapper or error handling. If any step fails mid-chain, the task is left in a partial state. Consider wrapping in try-catch with user feedback.
+
+### Dead code: `new-task-dialog` v1 (LOW)
+
+`new-task-dialog` (lines 399-571) is never used. Only `new-task-dialog-v2` is active. Safe to remove.
+
+### No input validation in `journal-day->ms` (LOW)
+
+`agenda_data.cljs` lines 47-50: extracts year/month/day from string using fixed substring offsets. No length or range validation. Malformed input produces `NaN` silently. In practice, callers always pass valid journal-day strings from DB.
+
+### Calendar popover positioning
+
+The `calendar-popover-style` in `new-task-dialog-v2` uses `position: absolute` with `bottom: 0` and `left: calc(100% + 12px)`. Width is `360px` to match the form panel. If the form layout changes, this absolute positioning may need adjustment.
+
+### `persist!` retry without backoff (LOW, whiteboard-specific)
+
+Not in agenda code, but the Excalidraw `persist!` timer retries every 9s without exponential backoff. If network is down, this creates unnecessary load. No data loss risk since localStorage draft remains.
+
 ## Quick Rule Summary
 
 Remember these three agenda invariants:
