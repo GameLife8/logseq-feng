@@ -48,16 +48,28 @@
    :logseq.class/Pdf-annotation "PDF Annotation（PDF 标注）"
    :logseq.class/Template    "Template（模板）"})
 
+;; 虚拟内置标签：非 logseq.class/* 但应视为系统内置、禁止删除的用户创建标签
+(def ^:private virtual-builtin-titles
+  "用户动态创建但应视为内置的标签名称集合"
+  #{"MindMap"})
+
+(def ^:private virtual-builtin-display
+  "虚拟内置标签显示名称"
+  {"MindMap" "MindMap（思维导图）"})
+
 ;; ── 数据加载 ─────────────────────────────────────────────────────────────────
 
 (defn- <load-user-tags
-  "加载所有用户创建的标签（:logseq.class/Tag 类型的页面），返回 [{:db/id :block/uuid :block/title}]"
+  "加载所有用户创建的标签（:logseq.class/Tag 类型的页面），
+   排除系统内置（有 :db/ident）和虚拟内置标签。"
   [repo]
-  (db-async/<q repo {:transact-db? false}
-               '[:find [(pull ?page [:db/id :block/uuid :block/title]) ...]
-                 :where
-                 [?tag-class :db/ident :logseq.class/Tag]
-                 [?page :block/tags ?tag-class]]))
+  (p/let [rows (db-async/<q repo {:transact-db? false}
+                             '[:find [(pull ?page [:db/id :block/uuid :block/title]) ...]
+                               :where
+                               [?tag-class :db/ident :logseq.class/Tag]
+                               [?page :block/tags ?tag-class]
+                               (not [?page :db/ident _])])]
+    (remove #(virtual-builtin-titles (:block/title %)) rows)))
 
 (defn- <load-user-tag-counts
   "返回用户标签的引用计数 {db-id count}：
@@ -84,6 +96,22 @@
                                [(= ?ns "logseq.class")]
                                [?block :block/tags ?class]
                                [?block :block/uuid _]])]
+    (into {} rows)))
+
+(defn- <load-virtual-builtin-counts
+  "返回虚拟内置标签的引用计数 {title count}"
+  [repo]
+  (p/let [rows (db-async/<q repo {:transact-db? false}
+                             '[:find ?title (count ?block)
+                               :in $ [?titles ...]
+                               :where
+                               [?tag :block/title ?title]
+                               [?tag :block/tags ?tag-class]
+                               [?tag-class :db/ident :logseq.class/Tag]
+                               [?block :block/tags ?tag]
+                               [(not= ?block ?tag)]
+                               [?block :block/uuid _]]
+                             (vec virtual-builtin-titles))]
     (into {} rows)))
 
 ;; ── UI 组件 ──────────────────────────────────────────────────────────────────
@@ -155,6 +183,7 @@
   < rum/reactive
   (rum/local nil  ::user-tags)      ;; [{:db/id :block/uuid :block/title :ref-count}]
   (rum/local nil  ::sys-counts)     ;; {ident count}
+  (rum/local nil  ::vb-counts)      ;; {title count} 虚拟内置标签计数
   (rum/local false ::loading?)
   (rum/local nil  ::filter-text)    ;; 搜索关键词
   (rum/local nil  ::confirm-delete) ;; {:uuid :title} 待确认删除的标签
@@ -162,27 +191,32 @@
    (fn [state]
      (let [*tags    (::user-tags state)
            *sys     (::sys-counts state)
+           *vb      (::vb-counts state)
            *loading (::loading? state)]
        (reset! *loading true)
        (when-let [repo (state/get-current-repo)]
          (p/let [tags        (<load-user-tags repo)
                  user-counts (<load-user-tag-counts repo)
                  sys-counts  (<load-system-tag-counts repo)
+                 vb-counts   (<load-virtual-builtin-counts repo)
                  tagged      (map (fn [t]
                                     (assoc t :ref-count (get user-counts (:db/id t) 0)))
                                   (sort-by #(str (:block/title %)) tags))]
            (reset! *tags tagged)
            (reset! *sys sys-counts)
+           (reset! *vb vb-counts)
            (reset! *loading false))))
      state)}
   [state]
   (let [*user-tags  (::user-tags state)
         *sys-counts (::sys-counts state)
+        *vb-counts  (::vb-counts state)
         *loading    (::loading? state)
         *filter     (::filter-text state)
         *confirm    (::confirm-delete state)
         user-tags   (rum/react *user-tags)
         sys-counts  (rum/react *sys-counts)
+        vb-counts   (rum/react *vb-counts)
         loading?    (rum/react *loading)
         filter-text (rum/react *filter)
         confirm-del (rum/react *confirm)
@@ -289,4 +323,11 @@
            (tag-row-system
             {:ident        ident
              :display-name (get system-tag-display ident (name ident))
+             :count        cnt}))
+         ;; 虚拟内置标签（如 MindMap）
+         (for [title (sort virtual-builtin-titles)
+               :let [cnt (get vb-counts title 0)]]
+           (tag-row-system
+            {:ident        (keyword "virtual" title)
+             :display-name (get virtual-builtin-display title title)
              :count        cnt}))])]]))

@@ -67,7 +67,8 @@
 (defn- <ensure-mindmap-class-tag!
   "找到或创建名为 'MindMap' 的 Class 实体（可作为 :block/tags 的合法值）。
    Class 实体的 :block/tags 包含 :logseq.class/Tag。
-   使用 {:class? true} 创建，确保生成正确的 :db/ident。"
+   使用 {:class? true} 创建，确保生成正确的 :db/ident。
+   同时设置 :logseq.property/hide? 使其不出现在 All Pages 列表。"
   []
   (let [database (db/get-db)
         ;; [:find [?e ...]] 返回直接值向量，用 first，不能用 ffirst
@@ -78,8 +79,16 @@
                                             [?tag :db/ident :logseq.class/Tag]]
                                    database)))]
     (if existing-eid
-      (p/resolved (db/entity existing-eid))
-      (common-page-handler/<create! "MindMap" {:redirect? false :class? true}))))
+      (let [ent (db/entity existing-eid)]
+        ;; 确保已有实体也标记为隐藏
+        (when-not (:logseq.property/hide? ent)
+          (db/transact! [{:db/id existing-eid :logseq.property/hide? true}]))
+        (p/resolved ent))
+      (p/let [ent (common-page-handler/<create! "MindMap" {:redirect? false :class? true})]
+        ;; 新创建的 class 标记为隐藏，不显示在 All Pages
+        (when-let [eid (:db/id ent)]
+          (db/transact! [{:db/id eid :logseq.property/hide? true}]))
+        ent))))
 
 #_(defn <create-mind-map!
   "创建新的思维导图页面，并跳转到编辑器。"
