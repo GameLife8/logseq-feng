@@ -128,6 +128,15 @@ Component did-mount
 - `src/main/frontend/components/mind_map.cljs` — Gallery + editor mount
 - `src/main/frontend/extensions/mind_map/core.cljs` — Canvas UI (zero DB dependency)
 
+## MindMap Class Tag
+
+- MindMap pages are tagged with a class entity titled "MindMap".
+- This class is created by `<ensure-mindmap-class-tag!` in `handler/mind_map.cljs`.
+- It gets a `:db/ident` like `:user.class/MindMap-XxxXx` (NOT `logseq.class/*`).
+- The class entity has `:logseq.property/hide? true` so it's excluded from All Pages.
+- In tag manager, MindMap is treated as a "virtual builtin" — shown in the system section, not deletable.
+- The `virtual-builtin-titles` set in `tag_manager.cljs` controls which user-created classes are treated as builtin.
+
 ## Merge Notes
 
 - Search for `VISUAL-DOC-SIDECAR` before resolving merge conflicts.

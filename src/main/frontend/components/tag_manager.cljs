@@ -103,12 +103,8 @@
   [all-tags]
   (doseq [t all-tags]
     (when (virtual-builtin-titles (:block/title t))
-      (js/console.log "[tag-mgr] ensure-hidden for" (:block/title t)
-                       "db/id=" (:db/id t) "db/ident=" (str (:db/ident t)))
       (let [ent (db/entity (:db/id t))]
-        (js/console.log "[tag-mgr]  entity hide?=" (:logseq.property/hide? ent))
         (when (and ent (not (:logseq.property/hide? ent)))
-          (js/console.log "[tag-mgr]  transacting hide? = true")
           (db/transact! [{:db/id (:db/id t) :logseq.property/hide? true}]))))))
 
 ;; ── UI 组件 ──────────────────────────────────────────────────────────────────
@@ -187,25 +183,19 @@
          (p/let [all-tags    (<load-all-tag-entities repo)
                  ref-counts  (<load-tag-ref-counts repo)
                  sys-counts  (<load-system-tag-counts repo)
-                 _           (js/console.log "[tag-mgr] all-tags count:" (count all-tags))
-                 _           (js/console.log "[tag-mgr] all-tags:" (pr-str (mapv #(select-keys % [:db/id :db/ident :block/title]) all-tags)))
-                 _           (js/console.log "[tag-mgr] ref-counts:" (pr-str ref-counts))
                  ;; 客户端分类：
                  ;; - :db/ident 在 system-class-ident-set 中 → 系统标签（已由独立查询计数）
                  ;; - :block/title 在 virtual-builtin-titles 中 → 虚拟内置标签
                  ;; - 其余 → 用户标签
                  user-only   (->> all-tags
-                                  (remove #(system-class-ident-set (:db/ident %)))  ;; 排除 logseq.class/* 系统实体
-                                  (remove #(virtual-builtin-titles (:block/title %)))  ;; 排除虚拟内置
+                                  (remove #(system-class-ident-set (:db/ident %)))
+                                  (remove #(virtual-builtin-titles (:block/title %)))
                                   (map (fn [t] (assoc t :ref-count (get ref-counts (:db/id t) 0))))
                                   (sort-by #(str (:block/title %))))
                  vb-only     (->> all-tags
-                                  (filter #(virtual-builtin-titles (:block/title %)))  ;; 只按 title 匹配
-                                  (remove #(system-class-ident-set (:db/ident %)))     ;; 排除碰巧同名的系统标签
+                                  (filter #(virtual-builtin-titles (:block/title %)))
+                                  (remove #(system-class-ident-set (:db/ident %)))
                                   (map (fn [t] (assoc t :ref-count (get ref-counts (:db/id t) 0)))))]
-           (js/console.log "[tag-mgr] user-only:" (pr-str (mapv :block/title user-only)))
-           (js/console.log "[tag-mgr] vb-only:" (pr-str (mapv :block/title vb-only)))
-           ;; 确保虚拟内置标签（如 MindMap）不出现在 All Pages
            (<ensure-mindmap-hidden! all-tags)
            (reset! *user-tags user-only)
            (reset! *vb-tags vb-only)
