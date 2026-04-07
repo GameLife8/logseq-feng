@@ -335,6 +335,31 @@ Inspect together:
 - project-tag writing in `<create-task!`
 - slash-command behavior if you want product consistency across creation paths
 
+## Known Issues (Non-blocking)
+
+These issues have been identified but are not urgent enough to fix immediately.
+
+### `<create-task!` has no error handling (MEDIUM)
+- Location: `agenda.cljs:271-305`
+- Properties (status, priority, scheduled, deadline, tags) are set sequentially without try-catch.
+- If any property write fails, the task is left in a partially-set state.
+- The async chain continues regardless. No user feedback on failure.
+
+### `new-task-dialog` (v1) is dead code (LOW)
+- Location: `agenda.cljs:399-571`
+- Only `new-task-dialog-v2` (line 575+) is used in the current UI.
+- The v1 dialog can be safely removed.
+
+### No input validation in `journal-day->ms` (LOW)
+- Location: `agenda_data.cljs:45-51`
+- No check that the input string is at least 8 characters or that parsed values are in valid ranges.
+- Malformed input produces `NaN` silently. In practice, inputs come from DB queries so this rarely triggers.
+
+### Calendar popover layout
+- The `calendar-popover-style` in `new-task-dialog-v2` positions the mini-date-picker to the right of the form.
+- Current: `bottom: 0` (bottom-aligned), `width: 360px` (matches form), `left: calc(100% + 12px)`.
+- If the form layout changes, this absolute positioning may need adjustment.
+
 ## Common Failure Modes
 
 Watch for these regressions after any agenda change.
@@ -374,30 +399,6 @@ bb dev:test -v frontend.components.agenda-test
 ```
 
 If behavior changed in slash-command status bootstrapping, also inspect `commands.cljs` manually even if no dedicated agenda test fails.
-
-## Known Issues and Technical Debt
-
-Issues identified during code audit (2026-04-07). None are blocking; all are edge cases or quality improvements.
-
-### Non-atomic task property writes (MEDIUM)
-
-`<create-task!` (lines 271-305) sets status, priority, scheduled, deadline, and tags in sequential async calls with no transaction wrapper or error handling. If any step fails mid-chain, the task is left in a partial state. Consider wrapping in try-catch with user feedback.
-
-### Dead code: `new-task-dialog` v1 (LOW)
-
-`new-task-dialog` (lines 399-571) is never used. Only `new-task-dialog-v2` is active. Safe to remove.
-
-### No input validation in `journal-day->ms` (LOW)
-
-`agenda_data.cljs` lines 47-50: extracts year/month/day from string using fixed substring offsets. No length or range validation. Malformed input produces `NaN` silently. In practice, callers always pass valid journal-day strings from DB.
-
-### Calendar popover positioning
-
-The `calendar-popover-style` in `new-task-dialog-v2` uses `position: absolute` with `bottom: 0` and `left: calc(100% + 12px)`. Width is `360px` to match the form panel. If the form layout changes, this absolute positioning may need adjustment.
-
-### `persist!` retry without backoff (LOW, whiteboard-specific)
-
-Not in agenda code, but the Excalidraw `persist!` timer retries every 9s without exponential backoff. If network is down, this creates unnecessary load. No data loss risk since localStorage draft remains.
 
 ## Quick Rule Summary
 
