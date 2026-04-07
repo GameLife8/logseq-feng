@@ -627,10 +627,10 @@
         calendar-popover-style
         {:position "absolute"
          :left "calc(100% + 12px)"
-         :top "0"
+         :bottom "0"
          :zIndex "30"
-         :width "252px"
-         :padding "12px"
+         :width "360px"
+         :padding "16px"
          :borderRadius "10px"
          :border "1px solid var(--lx-gray-05,#e5e7eb)"
          :background "#fff"
