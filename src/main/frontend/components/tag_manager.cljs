@@ -29,6 +29,9 @@
    :logseq.class/Pdf-annotation
    :logseq.class/Template])
 
+(def ^:private system-class-ident-set
+  (set system-class-idents))
+
 (def ^:private system-tag-display
   "系统标签显示名称映射"
   {:logseq.class/Journal     "Journal（日记）"
@@ -59,20 +62,17 @@
 
 ;; ── 数据加载 ─────────────────────────────────────────────────────────────────
 
-(defn- <load-user-tags
-  "加载所有用户创建的标签（:logseq.class/Tag 类型的页面），
-   排除系统内置（有 :db/ident）和虚拟内置标签。"
+(defn- <load-all-tag-entities
+  "加载所有带 :logseq.class/Tag 标签的实体（含系统和用户），pull :db/ident 用于客户端区分。"
   [repo]
-  (p/let [rows (db-async/<q repo {:transact-db? false}
-                             '[:find [(pull ?page [:db/id :block/uuid :block/title]) ...]
-                               :where
-                               [?tag-class :db/ident :logseq.class/Tag]
-                               [?page :block/tags ?tag-class]
-                               (not [?page :db/ident _])])]
-    (remove #(virtual-builtin-titles (:block/title %)) rows)))
+  (db-async/<q repo {:transact-db? false}
+               '[:find [(pull ?page [:db/id :db/ident :block/uuid :block/title]) ...]
+                 :where
+                 [?tag-class :db/ident :logseq.class/Tag]
+                 [?page :block/tags ?tag-class]]))
 
-(defn- <load-user-tag-counts
-  "返回用户标签的引用计数 {db-id count}：
+(defn- <load-tag-ref-counts
+  "返回所有 Tag 类标签的引用计数 {db-id count}：
    统计有多少 block 的 :block/tags 包含该标签（排除标签页面本身）。"
   [repo]
   (p/let [rows (db-async/<q repo {:transact-db? false}
@@ -82,7 +82,7 @@
                                [?tag-id :block/tags ?tag-class]
                                [?block :block/tags ?tag-id]
                                [(not= ?block ?tag-id)]
-                               [?block :block/uuid _]])]  ;; 只统计真实块
+                               [?block :block/uuid _]])]
     (into {} rows)))
 
 (defn- <load-system-tag-counts
@@ -98,21 +98,15 @@
                                [?block :block/uuid _]])]
     (into {} rows)))
 
-(defn- <load-virtual-builtin-counts
-  "返回虚拟内置标签的引用计数 {title count}"
-  [repo]
-  (p/let [rows (db-async/<q repo {:transact-db? false}
-                             '[:find ?title (count ?block)
-                               :in $ [?titles ...]
-                               :where
-                               [?tag :block/title ?title]
-                               [?tag :block/tags ?tag-class]
-                               [?tag-class :db/ident :logseq.class/Tag]
-                               [?block :block/tags ?tag]
-                               [(not= ?block ?tag)]
-                               [?block :block/uuid _]]
-                             (vec virtual-builtin-titles))]
-    (into {} rows)))
+(defn- <ensure-mindmap-hidden!
+  "确保 MindMap 类标签设置了 :logseq.property/hide? 使其不显示在 All Pages。"
+  [all-tags]
+  (doseq [t all-tags]
+    (when (and (virtual-builtin-titles (:block/title t))
+               (not (:db/ident t)))    ;; 非系统实体
+      (let [ent (db/entity (:db/id t))]
+        (when (and ent (not (:logseq.property/hide? ent)))
+          (db/transact! [{:db/id (:db/id t) :logseq.property/hide? true}]))))))
 
 ;; ── UI 组件 ──────────────────────────────────────────────────────────────────
 
@@ -138,33 +132,25 @@
                  :background "var(--lx-gray-02,#f9fafb)"
                  :border "1px solid var(--lx-gray-04,#f1f5f9)"
                  :marginBottom "5px"}}
-   ;; 锁定图标
    [:span {:style {:fontSize "14px" :opacity "0.4" :flexShrink "0"}} "🔒"]
-   ;; 标签名
    [:span {:style {:fontSize "13px" :fontWeight "500" :flex "1"}} display-name]
-   ;; 引用数
    (count-badge (or count 0))
-   ;; 禁止删除标识
    [:span {:style {:fontSize "11px" :opacity "0.35" :marginLeft "4px"}} "系统内置"]])
 
 (defn- tag-row-user
   [{:keys [tag on-delete]}]
-  (let [{:keys [block/title block/uuid db/id]} tag]
+  (let [{:keys [block/title block/uuid]} tag]
     [:div {:key   (str uuid)
            :style {:display "flex" :alignItems "center" :gap "10px"
                    :padding "8px 12px" :borderRadius "8px"
                    :background "var(--lx-gray-01,#fff)"
                    :border "1px solid var(--lx-gray-05,#e5e7eb)"
                    :marginBottom "5px"}}
-     ;; 标签 # 图标
      [:span {:style {:fontSize "14px" :color "#6366f1" :flexShrink "0" :fontWeight "700"}} "#"]
-     ;; 标签名
      [:span {:style {:fontSize "13px" :fontWeight "500" :flex "1"
                      :overflow "hidden" :textOverflow "ellipsis" :whiteSpace "nowrap"}}
       (or title "(无名称)")]
-     ;; 引用数
      (count-badge (or (:ref-count tag) 0))
-     ;; 删除按钮
      [:button
       {:on-click #(on-delete uuid title)
        :title "删除此标签"
@@ -181,42 +167,50 @@
 (rum/defcs tag-manager-page
   "标签管理页面 – 统计系统标签和用户标签，支持删除用户标签。"
   < rum/reactive
-  (rum/local nil  ::user-tags)      ;; [{:db/id :block/uuid :block/title :ref-count}]
-  (rum/local nil  ::sys-counts)     ;; {ident count}
-  (rum/local nil  ::vb-counts)      ;; {title count} 虚拟内置标签计数
+  (rum/local nil  ::user-tags)       ;; [{:db/id :block/uuid :block/title :ref-count}]
+  (rum/local nil  ::vb-tags)         ;; [{:db/id :block/title :ref-count}] 虚拟内置标签
+  (rum/local nil  ::sys-counts)      ;; {ident count}
   (rum/local false ::loading?)
-  (rum/local nil  ::filter-text)    ;; 搜索关键词
-  (rum/local nil  ::confirm-delete) ;; {:uuid :title} 待确认删除的标签
+  (rum/local nil  ::filter-text)     ;; 搜索关键词
+  (rum/local nil  ::confirm-delete)  ;; {:uuid :title} 待确认删除的标签
   {:did-mount
    (fn [state]
-     (let [*tags    (::user-tags state)
-           *sys     (::sys-counts state)
-           *vb      (::vb-counts state)
-           *loading (::loading? state)]
+     (let [*user-tags (::user-tags state)
+           *vb-tags   (::vb-tags state)
+           *sys       (::sys-counts state)
+           *loading   (::loading? state)]
        (reset! *loading true)
        (when-let [repo (state/get-current-repo)]
-         (p/let [tags        (<load-user-tags repo)
-                 user-counts (<load-user-tag-counts repo)
+         (p/let [all-tags    (<load-all-tag-entities repo)
+                 ref-counts  (<load-tag-ref-counts repo)
                  sys-counts  (<load-system-tag-counts repo)
-                 vb-counts   (<load-virtual-builtin-counts repo)
-                 tagged      (map (fn [t]
-                                    (assoc t :ref-count (get user-counts (:db/id t) 0)))
-                                  (sort-by #(str (:block/title %)) tags))]
-           (reset! *tags tagged)
+                 ;; 客户端分类：有 :db/ident 的是系统标签，title 在 virtual-builtin-titles 中的是虚拟内置标签，其余是用户标签
+                 user-only   (->> all-tags
+                                  (remove #(:db/ident %))                         ;; 排除系统实体
+                                  (remove #(virtual-builtin-titles (:block/title %)))  ;; 排除虚拟内置
+                                  (map (fn [t] (assoc t :ref-count (get ref-counts (:db/id t) 0))))
+                                  (sort-by #(str (:block/title %))))
+                 vb-only     (->> all-tags
+                                  (filter #(and (not (:db/ident %))
+                                                (virtual-builtin-titles (:block/title %))))
+                                  (map (fn [t] (assoc t :ref-count (get ref-counts (:db/id t) 0)))))]
+           ;; 确保虚拟内置标签（如 MindMap）不出现在 All Pages
+           (<ensure-mindmap-hidden! all-tags)
+           (reset! *user-tags user-only)
+           (reset! *vb-tags vb-only)
            (reset! *sys sys-counts)
-           (reset! *vb vb-counts)
            (reset! *loading false))))
      state)}
   [state]
   (let [*user-tags  (::user-tags state)
+        *vb-tags    (::vb-tags state)
         *sys-counts (::sys-counts state)
-        *vb-counts  (::vb-counts state)
         *loading    (::loading? state)
         *filter     (::filter-text state)
         *confirm    (::confirm-delete state)
         user-tags   (rum/react *user-tags)
+        vb-tags     (rum/react *vb-tags)
         sys-counts  (rum/react *sys-counts)
-        vb-counts   (rum/react *vb-counts)
         loading?    (rum/react *loading)
         filter-text (rum/react *filter)
         confirm-del (rum/react *confirm)
@@ -253,7 +247,6 @@
                     :flexShrink "0"}}
       (ui/icon "tags" {:size 18 :class "opacity-70"})
       [:h1 {:style {:fontSize "16px" :fontWeight "700" :margin 0 :flex "1"}} "标签管理"]
-      ;; 统计摘要
       (when (and user-tags (not loading?))
         [:span {:style {:fontSize "12px" :opacity "0.5"}}
          (str (count user-tags) " 个用户标签")])]
@@ -285,7 +278,6 @@
      ;; ── 主内容区（可滚动）─────────────────────────────────────────────────
      [:div {:style {:flex "1" :overflowY "auto" :padding "16px"}}
 
-      ;; 加载中
       (when loading?
         [:div {:style {:textAlign "center" :padding "40px 0" :opacity "0.5" :fontSize "14px"}}
          "正在加载标签数据…"])
@@ -295,7 +287,6 @@
          ;; ── 用户标签 ──────────────────────────────────────────────────────
          (section-title (str "用户标签（" (count user-tags) "）"))
 
-         ;; 搜索框
          [:div {:style {:marginBottom "12px"}}
           [:input {:type "text"
                    :placeholder "搜索标签名称…"
@@ -325,9 +316,8 @@
              :display-name (get system-tag-display ident (name ident))
              :count        cnt}))
          ;; 虚拟内置标签（如 MindMap）
-         (for [title (sort virtual-builtin-titles)
-               :let [cnt (get vb-counts title 0)]]
+         (for [t (sort-by :block/title vb-tags)]
            (tag-row-system
-            {:ident        (keyword "virtual" title)
-             :display-name (get virtual-builtin-display title title)
-             :count        cnt}))])]]))
+            {:ident        (str "virtual-" (:block/title t))
+             :display-name (get virtual-builtin-display (:block/title t) (:block/title t))
+             :count        (:ref-count t 0)}))])]]))
