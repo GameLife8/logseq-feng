@@ -452,7 +452,8 @@
         calendar-popover-style
         {:position "absolute"
          :left "calc(100% + 12px)"
-         :bottom "0"
+         :top "50%"
+         :transform "translateY(-50%)"
          :zIndex "30"
          :width "360px"
          :padding "16px"
