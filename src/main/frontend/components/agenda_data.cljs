@@ -44,11 +44,13 @@
 
 (defn journal-day->ms
   [journal-day]
-  (let [s     (str journal-day)
-        year  (js/parseInt (.substring s 0 4))
-        month (dec (js/parseInt (.substring s 4 6)))
-        day   (js/parseInt (.substring s 6 8))]
-    (.getTime (js/Date. year month day))))
+  (let [s (str journal-day)]
+    (when (>= (count s) 8)
+      (let [year  (js/parseInt (.substring s 0 4))
+            month (dec (js/parseInt (.substring s 4 6)))
+            day   (js/parseInt (.substring s 6 8))
+            ms    (.getTime (js/Date. year month day))]
+        (when-not (js/isNaN ms) ms)))))
 
 (defn prop->ms
   [value]

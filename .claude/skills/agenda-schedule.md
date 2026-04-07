@@ -57,7 +57,6 @@ Treat these as the real source of truth before changing agenda behavior.
 
 These still exist in `agenda.cljs`, but they are not the active path that powers the current UI.
 
-- `new-task-dialog`
 - `kanban-view-legacy`
 
 Do not update those first unless you are intentionally removing dead code.
@@ -337,28 +336,15 @@ Inspect together:
 
 ## Known Issues (Non-blocking)
 
-These issues have been identified but are not urgent enough to fix immediately.
-
-### `<create-task!` has no error handling (MEDIUM)
-- Location: `agenda.cljs:271-305`
-- Properties (status, priority, scheduled, deadline, tags) are set sequentially without try-catch.
-- If any property write fails, the task is left in a partially-set state.
-- The async chain continues regardless. No user feedback on failure.
-
-### `new-task-dialog` (v1) is dead code (LOW)
-- Location: `agenda.cljs:399-571`
-- Only `new-task-dialog-v2` (line 575+) is used in the current UI.
-- The v1 dialog can be safely removed.
-
-### No input validation in `journal-day->ms` (LOW)
-- Location: `agenda_data.cljs:45-51`
-- No check that the input string is at least 8 characters or that parsed values are in valid ranges.
-- Malformed input produces `NaN` silently. In practice, inputs come from DB queries so this rarely triggers.
-
 ### Calendar popover layout
 - The `calendar-popover-style` in `new-task-dialog-v2` positions the mini-date-picker to the right of the form.
 - Current: `bottom: 0` (bottom-aligned), `width: 360px` (matches form), `left: calc(100% + 12px)`.
 - If the form layout changes, this absolute positioning may need adjustment.
+
+### Non-atomic property writes in `<create-task!`
+- Properties (status, priority, scheduled, deadline, tags) are set sequentially, not in a single transaction.
+- If any step fails, the task may be partially configured. A `p/catch` now logs the error and returns nil, but cannot roll back already-written properties.
+- In practice, individual property writes rarely fail.
 
 ## Common Failure Modes
 

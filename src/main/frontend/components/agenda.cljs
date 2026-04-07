@@ -270,40 +270,40 @@
 ;; ── 任务创建 ──────────────────────────────────────────────────────────────────
 
 (defn- <create-task!
-  "在 Scheduled 对应的日记页新建 Todo 任务块，并写入优先级/日期属性/项目标签。"
+  "Create a Todo block on the journal page matching Scheduled date, then set
+   priority, date properties, and project tags. Returns the new block or nil."
   ([title {:keys [scheduled-ms deadline-ms priority-ident selected-projects]}]
    (when-not (string/blank? title)
-     (p/let [page-name (if scheduled-ms
-                         (date/js-date->journal-title (js/Date. scheduled-ms))
-                         (date/today))
-             _         (when-not (db-model/get-journal-page page-name)
-                         (page-handler/<create! page-name {:redirect? false}))
-             target    (db-model/get-journal-page page-name)]
-       (when target
-         (p/let [block (editor-handler/api-insert-new-block!
-                        title {:page (:block/uuid target) :edit-block? false})]
-           (when block
-             (let [uuid (:block/uuid block)]
-               ;; 1. 设置状态（自动加 :logseq.class/Task 标签）
-               (db-property-handler/batch-set-property-closed-value!
-                [uuid] :logseq.property/status "Todo")
-               ;; 2. 设置优先级
-               (when-let [priority-name (get priority-api-name priority-ident)]
-                 (db-property-handler/batch-set-property-closed-value!
-                  [uuid] :logseq.property/priority priority-name))
-               ;; 3. 设置日期属性
-               (when scheduled-ms
-                 (db-property-handler/batch-set-property!
-                  [uuid] :logseq.property/scheduled scheduled-ms {}))
-               (when deadline-ms
-                 (db-property-handler/batch-set-property!
-                  [uuid] :logseq.property/deadline deadline-ms {}))
-               ;; 4. 追加项目标签（cardinality-many，逐个 add，不覆盖 Task 类标签）
-               (doseq [pname selected-projects]
-                 (when-let [entity (db/get-page pname)]
-                   (db-property-handler/batch-set-property!
-                    [uuid] :block/tags (:db/id entity) {:entity-id? true})))
-               block)))))))
+     (-> (p/let [page-name (if scheduled-ms
+                             (date/js-date->journal-title (js/Date. scheduled-ms))
+                             (date/today))
+                 _         (when-not (db-model/get-journal-page page-name)
+                             (page-handler/<create! page-name {:redirect? false}))
+                 target    (db-model/get-journal-page page-name)]
+           (when target
+             (p/let [block (editor-handler/api-insert-new-block!
+                            title {:page (:block/uuid target) :edit-block? false})]
+               (when block
+                 (let [uuid (:block/uuid block)]
+                   (db-property-handler/batch-set-property-closed-value!
+                    [uuid] :logseq.property/status "Todo")
+                   (when-let [priority-name (get priority-api-name priority-ident)]
+                     (db-property-handler/batch-set-property-closed-value!
+                      [uuid] :logseq.property/priority priority-name))
+                   (when scheduled-ms
+                     (db-property-handler/batch-set-property!
+                      [uuid] :logseq.property/scheduled scheduled-ms {}))
+                   (when deadline-ms
+                     (db-property-handler/batch-set-property!
+                      [uuid] :logseq.property/deadline deadline-ms {}))
+                   (doseq [pname selected-projects]
+                     (when-let [entity (db/get-page pname)]
+                       (db-property-handler/batch-set-property!
+                        [uuid] :block/tags (:db/id entity) {:entity-id? true})))
+                   block)))))
+         (p/catch (fn [err]
+                    (js/console.error "[agenda] <create-task! failed:" err)
+                    nil)))))
   ([title type date-ms selected-projects]
    (<create-task!
     title
@@ -396,181 +396,6 @@
            d])])]))
 
 ;; ── 新建任务弹窗 ───────────────────────────────────────────────────────────────
-
-(rum/defcs new-task-dialog
-  "新建任务弹窗：支持 待办 / 计划 / 截止 三种形式，可选项目归属。
-   on-close : 关闭回调
-   projects : 可选项目名字符串列表（来自当前任务的标签统计）"
-  < rum/reactive
-  (rum/local ""        ::nt-title)
-  (rum/local :todo     ::nt-type)
-  (rum/local nil       ::nt-date-ms)
-  (rum/local false     ::nt-saving?)
-  (rum/local #{}       ::nt-projects)  ;; 已选项目名集合
-  [state on-close projects]
-  (let [*title    (::nt-title state)
-        *type     (::nt-type state)
-        *date-ms  (::nt-date-ms state)
-        *saving?  (::nt-saving? state)
-        *projects (::nt-projects state)
-        sel-proj  (rum/react *projects)
-        title    (rum/react *title)
-        type     (rum/react *type)
-        date-ms  (rum/react *date-ms)
-        saving?  (rum/react *saving?)
-        ;; 计划/截止必须选日期；待办可选（nil = 今天）
-        can-save (and (not (string/blank? title))
-                      (or (= type :todo) (some? date-ms)))
-        ;; 当前时分（用于时间选择器回显）
-        cur-h    (if date-ms (.getHours   (js/Date. date-ms)) 9)
-        cur-m    (if date-ms (.getMinutes (js/Date. date-ms)) 0)
-        ;; 更新 date-ms 的时分，保留日期
-        set-time (fn [new-h new-m]
-                   (let [base (if date-ms
-                                (js/Date. date-ms)
-                                (doto (js/Date.) (.setHours 0 0 0 0)))]
-                     (.setHours base new-h new-m 0 0)
-                     (reset! *date-ms (.getTime base))))
-        do-save! (fn []
-                   (when can-save
-                     (reset! *saving? true)
-                     (p/let [_ (<create-task! title type date-ms (seq sel-proj))]
-                       (reset! *saving? false)
-                       (on-close)
-                       (js/setTimeout #(when-let [r! @*global-reload!] (r!)) 300))))
-        btn-base {:padding "5px 14px" :borderRadius "6px" :fontSize "12px"
-                  :cursor "pointer" :fontWeight "500"}
-        sel-sty  {:padding "4px 6px" :borderRadius "6px" :fontSize "13px"
-                  :border "1px solid var(--lx-gray-05,#e5e7eb)"
-                  :background "var(--lx-gray-01,#fff)"
-                  :cursor "pointer" :outline "none"}]
-    [:div {:on-click #(.stopPropagation %)
-           :style {:background "#fff"
-                   :border "1px solid var(--lx-gray-05,#e5e7eb)"
-                   :borderRadius "12px" :padding "16px"
-                   :boxShadow "0 8px 32px rgba(0,0,0,0.15)"
-                   :width "300px"}}
-     [:div {:style {:fontSize "14px" :fontWeight "700" :marginBottom "12px"
-                    :color "var(--lx-gray-12,#111)"}} "新建任务"]
-
-     ;; 标题输入
-     [:input {:value       title
-              :placeholder "任务标题…"
-              :auto-focus  true
-              :on-change   #(reset! *title (.. % -target -value))
-              :on-key-down (fn [e]
-                             (when (= "Enter" (.-key e))
-                               (.preventDefault e)
-                               (do-save!)))
-              :style {:width "100%" :fontSize "13px"
-                      :padding "8px 10px" :borderRadius "7px"
-                      :border "1px solid var(--lx-gray-05,#e5e7eb)"
-                      :outline "none" :boxSizing "border-box"
-                      :marginBottom "10px"
-                      :fontFamily "inherit"}}]
-
-     ;; 类型选择
-     [:div {:style {:display "flex" :gap "4px" :marginBottom "12px"}}
-      (for [[t lbl ico] [[:todo "待办" "☑"] [:scheduled "计划" "📅"] [:deadline "截止" "⏰"]]]
-        [:button {:key      (name t)
-                  :on-click #(reset! *type t)
-                  :style {:flex "1" :padding "6px 4px" :borderRadius "6px"
-                          :fontSize "12px" :cursor "pointer"
-                          :border (if (= t type)
-                                    "1.5px solid var(--lx-accent-07,#6366f1)"
-                                    "1px solid var(--lx-gray-05,#e5e7eb)")
-                          :background (if (= t type)
-                                        "var(--lx-accent-03,#ede9fe)"
-                                        "var(--lx-gray-02,#f9fafb)")
-                          :color (if (= t type)
-                                   "var(--lx-accent-11,#4338ca)"
-                                   "var(--lx-gray-10,#6b7280)")
-                          :fontWeight (if (= t type) "600" "400")}}
-         (str ico " " lbl)])]
-
-     ;; ── 项目归属（可多选）──────────────────────────────────────────────────────
-     (when (seq projects)
-       [:div {:style {:marginBottom "10px"}}
-        [:div {:style {:fontSize "11px" :fontWeight "600" :opacity "0.5" :marginBottom "5px"}}
-         "# 归属项目（可多选）"]
-        [:div {:style {:display "flex" :flexWrap "wrap" :gap "4px"}}
-         (for [p projects]
-           [:button {:key      p
-                     :on-click #(swap! *projects (fn [ps] (if (ps p) (disj ps p) (conj ps p))))
-                     :style {:padding "3px 9px" :borderRadius "20px" :fontSize "12px"
-                             :cursor "pointer"
-                             :border (if (sel-proj p)
-                                       "1.5px solid var(--lx-accent-07,#6366f1)"
-                                       "1px solid var(--lx-gray-05,#e5e7eb)")
-                             :background (if (sel-proj p)
-                                           "var(--lx-accent-03,#ede9fe)"
-                                           "transparent")
-                             :color (if (sel-proj p)
-                                      "var(--lx-accent-11,#4338ca)"
-                                      "var(--lx-gray-10,#6b7280)")
-                             :fontWeight (if (sel-proj p) "600" "400")}}
-            (str "# " p)])]])
-
-     ;; ── 日期 + 时间选择器 ──────────────────────────────────────────────────────
-     [:div {:style {:marginBottom "12px" :padding "10px"
-                    :background "var(--lx-gray-02,#f9fafb)"
-                    :borderRadius "8px"
-                    :border "1px solid var(--lx-gray-04,#e8eaed)"}}
-      [:div {:style {:fontSize "11px" :fontWeight "600" :opacity "0.55" :marginBottom "8px"}}
-       (case type
-         :todo      "📌 选择归属日期（空 = 今天）"
-         :scheduled "📅 选择计划日期（必填）"
-                    "⏰ 选择截止日期（必填）")]
-      ;; 日历
-      (rum/with-key
-        (mini-date-picker #(reset! *date-ms %) date-ms)
-        (str "dp-" (name type)))
-      ;; 时分（计划 / 截止）
-      (when (#{:scheduled :deadline} type)
-        [:div {:style {:display "flex" :alignItems "center" :gap "6px"
-                       :marginTop "10px" :paddingTop "8px"
-                       :borderTop "1px solid var(--lx-gray-04,#e8eaed)"}}
-         [:span {:style {:fontSize "12px" :opacity "0.6" :whiteSpace "nowrap"}} "⏱ 时间："]
-         [:select {:value     cur-h
-                   :on-change (fn [e] (set-time (js/parseInt (.. e -target -value)) cur-m))
-                   :style sel-sty}
-          (for [h (range 24)]
-            [:option {:key h :value h} (util/zero-pad h)])]
-         [:span {:style {:fontWeight "700" :fontSize "14px"}} "："]
-         [:select {:value     cur-m
-                   :on-change (fn [e] (set-time cur-h (js/parseInt (.. e -target -value))))
-                   :style sel-sty}
-          (for [m (range 60)]
-            [:option {:key m :value m} (util/zero-pad m)])]])
-      ;; 确认提示
-      (when date-ms
-        (let [[y mo d] (ms->ymd date-ms)]
-          [:div {:style {:fontSize "11px" :marginTop "6px" :textAlign "center"
-                         :color "var(--lx-accent-09,#4f46e5)" :fontWeight "600"}}
-           (str "✓ " y "年" (inc mo) "月" d "日"
-                (when (#{:scheduled :deadline} type)
-                  (str " " (util/zero-pad cur-h) ":" (util/zero-pad cur-m))))]))]
-
-     ;; 操作按钮
-     [:div {:style {:display "flex" :gap "6px" :justifyContent "flex-end"}}
-      [:button {:on-click on-close
-                :style (merge btn-base
-                               {:border "1px solid var(--lx-gray-05,#e5e7eb)"
-                                :background "var(--lx-gray-02,#f9fafb)"
-                                :color "var(--lx-gray-10,#6b7280)"})}
-       "取消"]
-      [:button {:on-click do-save!
-                :disabled (or saving? (not can-save))
-                :style (merge btn-base
-                               {:border "none"
-                                :background (if can-save
-                                              "var(--lx-accent-09,#4f46e5)"
-                                              "var(--lx-gray-05,#e5e7eb)")
-                                :color (if can-save "#fff" "var(--lx-gray-08,#9ca3af)")
-                                :cursor (if can-save "pointer" "not-allowed")})}
-       (if saving? "创建中…" "创建")]]]))
-
-;; ── 新建任务按钮（工具栏用）────────────────────────────────────────────────────
 
 (rum/defcs new-task-dialog-v2
   "Unified todo creation dialog with explicit priority/scheduled/deadline fields."
