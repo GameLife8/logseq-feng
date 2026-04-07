@@ -500,7 +500,8 @@
                               (on-close)
                               (js/setTimeout #(when-let [r! @*global-reload!] (r!)) 300))))]
     [:div {:on-click #(.stopPropagation %)
-           :style {:background "#fff"
+           :style {:position "relative"
+                   :background "#fff"
                    :border "1px solid var(--lx-gray-05,#e5e7eb)"
                    :borderRadius "12px"
                    :padding "16px"
@@ -560,8 +561,7 @@
                                       "var(--lx-gray-10,#6b7280)")
                              :fontWeight (if (sel-proj p) "600" "400")}}
             (str "# " p)])]])
-     [:div {:style {:position "relative"
-                    :marginBottom "12px"
+     [:div {:style {:marginBottom "12px"
                     :padding "10px"
                     :background "var(--lx-gray-02,#f9fafb)"
                     :borderRadius "8px"
@@ -618,8 +618,7 @@
                             :color "var(--lx-accent-09,#4f46e5)"
                             :fontWeight "600"}}
              (date-summary scheduled-ms scheduled-h scheduled-m "")])]])]
-     [:div {:style {:position "relative"
-                    :marginBottom "12px"
+     [:div {:style {:marginBottom "12px"
                     :padding "10px"
                     :background "var(--lx-gray-02,#f9fafb)"
                     :borderRadius "8px"

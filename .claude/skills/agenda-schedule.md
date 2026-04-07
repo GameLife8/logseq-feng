@@ -338,7 +338,9 @@ Inspect together:
 
 ### Calendar popover layout
 - The `calendar-popover-style` in `new-task-dialog-v2` positions the mini-date-picker to the right of the form.
-- Current: `bottom: 0` (bottom-aligned), `width: 360px` (matches form), `left: calc(100% + 12px)`.
+- The popover uses `position: absolute` with `top: 50%; transform: translateY(-50%)` to vertically center.
+- The positioning parent is the outer form container (`position: relative`), NOT the individual section divs.
+- This ensures both "计划开始" and "截止时间" calendars center consistently relative to the whole form.
 - If the form layout changes, this absolute positioning may need adjustment.
 
 ### Non-atomic property writes in `<create-task!`
