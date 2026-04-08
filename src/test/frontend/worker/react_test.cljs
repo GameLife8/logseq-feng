@@ -33,3 +33,14 @@
                                                :block/updated-at            1}])
           affected         (worker-react/get-affected-queries-keys tx-report)]
       (is (some #{[:frontend.worker.react/objects (:db/id whiteboard-class)]} affected)))))
+
+(deftest affected-keys-journals-when-journal-recycled
+  (testing "recycling a journal page should refresh journals query key"
+    (let [conn (db-test/create-conn-with-blocks
+                [{:page {:build/journal 20240101}}
+                 {:page {:build/journal 20240102}}])
+          journal (db-test/find-journal-by-journal-day @conn 20240102)
+          tx-report (d/transact! conn [{:db/id (:db/id journal)
+                                        :logseq.property/deleted-at 1704196800000}])
+          affected (worker-react/get-affected-queries-keys tx-report)]
+      (is (some #{[:frontend.worker.react/journals]} affected)))))
