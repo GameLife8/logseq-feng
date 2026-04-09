@@ -139,14 +139,8 @@
 ;; ── public API ────────────────────────────────────────────────────────────────
 
 (defn <create-whiteboard!
-  "Creates a new whiteboard page, tags it as a whiteboard, and optionally redirects.
-   Tagging strategy (applied in order, both if possible):
-   1. Tag with :logseq.class/Whiteboard system class (if the class exists in DB)
-   2. Tag with the 'Whiteboard' user tag page (find or create it)
-   Returns nil with a warning notification if the name already exists.
-   Pass {:redirect? false} in opts to skip navigation."
-  [name & [opts]]
-  (let [redirect? (get opts :redirect? true)
+  [name opts]
+  (let [redirect? (if (some? opts) (get opts :redirect? true) true)
         title     (string/trim (or name "Untitled Whiteboard"))]
     (if (whiteboard-name-exists? title)
       (do (notification/show! (str "白板「" title "」已存在，请使用不同的名称") :warning)

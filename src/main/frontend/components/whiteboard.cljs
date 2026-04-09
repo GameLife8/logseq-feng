@@ -877,7 +877,7 @@
         (fn []
           (let [trimmed (string/trim new-name)]
             (when (seq trimmed)
-              (p/let [result (whiteboard-handler/<create-whiteboard! trimmed)]
+              (p/let [result (whiteboard-handler/<create-whiteboard! trimmed nil)]
                 ;; <create-whiteboard! returns nil on duplicate (shows notification)
                 ;; Only close input when the promise resolves to a page
                 (when result
@@ -1067,5 +1067,5 @@
        (ui/icon "layout-board" {:size 48 :class "opacity-30"})
        [:div.text-sm.opacity-60 "白板页面未找到"]
        (shui/button
-        {:on-click #(whiteboard-handler/<create-whiteboard! "新白板")}
+        {:on-click #(whiteboard-handler/<create-whiteboard! "新白板" nil)}
         "创建新白板")])))

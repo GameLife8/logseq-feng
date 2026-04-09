@@ -273,7 +273,7 @@
         (fn []
           (let [trimmed (clojure.string/trim new-name)]
             (when (seq trimmed)
-              (p/let [result (mind-map-handler/<create-mind-map! trimmed)]
+              (p/let [result (mind-map-handler/<create-mind-map! trimmed nil)]
                 (when result
                   (reset! *creating? false)
                   (reset! *new-name ""))))))

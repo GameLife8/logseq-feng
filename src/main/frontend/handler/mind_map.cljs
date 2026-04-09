@@ -202,11 +202,8 @@
     (some-> (visual-doc/read-doc-cache mind-map-cache-prefix page-uuid) :data)))
 
 (defn <create-mind-map!
-  “Creates a new mind-map page manifest and stores the initial JSON in the
-   worker sidecar before navigating to the editor.
-   Pass {:redirect? false} in opts to skip navigation.”
-  [name & [opts]]
-  (let [redirect? (get opts :redirect? true)
+  [name opts]
+  (let [redirect? (if (some? opts) (get opts :redirect? true) true)
         title     (string/trim (or name “新思维导图”))]
     (if (mind-map-name-exists? title)
       (do
