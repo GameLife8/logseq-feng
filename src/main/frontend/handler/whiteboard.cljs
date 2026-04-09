@@ -144,39 +144,39 @@
    1. Tag with :logseq.class/Whiteboard system class (if the class exists in DB)
    2. Tag with the 'Whiteboard' user tag page (find or create it)
    Returns nil with a warning notification if the name already exists.
-   Pass {:redirect? false} to skip navigation (e.g. when embedding via slash command)."
-  ([name] (<create-whiteboard! name {}))
-  ([name {:keys [redirect?] :or {redirect? true}}]
-   (let [title (string/trim (or name "Untitled Whiteboard"))]
-     (if (whiteboard-name-exists? title)
-       (do (notification/show! (str "白板「" title "」已存在，请使用不同的名称") :warning)
-           nil)
-       (p/let [page (common-page-handler/<create! title {:redirect? false})]
-         (when page
-           (let [repo     (state/get-current-repo)
-                 tags-ids (atom #{})]
-             ;; Strategy 1: system class tag
-             (when-let [wclass (db/entity :logseq.class/Whiteboard)]
-               (swap! tags-ids conj (:db/id wclass)))
-              ;; Strategy 2: user tag page named "Whiteboard"
-              (let [database (db/get-db)
-                   tag-eid  (first (d/q '[:find [?e ...]
-                                          :where [?e :block/title "Whiteboard"]
-                                                 [(missing? $ ?e :db/ident)]]
-                                        database))]
-               (when tag-eid
-                 (swap! tags-ids conj tag-eid)))
-             ;; Apply all collected tags in one transaction
-             (when (seq @tags-ids)
-               (db/transact! repo
-                             [{:db/id      (:db/id page)
-                               :block/tags @tags-ids}]
-                             {:outliner-op :save-block})))
-           (when redirect?
-             (route-handler/redirect!
-              {:to          :whiteboard
-               :path-params {:name (str (:block/uuid page))}}))
-           page))))))
+   Pass {:redirect? false} in opts to skip navigation."
+  [name & [opts]]
+  (let [redirect? (get opts :redirect? true)
+        title     (string/trim (or name "Untitled Whiteboard"))]
+    (if (whiteboard-name-exists? title)
+      (do (notification/show! (str "白板「" title "」已存在，请使用不同的名称") :warning)
+          nil)
+      (p/let [page (common-page-handler/<create! title {:redirect? false})]
+        (when page
+          (let [repo     (state/get-current-repo)
+                tags-ids (atom #{})]
+            ;; Strategy 1: system class tag
+            (when-let [wclass (db/entity :logseq.class/Whiteboard)]
+              (swap! tags-ids conj (:db/id wclass)))
+             ;; Strategy 2: user tag page named "Whiteboard"
+             (let [database (db/get-db)
+                  tag-eid  (first (d/q '[:find [?e ...]
+                                         :where [?e :block/title "Whiteboard"]
+                                                [(missing? $ ?e :db/ident)]]
+                                       database))]
+              (when tag-eid
+                (swap! tags-ids conj tag-eid)))
+            ;; Apply all collected tags in one transaction
+            (when (seq @tags-ids)
+              (db/transact! repo
+                            [{:db/id      (:db/id page)
+                              :block/tags @tags-ids}]
+                            {:outliner-op :save-block})))
+          (when redirect?
+            (route-handler/redirect!
+             {:to          :whiteboard
+              :path-params {:name (str (:block/uuid page))}}))
+          page)))))
 
 #_(defn <delete-whiteboard!
   "Deletes a whiteboard page. Shows success notification on completion."
