@@ -136,6 +136,15 @@ Component did-mount
 - The class entity has `:logseq.property/hide? true` so it's excluded from All Pages.
 - In tag manager, MindMap is treated as a "virtual builtin" — shown in the system section, not deletable.
 - The `virtual-builtin-titles` set in `tag_manager.cljs` controls which user-created classes are treated as builtin.
+- `<ensure-mindmap-hidden!` in `tag_manager.cljs` also enforces `:logseq.property/hide?` on mount.
+
+## Gallery and Thumbnails
+
+- Gallery component: `all-mind-maps` in `components/mind_map.cljs`.
+- Listing query: `mind-map-handler/get-all-mind-maps` queries by MindMap class tag from DataScript.
+- Thumbnails stored as data URLs in localStorage: key `mind-map-thumb-{uuid}`.
+- No SVG export like Excalidraw; uses `<img>` tag with cached data URL or icon placeholder.
+- Gallery uses `react/q` with `db-async/<get-tag-objects` for reactive updates.
 
 ## Merge Notes
 

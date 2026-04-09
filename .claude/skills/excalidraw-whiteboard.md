@@ -132,14 +132,37 @@ Tracked atoms: `*cached?`, `*persisted?`, `*cache-dirty?`, `*persist-dirty?`
 :on-selection-change    — fn(element-id | nil)
 ```
 
+## Whiteboard Class Tag
+
+- Whiteboard pages are tagged with `:logseq.class/Whiteboard` system class.
+- This is a real system class (ident in `logseq.class/*` namespace), NOT a user-created class.
+- In tag manager, Whiteboard appears in the "系统内置标签" section, not deletable.
+- `<create-whiteboard!` applies both the system class tag AND a user tag named "Whiteboard" (dual-tag strategy for backward compatibility).
+- Gallery query: `react/q` with `db-async/<get-tag-objects` on the `:logseq.class/Whiteboard` class id.
+- Gallery filters out entities with `:db/ident` (class definitions) and `:logseq.property/deleted-at`.
+
+## SVG Thumbnail Generation
+
+`whiteboard-thumbnail` component in `whiteboard.cljs`:
+
+1. Lazy-loads Excalidraw bundle via `ensure-excalidraw-loaded!`
+2. Loads canvas JSON from sidecar via `whiteboard-handler/<load-canvas-doc`
+3. Falls back to `load-canvas-from-db` (local draft cache)
+4. Calls `ExcalidrawLib.exportToSvg({elements, appState, files})` to generate SVG
+5. Sets `width="100%"`, `height="100%"`, `preserveAspectRatio="xMidYMid meet"`
+6. Renders via `dangerouslySetInnerHTML`
+
+Key: `exportToSvg` returns a Promise resolving to an SVG DOM element.
+
 ## Current Hotspots
 
 - `src/main/frontend/worker/visual_doc.cljs` — SQLite sidecar ops (exec-select, upsert, index rebuild)
 - `src/main/frontend/worker/db_worker.cljs` — Thread API handlers, index rebuild scheduling
 - `src/main/frontend/handler/visual_doc.cljs` — Three-source reconciliation, cache, flush
-- `src/main/frontend/handler/whiteboard.cljs` — Whiteboard specific handlers
-- `src/main/frontend/components/whiteboard.cljs` — Gallery + editor mount
+- `src/main/frontend/handler/whiteboard.cljs` — Whiteboard specific handlers (CRUD, tag management)
+- `src/main/frontend/components/whiteboard.cljs` — Gallery + editor mount + SVG thumbnails
 - `src/main/frontend/extensions/excalidraw/core.cljs` — Excalidraw wrapper (timers, sync status, lifecycle)
+- `src/main/frontend/components/tag_manager.cljs` — Whiteboard listed as system built-in tag
 
 ## Merge Notes
 
