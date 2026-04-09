@@ -13,8 +13,10 @@
             [frontend.handler.block :as block-handler]
             [frontend.handler.editor :as editor-handler :refer [get-state]]
             [frontend.handler.editor.lifecycle :as lifecycle]
+            [frontend.handler.mind-map :as mind-map-handler]
             [frontend.handler.page :as page-handler]
             [frontend.handler.paste :as paste-handler]
+            [frontend.handler.whiteboard :as whiteboard-handler]
             [frontend.handler.property.util :as pu]
             [frontend.handler.search :as search-handler]
             [frontend.mixins :as mixins]
@@ -605,6 +607,112 @@
        :force-popover? true}
       (dissoc opts :root-props :content-props)))))
 
+;; ── Whiteboard / MindMap picker ──────────────────────────────────────────────
+
+(defn- gen-auto-name
+  "Generate auto name like excalidraw-2026-04-09-15-00-39 or mindmap-2026-04-09-15-00-39"
+  [prefix]
+  (let [now (js/Date.)
+        pad #(.padStart (str %) 2 "0")]
+    (str prefix "-"
+         (.getFullYear now) "-" (pad (inc (.getMonth now))) "-" (pad (.getDate now))
+         "-" (pad (.getHours now)) "-" (pad (.getMinutes now)) "-" (pad (.getSeconds now)))))
+
+(defn- insert-macro-and-close!
+  "Insert a macro string into the editor and clear editor action."
+  [input-id macro-name page-uuid]
+  (when-let [input (gdom/getElement input-id)]
+    (let [macro-str (str "{{" macro-name " " page-uuid "}}")
+          value     (.-value input)
+          pos       (cursor/pos input)
+          new-value (str (subs value 0 pos) macro-str (subs value pos))]
+      (state/set-block-content-and-last-pos! input-id new-value (+ pos (count macro-str)))
+      (state/clear-editor-action!))))
+
+(rum/defc whiteboard-search
+  "Picker for inserting existing whiteboards or creating a new one."
+  [id _format]
+  (let [[items set-items!] (rum/use-state nil)
+        [q set-q!] (rum/use-state "")]
+    (hooks/use-effect!
+     (fn []
+       (let [all (whiteboard-handler/get-all-whiteboards)]
+         (set-items! (or all []))))
+     [])
+    (let [filtered (if (string/blank? q)
+                     items
+                     (filter #(string/includes?
+                               (string/lower-case (or (:block/title %) ""))
+                               (string/lower-case q))
+                             items))
+          create-item {:block/title (str "＋ 新建白板")
+                       :create-new? true}
+          all-items (cons create-item filtered)]
+      (ui/auto-complete
+       all-items
+       {:on-chosen (fn [chosen]
+                     (if (:create-new? chosen)
+                       ;; Create new whiteboard with auto name, no redirect
+                       (p/let [name (gen-auto-name "excalidraw")
+                               page (whiteboard-handler/<create-whiteboard! name {:redirect? false})]
+                         (when page
+                           (insert-macro-and-close! id "whiteboard" (str (:block/uuid page)))))
+                       ;; Insert existing
+                       (insert-macro-and-close! id "whiteboard" (str (:block/uuid chosen)))))
+        :on-enter (fn [] (state/clear-editor-action!))
+        :item-render (fn [item _chosen?]
+                       (if (:create-new? item)
+                         [:div.flex.items-center.gap-2
+                          (ui/icon "plus" {:size 14})
+                          [:span "新建白板"]]
+                         [:div.flex.items-center.gap-2
+                          (ui/icon "layout-board" {:size 14})
+                          [:span (or (:block/title item) "Untitled")]]))
+        :empty-placeholder [:div.text-gray-500.text-sm.px-4.py-2 "未找到白板"]
+        :class "whiteboard-search"}))))
+
+(rum/defc mindmap-search
+  "Picker for inserting existing mind maps or creating a new one."
+  [id _format]
+  (let [[items set-items!] (rum/use-state nil)
+        [q set-q!] (rum/use-state "")]
+    (hooks/use-effect!
+     (fn []
+       (let [all (mind-map-handler/get-all-mind-maps)]
+         (set-items! (or all []))))
+     [])
+    (let [filtered (if (string/blank? q)
+                     items
+                     (filter #(string/includes?
+                               (string/lower-case (or (:block/title %) ""))
+                               (string/lower-case q))
+                             items))
+          create-item {:block/title (str "＋ 新建思维导图")
+                       :create-new? true}
+          all-items (cons create-item filtered)]
+      (ui/auto-complete
+       all-items
+       {:on-chosen (fn [chosen]
+                     (if (:create-new? chosen)
+                       ;; Create new mind map with auto name, no redirect
+                       (p/let [name (gen-auto-name "mindmap")
+                               page (mind-map-handler/<create-mind-map! name {:redirect? false})]
+                         (when page
+                           (insert-macro-and-close! id "mindmap" (str (:block/uuid page)))))
+                       ;; Insert existing
+                       (insert-macro-and-close! id "mindmap" (str (:block/uuid chosen)))))
+        :on-enter (fn [] (state/clear-editor-action!))
+        :item-render (fn [item _chosen?]
+                       (if (:create-new? item)
+                         [:div.flex.items-center.gap-2
+                          (ui/icon "plus" {:size 14})
+                          [:span "新建思维导图"]]
+                         [:div.flex.items-center.gap-2
+                          (ui/icon "brain" {:size 14})
+                          [:span (or (:block/title item) "Untitled")]]))
+        :empty-placeholder [:div.text-gray-500.text-sm.px-4.py-2 "未找到思维导图"]
+        :class "mindmap-search"}))))
+
 (rum/defc shui-editor-popups
   [id format action _data]
   (hooks/use-effect!
@@ -650,6 +758,22 @@
                  (open-editor-popup! :template-search
                                      (template-search id format) {})
 
+                 :whiteboard-search
+                 (open-editor-popup! :whiteboard-search
+                                     (whiteboard-search id format)
+                                     {:root-props {:onOpenChange
+                                                   #(when-not %
+                                                      (when (= :whiteboard-search (state/get-editor-action))
+                                                        (state/clear-editor-action!)))}})
+
+                 :mindmap-search
+                 (open-editor-popup! :mindmap-search
+                                     (mindmap-search id format)
+                                     {:root-props {:onOpenChange
+                                                   #(when-not %
+                                                      (when (= :mindmap-search (state/get-editor-action))
+                                                        (state/clear-editor-action!)))}})
+
                  ;; TODO: try remove local model state
                  false)]
        #(when pid
@@ -677,7 +801,7 @@
 
       (or (contains?
            #{:commands :page-search :page-search-hashtag :block-search :template-search
-             :datepicker}
+             :datepicker :whiteboard-search :mindmap-search}
            action)
           (and (keyword? action)
                (= (namespace action) "editor.action")))

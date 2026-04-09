@@ -25,6 +25,7 @@
             [frontend.search :as search]
             [frontend.state :as state]
             [frontend.ui :as ui]
+            [frontend.components.macro :as macro]
             [frontend.util :as util]
             [logseq.shui.ui :as shui]
             [promesa.core :as p]
@@ -695,6 +696,146 @@
               :dangerouslySetInnerHTML {:__html svg-html}}]
        [:div.opacity-25
         (ui/icon "layout-board" {:size 36})])]))
+
+;; ── whiteboard embed card (for {{whiteboard uuid}} macro) ─────────────────────
+
+(rum/defcs whiteboard-embed-card
+  "Renders an embedded whiteboard card with SVG preview and toolbar.
+   Used by macro-cp when rendering {{whiteboard page-uuid}}."
+  < rum/reactive
+  (rum/local nil ::svg-html)
+  {:did-mount
+   (fn [state]
+     (let [page-uuid (-> state :rum/args first)
+           *svg      (::svg-html state)
+           render-raw! (fn [raw]
+                         (when raw
+                           (try
+                             (let [data     (js/JSON.parse raw)
+                                   elements (.-elements data)]
+                               (when (and elements
+                                          (pos? (.-length elements))
+                                          (exists? js/ExcalidrawLib)
+                                          (.-exportToSvg js/ExcalidrawLib))
+                                 (-> (js/ExcalidrawLib.exportToSvg
+                                      #js {:elements elements
+                                           :appState #js {:exportWithDarkMode false
+                                                          :exportBackground   true
+                                                          :backgroundColor    "#ffffff"}
+                                           :files #js {}})
+                                     (.then (fn [^js svg]
+                                              (.setAttribute svg "width" "100%")
+                                              (.setAttribute svg "height" "100%")
+                                              (.setAttribute svg "preserveAspectRatio" "xMidYMid meet")
+                                              (reset! *svg (.-outerHTML svg))))
+                                     (.catch (fn [err]
+                                               (js/console.warn "[wb-embed] SVG export failed" err))))))
+                             (catch :default err
+                               (js/console.warn "[wb-embed] parse error" err)))))
+           gen-svg!  (fn []
+                       (p/let [doc-info (whiteboard-handler/<load-canvas-doc page-uuid)
+                               raw      (or (:json doc-info)
+                                            (whiteboard-handler/load-canvas-from-db page-uuid))]
+                         (render-raw! raw)))]
+       (ensure-excalidraw-loaded! gen-svg!))
+     state)}
+  [state page-uuid config]
+  (let [svg-html  (rum/react (::svg-html state))
+        page      (db/entity [:block/uuid (uuid page-uuid)])
+        title     (or (:block/title page) "Untitled Whiteboard")
+        block-id  (:block/uuid (:block config))]
+    [:div.whiteboard-embed-card
+     {:style {:borderRadius "8px"
+              :border       "1px solid var(--lx-gray-05, #e5e7eb)"
+              :overflow     "hidden"
+              :background   "#fff"
+              :marginTop    "4px"
+              :marginBottom "4px"}}
+     ;; Toolbar: title + actions
+     [:div.flex.items-center.gap-2
+      {:style {:padding    "6px 10px"
+               :borderBottom "1px solid var(--lx-gray-04, #f1f5f9)"
+               :background "var(--lx-gray-02, #f9fafb)"
+               :fontSize   "13px"}}
+      (ui/icon "layout-board" {:size 14})
+      [:a.font-medium.flex-1.truncate
+       {:on-click #(whiteboard-handler/redirect-to-whiteboard! page-uuid)
+        :style {:cursor "pointer" :color "var(--lx-accent-09, #4f46e5)"}}
+       title]
+      ;; Refresh thumbnail
+      [:button.opacity-50.hover:opacity-100
+       {:title "刷新缩略图"
+        :on-click (fn [e]
+                    (util/stop e)
+                    (let [*svg (::svg-html state)]
+                      (reset! *svg nil)
+                      (let [gen-svg! (fn []
+                                       (p/let [doc-info (whiteboard-handler/<load-canvas-doc page-uuid)
+                                               raw      (or (:json doc-info)
+                                                            (whiteboard-handler/load-canvas-from-db page-uuid))]
+                                         (when raw
+                                           (try
+                                             (let [data     (js/JSON.parse raw)
+                                                   elements (.-elements data)]
+                                               (when (and elements (pos? (.-length elements))
+                                                          (exists? js/ExcalidrawLib)
+                                                          (.-exportToSvg js/ExcalidrawLib))
+                                                 (-> (js/ExcalidrawLib.exportToSvg
+                                                      #js {:elements elements
+                                                           :appState #js {:exportWithDarkMode false
+                                                                          :exportBackground   true
+                                                                          :backgroundColor    "#ffffff"}
+                                                           :files #js {}})
+                                                     (.then (fn [^js svg]
+                                                              (.setAttribute svg "width" "100%")
+                                                              (.setAttribute svg "height" "100%")
+                                                              (.setAttribute svg "preserveAspectRatio" "xMidYMid meet")
+                                                              (reset! *svg (.-outerHTML svg)))))))
+                                             (catch :default _)))))]
+                        (ensure-excalidraw-loaded! gen-svg!))))
+        :style {:padding "2px" :cursor "pointer"}}
+       (ui/icon "refresh" {:size 14})]
+      ;; Edit: navigate to whiteboard
+      [:button.opacity-50.hover:opacity-100
+       {:title "编辑白板"
+        :on-click (fn [e]
+                    (util/stop e)
+                    (whiteboard-handler/redirect-to-whiteboard! page-uuid))
+        :style {:padding "2px" :cursor "pointer"}}
+       (ui/icon "edit" {:size 14})]
+      ;; Delete: remove the embedding block, not the whiteboard itself
+      (when block-id
+        [:button.opacity-50.hover:opacity-100
+         {:title "移除嵌入"
+          :on-click (fn [e]
+                      (util/stop e)
+                      (when block-id
+                        (editor-handler/delete-block-aux! {:block/uuid block-id})))
+          :style {:padding "2px" :cursor "pointer" :color "#ef4444"}}
+         (ui/icon "trash" {:size 14})])]
+     ;; SVG Preview area
+     [:div
+      {:style {:width      "100%"
+               :minHeight  "200px"
+               :maxHeight  "400px"
+               :overflow   "hidden"
+               :display    "flex"
+               :alignItems "center"
+               :justifyContent "center"
+               :cursor     "pointer"
+               :background "#fff"}
+       :on-click #(whiteboard-handler/redirect-to-whiteboard! page-uuid)}
+      (if svg-html
+        [:div {:style {:width "100%" :height "100%" :overflow "hidden"}
+               :dangerouslySetInnerHTML {:__html svg-html}}]
+        [:div.opacity-25.py-8
+         (ui/icon "layout-board" {:size 48})])]]))
+
+;; Register macro renderer so {{whiteboard page-uuid}} works in block.cljs macro-cp
+(macro/register "whiteboard"
+  (fn [config options]
+    (when-let [page-uuid (first (:arguments options))]
+      (whiteboard-embed-card page-uuid config))))
 
 (rum/defcs all-whiteboards
   "Gallery page listing all whiteboards in a 3-column grid with SVG thumbnails."

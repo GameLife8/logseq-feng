@@ -308,7 +308,19 @@
 
        ["Add new property" [[:editor/clear-current-slash]
                             [:editor/new-property]] ""
-        :icon/cube-plus]]
+        :icon/cube-plus]
+
+       ["Whiteboard"
+        [[:editor/clear-current-slash]
+         [:editor/insert-whiteboard]]
+        "Insert or create a whiteboard"
+        :icon/layout-board]
+
+       ["MindMap"
+        [[:editor/clear-current-slash]
+         [:editor/insert-mindmap]]
+        "Insert or create a mind map"
+        :icon/brain]]
 
       (let [commands (->> @*extend-slash-commands
                           (remove (fn [command] (when (map? (last command))
@@ -614,6 +626,12 @@
     (when-let [_current-input (gdom/getElement input-id)]
       (let [current-block (state/get-edit-block)]
         (state/pub-event! [:editor/set-heading current-block heading])))))
+
+(defmethod handle-step :editor/insert-whiteboard [[_]]
+  (state/set-editor-action! :whiteboard-search))
+
+(defmethod handle-step :editor/insert-mindmap [[_]]
+  (state/set-editor-action! :mindmap-search))
 
 (defmethod handle-step :editor/search-page [_]
   (state/set-editor-action! :page-search))

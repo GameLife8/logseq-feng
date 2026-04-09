@@ -19,6 +19,7 @@
             [frontend.state :as state]
             [frontend.ui :as ui]
             [frontend.util :as util]
+            [frontend.components.macro :as macro]
             [logseq.shui.ui :as shui]
             [promesa.core :as p]
             [rum.core :as rum]
@@ -140,6 +141,96 @@
                                                      :page-title  (some-> (db/entity (:db/id (:block/page block)))
                                                                           :block/title)})
                                                   (take 25 (or res [])))))))))})])))
+
+;; ── mind-map embed card (for {{mindmap uuid}} macro) ─────────────────────────
+
+(rum/defcs mindmap-embed-card
+  "Renders an embedded mind-map card with thumbnail preview and toolbar.
+   Used by macro-cp when rendering {{mindmap page-uuid}}."
+  < rum/reactive
+  (rum/local nil ::thumb-url)
+  {:did-mount
+   (fn [state]
+     (let [page-uuid (-> state :rum/args first)
+           *thumb    (::thumb-url state)
+           cached    (some-> js/localStorage (.getItem (str "mind-map-thumb-" page-uuid)))]
+       (when (seq cached)
+         (reset! *thumb cached)))
+     state)}
+  [state page-uuid config]
+  (let [thumb-url (rum/react (::thumb-url state))
+        page      (db/entity [:block/uuid (uuid page-uuid)])
+        title     (or (:block/title page) "Untitled MindMap")
+        block-id  (:block/uuid (:block config))]
+    [:div.mindmap-embed-card
+     {:style {:borderRadius "8px"
+              :border       "1px solid var(--lx-gray-05, #e5e7eb)"
+              :overflow     "hidden"
+              :background   "#fff"
+              :marginTop    "4px"
+              :marginBottom "4px"}}
+     ;; Toolbar: title + actions
+     [:div.flex.items-center.gap-2
+      {:style {:padding    "6px 10px"
+               :borderBottom "1px solid var(--lx-gray-04, #f1f5f9)"
+               :background "var(--lx-gray-02, #f9fafb)"
+               :fontSize   "13px"}}
+      (ui/icon "brain" {:size 14})
+      [:a.font-medium.flex-1.truncate
+       {:on-click #(mind-map-handler/redirect-to-mind-map! (uuid page-uuid))
+        :style {:cursor "pointer" :color "var(--lx-accent-09, #4f46e5)"}}
+       title]
+      ;; Refresh thumbnail
+      [:button.opacity-50.hover:opacity-100
+       {:title "刷新缩略图"
+        :on-click (fn [e]
+                    (util/stop e)
+                    (let [cached (some-> js/localStorage (.getItem (str "mind-map-thumb-" page-uuid)))]
+                      (when (seq cached)
+                        (reset! (::thumb-url state) cached))))
+        :style {:padding "2px" :cursor "pointer"}}
+       (ui/icon "refresh" {:size 14})]
+      ;; Edit: navigate to mind map
+      [:button.opacity-50.hover:opacity-100
+       {:title "编辑思维导图"
+        :on-click (fn [e]
+                    (util/stop e)
+                    (mind-map-handler/redirect-to-mind-map! (uuid page-uuid)))
+        :style {:padding "2px" :cursor "pointer"}}
+       (ui/icon "edit" {:size 14})]
+      ;; Delete: remove the embedding block, not the mind map itself
+      (when block-id
+        [:button.opacity-50.hover:opacity-100
+         {:title "移除嵌入"
+          :on-click (fn [e]
+                      (util/stop e)
+                      (when block-id
+                        (editor-handler/delete-block-aux! {:block/uuid block-id})))
+          :style {:padding "2px" :cursor "pointer" :color "#ef4444"}}
+         (ui/icon "trash" {:size 14})])]
+     ;; Thumbnail preview area
+     [:div
+      {:style {:width      "100%"
+               :minHeight  "200px"
+               :maxHeight  "400px"
+               :overflow   "hidden"
+               :display    "flex"
+               :alignItems "center"
+               :justifyContent "center"
+               :cursor     "pointer"
+               :background "#fff"}
+       :on-click #(mind-map-handler/redirect-to-mind-map! (uuid page-uuid))}
+      (if (seq thumb-url)
+        [:img {:src   thumb-url
+               :style {:maxWidth "100%" :maxHeight "400px" :objectFit "contain"}}]
+        [:div.opacity-25.py-8
+         (ui/icon "brain" {:size 48})])]]))
+
+;; Register macro renderer so {{mindmap page-uuid}} works in block.cljs macro-cp
+(macro/register "mindmap"
+  (fn [config options]
+    (when-let [page-uuid (first (:arguments options))]
+      (mindmap-embed-card page-uuid config))))
 
 ;; ── 思维导图画廊页 ────────────────────────────────────────────────────────────
 

@@ -202,34 +202,37 @@
     (some-> (visual-doc/read-doc-cache mind-map-cache-prefix page-uuid) :data)))
 
 (defn <create-mind-map!
-  "Creates a new mind-map page manifest and stores the initial JSON in the
-   worker sidecar before navigating to the editor."
-  [name]
-  (let [title (string/trim (or name "新思维导图"))]
-    (if (mind-map-name-exists? title)
-      (do
-        (notification/show! (str "思维导图“" title "”已存在，请使用不同的名称") :warning)
-        nil)
-      (p/let [page (common-page-handler/<create! title {:redirect? false})
-              tag  (<ensure-mindmap-class-tag!)]
-        (when page
-          (let [repo       (state/get-current-repo)
-                page-uuid  (str (:block/uuid page))
-                initial-js (js/JSON.stringify
-                            (clj->js {:data {:text title}
-                                      :children []}))]
-            (if tag
-              (db/transact! repo
-                            [{:db/id      (:db/id page)
-                              :block/tags #{(:db/id tag)}}]
-                            {:outliner-op :save-block})
-              (notification/show! "MindMap 标签创建失败，页面可能不会出现在思维导图列表中" :warning))
-            (visual-doc/save-doc-cache! mind-map-cache-prefix page-uuid initial-js)
-            (p/let [_ (visual-doc/<flush-doc! repo page-uuid mind-map-attr initial-js)]
-              (route-handler/redirect!
-               {:to          :mind-map
-                :path-params {:name page-uuid}})
-              page)))))))
+  “Creates a new mind-map page manifest and stores the initial JSON in the
+   worker sidecar before navigating to the editor.
+   Pass {:redirect? false} to skip navigation (e.g. when embedding via slash command).”
+  ([name] (<create-mind-map! name {}))
+  ([name {:keys [redirect?] :or {redirect? true}}]
+   (let [title (string/trim (or name “新思维导图”))]
+     (if (mind-map-name-exists? title)
+       (do
+         (notification/show! (str “思维导图”” title “”已存在，请使用不同的名称”) :warning)
+         nil)
+       (p/let [page (common-page-handler/<create! title {:redirect? false})
+               tag  (<ensure-mindmap-class-tag!)]
+         (when page
+           (let [repo       (state/get-current-repo)
+                 page-uuid  (str (:block/uuid page))
+                 initial-js (js/JSON.stringify
+                             (clj->js {:data {:text title}
+                                       :children []}))]
+             (if tag
+               (db/transact! repo
+                             [{:db/id      (:db/id page)
+                               :block/tags #{(:db/id tag)}}]
+                             {:outliner-op :save-block})
+               (notification/show! “MindMap 标签创建失败，页面可能不会出现在思维导图列表中” :warning))
+             (visual-doc/save-doc-cache! mind-map-cache-prefix page-uuid initial-js)
+             (p/let [_ (visual-doc/<flush-doc! repo page-uuid mind-map-attr initial-js)]
+               (when redirect?
+                 (route-handler/redirect!
+                  {:to          :mind-map
+                   :path-params {:name page-uuid}}))
+               page))))))))
 
 (defn <delete-mind-map!
   "Deletes a mind-map page after removing its sidecar payload and local cache."
