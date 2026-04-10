@@ -204,10 +204,10 @@
 (defn <create-mind-map!
   [name opts]
   (let [redirect? (if (some? opts) (get opts :redirect? true) true)
-        title     (string/trim (or name “新思维导图”))]
+        title     (string/trim (or name "新思维导图"))]
     (if (mind-map-name-exists? title)
       (do
-        (notification/show! (str “思维导图”” title “”已存在，请使用不同的名称”) :warning)
+        (notification/show! (str "思维导图「" title "」已存在，请使用不同的名称") :warning)
         nil)
       (p/let [page (common-page-handler/<create! title {:redirect? false})
               tag  (<ensure-mindmap-class-tag!)]
@@ -222,7 +222,7 @@
                             [{:db/id      (:db/id page)
                               :block/tags #{(:db/id tag)}}]
                             {:outliner-op :save-block})
-              (notification/show! “MindMap 标签创建失败，页面可能不会出现在思维导图列表中” :warning))
+              (notification/show! "MindMap 标签创建失败, 页面可能不会出现在思维导图列表中" :warning))
             (visual-doc/save-doc-cache! mind-map-cache-prefix page-uuid initial-js)
             (p/let [_ (visual-doc/<flush-doc! repo page-uuid mind-map-attr initial-js)]
               (when redirect?
