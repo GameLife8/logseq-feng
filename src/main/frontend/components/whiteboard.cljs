@@ -48,6 +48,82 @@
                  (reset! *excalidraw-loaded? true)
                  (on-done)))))
 
+(defn- <load-whiteboard-preview-raw
+  [page-uuid]
+  (p/let [doc-info (whiteboard-handler/<load-canvas-doc page-uuid)]
+    (or (:json doc-info)
+        (whiteboard-handler/load-canvas-from-db page-uuid))))
+
+(defn- remove-node!
+  [^js node]
+  (when-let [parent (some-> node .-parentNode)]
+    (.removeChild parent node)))
+
+(defn- tighten-svg-view-box!
+  [^js svg padding]
+  (let [host (.createElement js/document "div")]
+    (set! (.. host -style -position) "absolute")
+    (set! (.. host -style -left) "-100000px")
+    (set! (.. host -style -top) "-100000px")
+    (set! (.. host -style -width) "1px")
+    (set! (.. host -style -height) "1px")
+    (set! (.. host -style -overflow) "hidden")
+    (set! (.. host -style -pointerEvents) "none")
+    (set! (.. host -style -visibility) "hidden")
+    (.appendChild host svg)
+    (.appendChild (.-body js/document) host)
+    (try
+      (let [bbox (.getBBox svg)
+            width (.-width bbox)
+            height (.-height bbox)]
+        (when (and (pos? width) (pos? height))
+          (let [pad   (or padding 12)
+                min-x (- (.-x bbox) pad)
+                min-y (- (.-y bbox) pad)
+                box-w (+ width (* 2 pad))
+                box-h (+ height (* 2 pad))]
+            (.setAttribute svg "viewBox" (str min-x " " min-y " " box-w " " box-h)))))
+      (catch :default err
+        (js/console.warn "[whiteboard] embed SVG crop failed:" err))
+      (finally
+        (remove-node! host))))
+  svg)
+
+(defn- render-whiteboard-svg!
+  [*svg raw]
+  (when raw
+    (try
+      (let [data     (js/JSON.parse raw)
+            elements (.-elements data)]
+        (when (and elements
+                   (pos? (.-length elements))
+                   (exists? js/ExcalidrawLib)
+                   (.-exportToSvg js/ExcalidrawLib))
+          (-> (js/ExcalidrawLib.exportToSvg
+               #js {:elements elements
+                    :appState #js {:exportWithDarkMode false
+                                   :exportBackground   false}
+                    :files #js {}})
+              (.then (fn [^js svg]
+                       (tighten-svg-view-box! svg 10)
+                       (.setAttribute svg "width" "100%")
+                       (.setAttribute svg "height" "100%")
+                       (.setAttribute svg "style" "display:block;width:100%;height:100%;")
+                       (.setAttribute svg "preserveAspectRatio" "xMidYMid meet")
+                       (reset! *svg (.-outerHTML svg))))
+              (.catch (fn [err]
+                        (js/console.warn "[whiteboard] embed SVG export failed:" err))))))
+      (catch :default err
+        (js/console.warn "[whiteboard] embed SVG parse failed:" err)))))
+
+(defn- refresh-whiteboard-svg!
+  [page-uuid *svg]
+  (reset! *svg nil)
+  (ensure-excalidraw-loaded!
+   (fn []
+     (p/let [raw (<load-whiteboard-preview-raw page-uuid)]
+       (render-whiteboard-svg! *svg raw)))))
+
 ;; ── tags bar (floating, real Logseq block/tags) ─────────────────────────────
 
 (rum/defcs tags-bar
@@ -646,39 +722,8 @@
   {:did-mount
    (fn [state]
      (let [page-uuid (-> state :rum/args first)
-           *svg      (::svg-html state)
-           render-raw! (fn [raw]
-                         (when raw
-                           (try
-                             (let [data     (js/JSON.parse raw)
-                                   elements (.-elements data)]
-                               (when (and elements
-                                          (pos? (.-length elements))
-                                          (exists? js/ExcalidrawLib)
-                                          (.-exportToSvg js/ExcalidrawLib))
-                                 (-> (js/ExcalidrawLib.exportToSvg
-                                      #js {:elements elements
-                                           :appState #js {:exportWithDarkMode false
-                                                          :exportBackground   true
-                                                          :backgroundColor    "#ffffff"}
-                                           :files #js {}})
-                                     (.then (fn [^js svg]
-                                              (.setAttribute svg "width" "100%")
-                                              (.setAttribute svg "height" "100%")
-                                              (.setAttribute svg "preserveAspectRatio" "xMidYMid meet")
-                                              (reset! *svg (.-outerHTML svg))))
-                                     (.catch (fn [err]
-                                               (js/console.warn "[wb] SVG thumbnail export failed" err))))))
-                             (catch :default err
-                               (js/console.warn "[wb] Thumbnail parse error" err)))))
-           gen-svg!  (fn []
-                       (p/let [doc-info (whiteboard-handler/<load-canvas-doc page-uuid)
-                               raw      (or (:json doc-info)
-                                            (whiteboard-handler/load-canvas-from-db page-uuid))]
-                         (render-raw! raw)))]
-       ;; Ensure the Excalidraw bundle (which exposes ExcalidrawLib) is loaded
-       ;; before attempting SVG export. On first visit the bundle isn't loaded yet.
-       (ensure-excalidraw-loaded! gen-svg!))
+          *svg      (::svg-html state)]
+      (refresh-whiteboard-svg! page-uuid *svg))
      state)}
   [state _page-uuid]
   (let [svg-html (rum/react (::svg-html state))]
@@ -699,7 +744,7 @@
 
 ;; ── whiteboard embed card (for {{whiteboard uuid}} macro) ─────────────────────
 
-(rum/defcs whiteboard-embed-card
+(rum/defcs whiteboard-embed-card-legacy
   "Renders an embedded whiteboard card with SVG preview and toolbar.
    Used by macro-cp when rendering {{whiteboard page-uuid}}."
   < rum/reactive
@@ -707,37 +752,8 @@
   {:did-mount
    (fn [state]
      (let [page-uuid (-> state :rum/args first)
-           *svg      (::svg-html state)
-           render-raw! (fn [raw]
-                         (when raw
-                           (try
-                             (let [data     (js/JSON.parse raw)
-                                   elements (.-elements data)]
-                               (when (and elements
-                                          (pos? (.-length elements))
-                                          (exists? js/ExcalidrawLib)
-                                          (.-exportToSvg js/ExcalidrawLib))
-                                 (-> (js/ExcalidrawLib.exportToSvg
-                                      #js {:elements elements
-                                           :appState #js {:exportWithDarkMode false
-                                                          :exportBackground   true
-                                                          :backgroundColor    "#ffffff"}
-                                           :files #js {}})
-                                     (.then (fn [^js svg]
-                                              (.setAttribute svg "width" "100%")
-                                              (.setAttribute svg "height" "100%")
-                                              (.setAttribute svg "preserveAspectRatio" "xMidYMid meet")
-                                              (reset! *svg (.-outerHTML svg))))
-                                     (.catch (fn [err]
-                                               (js/console.warn "[wb-embed] SVG export failed" err))))))
-                             (catch :default err
-                               (js/console.warn "[wb-embed] parse error" err)))))
-           gen-svg!  (fn []
-                       (p/let [doc-info (whiteboard-handler/<load-canvas-doc page-uuid)
-                               raw      (or (:json doc-info)
-                                            (whiteboard-handler/load-canvas-from-db page-uuid))]
-                         (render-raw! raw)))]
-       (ensure-excalidraw-loaded! gen-svg!))
+           *svg      (::svg-html state)]
+       (refresh-whiteboard-svg! page-uuid *svg))
      state)}
   [state page-uuid config]
   (let [svg-html  (rum/react (::svg-html state))
@@ -832,6 +848,78 @@
          (ui/icon "layout-board" {:size 48})])]]))
 
 ;; Register macro renderer so {{whiteboard page-uuid}} works in block.cljs macro-cp
+(macro/register "whiteboard"
+  (fn [config options]
+    (when-let [page-uuid (first (:arguments options))]
+      (whiteboard-embed-card-legacy page-uuid config))))
+
+;; Override the initial embed card definition with a pointer-down-safe version so
+;; block action clicks do not reopen the raw macro source in editor mode.
+(rum/defcs whiteboard-embed-card
+  "Renders an embedded whiteboard card with SVG preview and toolbar.
+   Used by macro-cp when rendering {{whiteboard page-uuid}}."
+  < rum/reactive
+  (rum/local nil ::svg-html)
+  {:did-mount
+   (fn [state]
+     (let [page-uuid (-> state :rum/args first)
+           *svg      (::svg-html state)]
+       (refresh-whiteboard-svg! page-uuid *svg))
+     state)}
+  [state page-uuid config]
+  (let [svg-html  (rum/react (::svg-html state))
+        page      (db/entity [:block/uuid (uuid page-uuid)])
+        title     (or (:block/title page) "Untitled Whiteboard")
+        block-id  (:block/uuid (:block config))
+        refresh!  (fn [e]
+                    (util/stop e)
+                    (refresh-whiteboard-svg! page-uuid (::svg-html state)))
+        open!     (fn [e]
+                    (util/stop e)
+                    (whiteboard-handler/redirect-to-whiteboard! page-uuid))
+        remove!   (fn [e]
+                    (util/stop e)
+                    (when block-id
+                      (editor-handler/delete-block-aux! {:block/uuid block-id})))
+        action-button
+        (fn [{:keys [title on-click icon class]}]
+          [:button {:type "button"
+                    :title title
+                    :class (str "visual-doc-embed-action" (when class (str " " class)))
+                    :on-pointer-down util/stop-propagation
+                    :on-click on-click}
+           (ui/icon icon {:size 14})])]
+    [:div.whiteboard-embed-card.visual-doc-embed-card.forbid-edit
+     {:on-pointer-down util/stop-propagation}
+     [:div.visual-doc-embed-toolbar
+      [:button.visual-doc-embed-title
+       {:type "button"
+        :on-pointer-down util/stop-propagation
+        :on-click open!}
+       (ui/icon "layout-board" {:size 14})
+       [:span.visual-doc-embed-title-text title]]
+      [:div.visual-doc-embed-actions
+       (action-button {:title "Refresh preview"
+                       :on-click refresh!
+                       :icon "refresh"})
+       (action-button {:title "Open whiteboard"
+                       :on-click open!
+                       :icon "edit"})
+       (when block-id
+         (action-button {:title "Remove embed"
+                         :on-click remove!
+                         :icon "trash"
+                         :class "visual-doc-embed-action-danger"}))]]
+     [:div.visual-doc-embed-preview
+      {:on-pointer-down util/stop-propagation
+       :on-click #(whiteboard-handler/redirect-to-whiteboard! page-uuid)}
+      (if svg-html
+        [:div.visual-doc-embed-preview-inner
+         {:dangerouslySetInnerHTML {:__html svg-html}}]
+        [:div.visual-doc-embed-empty
+         (ui/icon "layout-board" {:size 40})
+         [:span "Open whiteboard"]])]]))
+
 (macro/register "whiteboard"
   (fn [config options]
     (when-let [page-uuid (first (:arguments options))]

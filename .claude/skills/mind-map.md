@@ -146,8 +146,19 @@ Component did-mount
 - No SVG export like Excalidraw; uses `<img>` tag with cached data URL or icon placeholder.
 - Gallery uses `react/q` with `db-async/<get-tag-objects` for reactive updates.
 
+## Embed Cards
+
+- `{{mindmap <page-uuid>}}` is rendered by `macro/register "mindmap"` in `components/mind_map.cljs`.
+- The embed card root is marked non-editable (`.forbid-edit`) and stops `pointerdown` propagation so toolbar clicks do not reopen the raw macro text in the block editor.
+- The embed preview reads the latest cached thumbnail from `mind-map-thumb-{uuid}` in localStorage and displays it inside the card shell.
+- Toolbar actions are scoped to the embed surface:
+  - Refresh reloads the cached preview thumbnail.
+  - Edit opens the mind-map page.
+  - Delete removes the embedding block only; it must not delete the mind-map page itself.
+
 ## Merge Notes
 
+- Preserve the embed-card `pointerdown` guard; `click` handlers alone are too late to stop block editor activation.
 - Search for `VISUAL-DOC-SIDECAR` before resolving merge conflicts.
 - Preserve manifest-only page writes and worker sidecar reads.
 - `blob snapshot = truth`, `normalized rows = derived index`.

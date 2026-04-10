@@ -45,6 +45,187 @@ body {
     pointer-events: none;
   }
 
+  .visual-doc-embed-card {
+    margin: 6px 0;
+    overflow: hidden;
+    border: 1px solid var(--lx-gray-05, #e5e7eb);
+    border-radius: 12px;
+    background:
+      linear-gradient(180deg,
+        var(--lx-gray-01, var(--ls-primary-background-color, #ffffff)) 0%,
+        var(--lx-gray-02, var(--ls-secondary-background-color, #f8fafc)) 100%);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    transition: box-shadow 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  }
+
+  .visual-doc-embed-card:hover {
+    border-color: var(--lx-gray-06, #dbe3ec);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  }
+
+  .visual-doc-embed-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--lx-gray-04, #eef2f7);
+    background: var(--lx-gray-02, #f8fafc);
+  }
+
+  .visual-doc-embed-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--lx-accent-11, var(--ls-link-text-color, #2563eb));
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .visual-doc-embed-title:hover .visual-doc-embed-title-text {
+    text-decoration: underline;
+  }
+
+  .visual-doc-embed-title-text {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  .visual-doc-embed-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .visual-doc-embed-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--lx-gray-10, #64748b);
+    cursor: pointer;
+    opacity: 0.72;
+    transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+  }
+
+  .visual-doc-embed-action:hover,
+  .visual-doc-embed-action:focus-visible {
+    opacity: 1;
+    background: var(--lx-gray-03, #eef2f7);
+    color: var(--lx-gray-12, var(--ls-primary-text-color, #111827));
+    outline: none;
+  }
+
+  .visual-doc-embed-action.visual-doc-embed-action-danger {
+    color: #ef4444;
+  }
+
+  .visual-doc-embed-action.visual-doc-embed-action-danger:hover,
+  .visual-doc-embed-action.visual-doc-embed-action-danger:focus-visible {
+    background: rgba(239, 68, 68, 0.1);
+    color: #dc2626;
+  }
+
+  .visual-doc-embed-preview {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 180px;
+    max-height: 320px;
+    aspect-ratio: 16 / 7;
+    padding: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    background:
+      radial-gradient(circle at top, rgba(255, 255, 255, 0.98) 0%, var(--lx-gray-02, #f8fafc) 100%);
+  }
+
+  .visual-doc-embed-preview.visual-doc-embed-preview-mindmap {
+    aspect-ratio: 16 / 5.4;
+  }
+
+  .visual-doc-embed-preview-inner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 10px;
+    background: var(--lx-gray-01, var(--ls-primary-background-color, #ffffff));
+  }
+
+  .visual-doc-embed-preview svg {
+    pointer-events: none;
+  }
+
+  .visual-doc-thumbnail-inner,
+  .visual-doc-thumbnail-inner svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .visual-doc-thumbnail-inner svg,
+  .mm-thumbnail-area svg {
+    pointer-events: none;
+  }
+
+  .visual-doc-embed-preview-image {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+  }
+
+  .visual-doc-thumbnail-image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+  }
+
+  .visual-doc-embed-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--lx-gray-09, #94a3b8);
+    font-size: 12px;
+    text-align: center;
+  }
+
+  @media (max-width: 768px) {
+    .visual-doc-embed-preview {
+      min-height: 156px;
+      padding: 6px;
+    }
+
+    .visual-doc-embed-toolbar {
+      padding: 8px 10px;
+    }
+  }
+
   textarea {
     overflow: hidden;
     padding: 8px;

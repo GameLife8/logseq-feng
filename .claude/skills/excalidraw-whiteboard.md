@@ -154,6 +154,16 @@ Tracked atoms: `*cached?`, `*persisted?`, `*cache-dirty?`, `*persist-dirty?`
 
 Key: `exportToSvg` returns a Promise resolving to an SVG DOM element.
 
+## Embed Cards
+
+- `{{whiteboard <page-uuid>}}` is rendered by `macro/register "whiteboard"` in `components/whiteboard.cljs`.
+- The embed card root is marked non-editable (`.forbid-edit`) and stops `pointerdown` propagation so toolbar clicks do not reopen the raw macro text in the block editor.
+- The embed preview uses the same sidecar-first load path as gallery thumbnails: sidecar JSON first, then local draft cache fallback, then `ExcalidrawLib.exportToSvg`.
+- Toolbar actions are scoped to the embed surface:
+  - Refresh regenerates the preview SVG.
+  - Edit opens the whiteboard page.
+  - Delete removes the embedding block only; it must not delete the whiteboard page itself.
+
 ## Current Hotspots
 
 - `src/main/frontend/worker/visual_doc.cljs` — SQLite sidecar ops (exec-select, upsert, index rebuild)
@@ -166,6 +176,7 @@ Key: `exportToSvg` returns a Promise resolving to an SVG DOM element.
 
 ## Merge Notes
 
+- Preserve the embed-card `pointerdown` guard; `click` handlers alone are too late to stop block editor activation.
 - Search for `VISUAL-DOC-SIDECAR` before resolving merge conflicts.
 - Preserve sidecar thread APIs and manifest-only page writes.
 - `blob snapshot = truth`, `normalized rows = derived index`.

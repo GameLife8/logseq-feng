@@ -41,6 +41,127 @@
                  (reset! *mind-map-loaded? true)
                  (on-done)))))
 
+(defn- read-mind-map-thumb
+  [page-uuid]
+  (some-> js/localStorage (.getItem (str "mind-map-thumb-" page-uuid))))
+
+(defn- refresh-mind-map-thumb!
+  [page-uuid *thumb]
+  (reset! *thumb (read-mind-map-thumb page-uuid)))
+
+(defn- remove-node!
+  [^js node]
+  (when-let [parent (some-> node .-parentNode)]
+    (.removeChild parent node)))
+
+(defn- tighten-svg-view-box!
+  [^js svg padding]
+  (let [host (.createElement js/document "div")]
+    (set! (.. host -style -position) "absolute")
+    (set! (.. host -style -left) "-100000px")
+    (set! (.. host -style -top) "-100000px")
+    (set! (.. host -style -width) "1px")
+    (set! (.. host -style -height) "1px")
+    (set! (.. host -style -overflow) "hidden")
+    (set! (.. host -style -pointerEvents) "none")
+    (set! (.. host -style -visibility) "hidden")
+    (.appendChild host svg)
+    (.appendChild (.-body js/document) host)
+    (try
+      (let [bbox (.getBBox svg)
+            width (.-width bbox)
+            height (.-height bbox)]
+        (when (and (pos? width) (pos? height))
+          (let [pad   (or padding 10)
+                min-x (- (.-x bbox) pad)
+                min-y (- (.-y bbox) pad)
+                box-w (+ width (* 2 pad))
+                box-h (+ height (* 2 pad))]
+            (.setAttribute svg "viewBox" (str min-x " " min-y " " box-w " " box-h)))))
+      (catch :default err
+        (js/console.warn "[mind-map] preview crop failed:" err))
+      (finally
+        (remove-node! host))))
+  svg)
+
+(defn- decode-base64-utf8
+  [payload]
+  (let [binary (js/atob payload)
+        len    (.-length binary)
+        bytes  (js/Uint8Array. len)]
+    (dotimes [idx len]
+      (aset bytes idx (.charCodeAt binary idx)))
+    (.decode (js/TextDecoder. "utf-8") bytes)))
+
+(defn- svg-data-url->text
+  [data-url]
+  (when (and (string? data-url)
+             (str/starts-with? data-url "data:image/svg+xml"))
+    (let [comma-idx (str/index-of data-url ",")
+          meta      (when comma-idx (subs data-url 0 comma-idx))
+          payload   (when comma-idx (subs data-url (inc comma-idx)))]
+      (when (and meta payload)
+        (if (str/includes? meta ";base64")
+          (decode-base64-utf8 payload)
+          (js/decodeURIComponent payload))))))
+
+(defn- svg-text->html
+  [svg-text]
+  (when (seq svg-text)
+    (let [doc (.parseFromString (js/DOMParser.) svg-text "image/svg+xml")
+          svg (.querySelector doc "svg")]
+      (when svg
+        (tighten-svg-view-box! svg 8)
+        (.setAttribute svg "width" "100%")
+        (.setAttribute svg "height" "100%")
+        (.setAttribute svg "style" "display:block;width:100%;height:100%;")
+        (.setAttribute svg "preserveAspectRatio" "xMidYMid meet")
+        (.-outerHTML svg)))))
+
+(defn- refresh-mind-map-preview!
+  [page-uuid *preview]
+  (let [next-preview (if-let [thumb (read-mind-map-thumb page-uuid)]
+                       (if-let [svg-html (some-> thumb svg-data-url->text svg-text->html)]
+                         {:kind :html :value svg-html}
+                         {:kind :url :value thumb})
+                       nil)]
+    (when (not= next-preview @*preview)
+      (reset! *preview next-preview))))
+
+(rum/defcs mind-map-thumbnail
+  < rum/reactive
+  (rum/local nil ::preview)
+  {:did-mount
+   (fn [state]
+     (when-let [page-uuid (-> state :rum/args first)]
+       (refresh-mind-map-preview! page-uuid (::preview state)))
+     state)
+   :did-update
+   (fn [state]
+     (when-let [page-uuid (-> state :rum/args first)]
+       (refresh-mind-map-preview! page-uuid (::preview state)))
+      state)}
+  [state page-uuid]
+  (let [preview (rum/react (::preview state))
+        kind    (:kind preview)
+        value   (:value preview)]
+    [:div.mm-thumbnail-area
+     {:style {:width           "100%"
+              :height          "130px"
+              :background      "var(--lx-gray-02, #f9fafb)"
+              :borderRadius    "8px 8px 0 0"
+              :overflow        "hidden"
+              :display         "flex"
+              :alignItems      "center"
+              :justifyContent  "center"}}
+     (case kind
+       :html [:div.visual-doc-thumbnail-inner
+              {:dangerouslySetInnerHTML {:__html value}}]
+       :url  [:img {:src value
+                    :class "visual-doc-thumbnail-image"}]
+       [:div.opacity-20
+        (ui/icon "hierarchy" {:size 40})])]))
+
 ;; ── 思维导图编辑器页 ──────────────────────────────────────────────────────────
 
 (rum/defcs mind-map-page
@@ -144,7 +265,7 @@
 
 ;; ── mind-map embed card (for {{mindmap uuid}} macro) ─────────────────────────
 
-(rum/defcs mindmap-embed-card
+(rum/defcs mindmap-embed-card-legacy
   "Renders an embedded mind-map card with thumbnail preview and toolbar.
    Used by macro-cp when rendering {{mindmap page-uuid}}."
   < rum/reactive
@@ -227,6 +348,83 @@
          (ui/icon "brain" {:size 48})])]]))
 
 ;; Register macro renderer so {{mindmap page-uuid}} works in block.cljs macro-cp
+(macro/register "mindmap"
+  (fn [config options]
+    (when-let [page-uuid (first (:arguments options))]
+      (mindmap-embed-card-legacy page-uuid config))))
+
+;; Override the initial embed card definition with a pointer-down-safe version so
+;; block action clicks do not reopen the raw macro source in editor mode.
+(rum/defcs mindmap-embed-card
+  "Renders an embedded mind-map card with thumbnail preview and toolbar.
+   Used by macro-cp when rendering {{mindmap page-uuid}}."
+  < rum/reactive
+  (rum/local nil ::preview)
+  {:did-mount
+   (fn [state]
+     (let [page-uuid (-> state :rum/args first)
+           *preview  (::preview state)]
+       (refresh-mind-map-preview! page-uuid *preview))
+     state)}
+  [state page-uuid config]
+  (let [preview   (rum/react (::preview state))
+        kind      (:kind preview)
+        value     (:value preview)
+        page      (db/entity [:block/uuid (uuid page-uuid)])
+        title     (or (:block/title page) "Untitled MindMap")
+        block-id  (:block/uuid (:block config))
+        refresh!  (fn [e]
+                    (util/stop e)
+                    (refresh-mind-map-preview! page-uuid (::preview state)))
+        open!     (fn [e]
+                    (util/stop e)
+                    (mind-map-handler/redirect-to-mind-map! (uuid page-uuid)))
+        remove!   (fn [e]
+                    (util/stop e)
+                    (when block-id
+                      (editor-handler/delete-block-aux! {:block/uuid block-id})))
+        action-button
+        (fn [{:keys [title on-click icon class]}]
+          [:button {:type "button"
+                    :title title
+                    :class (str "visual-doc-embed-action" (when class (str " " class)))
+                    :on-pointer-down util/stop-propagation
+                    :on-click on-click}
+           (ui/icon icon {:size 14})])]
+    [:div.mindmap-embed-card.visual-doc-embed-card.forbid-edit
+     {:on-pointer-down util/stop-propagation}
+     [:div.visual-doc-embed-toolbar
+      [:button.visual-doc-embed-title
+       {:type "button"
+        :on-pointer-down util/stop-propagation
+        :on-click open!}
+       (ui/icon "hierarchy" {:size 14})
+       [:span.visual-doc-embed-title-text title]]
+      [:div.visual-doc-embed-actions
+       (action-button {:title "Refresh preview"
+                       :on-click refresh!
+                       :icon "refresh"})
+       (action-button {:title "Open mind map"
+                       :on-click open!
+                       :icon "edit"})
+       (when block-id
+         (action-button {:title "Remove embed"
+                         :on-click remove!
+                         :icon "trash"
+                         :class "visual-doc-embed-action-danger"}))]]
+     [:div.visual-doc-embed-preview.visual-doc-embed-preview-mindmap
+      {:on-pointer-down util/stop-propagation
+       :on-click #(mind-map-handler/redirect-to-mind-map! (uuid page-uuid))}
+      (case kind
+        :html [:div.visual-doc-embed-preview-inner
+               {:dangerouslySetInnerHTML {:__html value}}]
+        :url  [:div.visual-doc-embed-preview-inner
+               [:img {:src value
+                      :class "visual-doc-embed-preview-image"}]]
+        [:div.visual-doc-embed-empty
+         (ui/icon "hierarchy" {:size 40})
+         [:span "Open mind map"]])]]))
+
 (macro/register "mindmap"
   (fn [config options]
     (when-let [page-uuid (first (:arguments options))]
@@ -334,8 +532,7 @@
          (for [mm   mind-maps
                :let [mm-uuid  (str (:block/uuid mm))
                      mm-title (or (:block/title mm) "未命名")
-                     renaming? (= editing-uuid mm-uuid)
-                     thumb    (.getItem js/localStorage (str "mind-map-thumb-" mm-uuid))]]
+                     renaming? (= editing-uuid mm-uuid)]]
            [:div.mm-gallery-card
             {:key            (str "mmcard-" mm-uuid)
              :style          {:border       "1px solid var(--lx-gray-05, #e5e7eb)"
@@ -361,27 +558,9 @@
                                                  (.closest ".mm-card-actions, .mm-rename-input"))
                                  (mind-map-handler/redirect-to-mind-map! mm-uuid)))}
 
-            ;; 缩略图区：有缩略图时显示 SVG 预览，否则显示占位图标。
-            ;; 使用 <img> 而非内联 SVG，绕过 Logseq common.css 中
-            ;;   svg { pointer-events: none }  的全局规则。
-            [:div.mm-thumbnail-area
-             {:style {:width        "100%"
-                      :height       "130px"
-                      :background   "var(--lx-gray-02, #f9fafb)"
-                      :borderRadius "8px 8px 0 0"
-                      :overflow     "hidden"
-                      :display      "flex"
-                      :alignItems   "center"
-                      :justifyContent "center"}}
-             (if thumb
-               [:img {:src   thumb
-                      :style {:width         "100%"
-                              :height        "100%"
-                              :objectFit     "contain"
-                              :pointerEvents "none"
-                              :display       "block"
-                              :padding       "8px"}}]
-               [:div.opacity-20 (ui/icon "hierarchy" {:size 40})])]
+            ;; 缩略图区：显示裁边后的思维导图预览，尽量减少多余留白。
+            ;; 组件在父级重渲染时会重新读取最新缓存，避免图库长期显示旧缩略图。
+            (mind-map-thumbnail mm-uuid)
 
             ;; 底部：标题 + 操作按钮
             [:div.flex.items-center.gap-2.px-3.py-2

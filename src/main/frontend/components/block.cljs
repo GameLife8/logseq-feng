@@ -2178,6 +2178,7 @@
   [target]
   (or
    (dom/has-class? target "forbid-edit")
+   (dom/closest target ".forbid-edit")
    (dom/has-class? target "bullet")
    (dom/has-class? target "logbook")
    (dom/has-class? target "markdown-table")
