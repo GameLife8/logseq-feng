@@ -1,6 +1,7 @@
 (ns frontend.commands
   "Provides functionality for commands and advanced commands"
   (:require [clojure.string :as string]
+            [electron.ipc :as ipc]
             [frontend.date :as date]
             [frontend.db :as db]
             [frontend.extensions.video.youtube :as youtube]
@@ -14,6 +15,7 @@
             [frontend.util.cursor :as cursor]
             [goog.dom :as gdom]
             [goog.object :as gobj]
+            [logseq.common.path :as path]
             [logseq.common.util :as common-util]
             [logseq.common.util.block-ref :as block-ref]
             [logseq.common.util.page-ref :as page-ref]
@@ -65,6 +67,15 @@
                         {:command :image-link
                          :id :label
                          :placeholder "Label"}]]])
+
+(defn- get-asset-reference-link
+  [format file-path]
+  (let [label (util/node-path.basename file-path)
+        link (path/path-join "file://" file-path)]
+    (case (keyword format)
+      :org (util/format "[[%s][%s]]" link label)
+      :markdown (util/format "[%s](%s)" label link)
+      (util/format "[%s](%s)" label link))))
 
 (def *extend-slash-commands (atom []))
 
@@ -289,6 +300,12 @@
         [[:editor/click-hidden-file-input :id]]
         "Upload file types like image, pdf, docx, etc.)"
         :icon/upload]
+
+       ["Insert an asset"
+        [[:editor/clear-current-slash]
+         [:editor/insert-asset-reference]]
+        "Browse disk and insert a file link without uploading it"
+        :icon/paperclip]
 
        ["Template" [[:editor/input command-trigger nil]
                     [:editor/search-template]] "Insert a created template here"
@@ -690,6 +707,17 @@
 (defmethod handle-step :editor/click-hidden-file-input [[_ _input-id]]
   (when-let [input-file (gdom/getElement "upload-file")]
     (.click input-file)))
+
+(defmethod handle-step :editor/insert-asset-reference [[_] format]
+  (if-not (util/electron?)
+    (notification/show! [:div "Insert an asset is only available on desktop."] :warning)
+    (p/let [^js ret (ipc/ipc :showOpenDialog {:properties ["openFile"]
+                                              :title "Select Asset File"})]
+      (when-let [file-path (some-> ret
+                                   (gobj/get "filePaths")
+                                   (aget 0))]
+        (when-let [input-id (state/get-edit-input-id)]
+          (insert! input-id (get-asset-reference-link format file-path) {}))))))
 
 (defmethod handle-step :editor/exit [[_]]
   (p/do!
