@@ -162,7 +162,7 @@
 - 主线程持有**懒副本**（`frontend.db`），通过 postMessage 同步
 - 副本可能有延迟 → 对配置页等重要数据用 `db-async/<pull` 走 worker 直接查询
 - 响应式查询缓存：`src/main/frontend/db/react.cljs`（`get-affected-queries-keys` 精确失效）
-- 事务后钩子：`src/main/frontend/worker/pipeline.cljs`（rebuild refs、更新 FTS 等）
+- 事务后钩子：`src/main/frontend/worker/pipeline.cljs`（rebuild refs、更新 FTS 等；sync/RTC 相关条件已移除）
 
 ---
 

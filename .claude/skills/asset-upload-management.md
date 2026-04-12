@@ -19,9 +19,9 @@ Use this note when working on asset upload, slash commands `/upload an asset` an
 - `src/main/frontend/components/assets.cljs`
 - `deps/db/src/logseq/db/frontend/class.cljs`
 - `deps/db/src/logseq/db/frontend/property.cljs`
-- `src/main/frontend/worker/sync/asset_db_listener.cljs`
-- `src/main/frontend/worker/sync/assets.cljs`
-- `src/main/frontend/worker/sync/download.cljs`
+- ~~`src/main/frontend/worker/sync/asset_db_listener.cljs`~~ (REMOVED — sync code deleted)
+- ~~`src/main/frontend/worker/sync/assets.cljs`~~ (REMOVED — sync code deleted)
+- ~~`src/main/frontend/worker/sync/download.cljs`~~ (REMOVED — sync code deleted)
 
 ## Mental Model
 
@@ -223,15 +223,18 @@ Asset class gets special table treatment:
 
 This page only manages real Asset entities. Plain external file links inserted by `/Insert an asset` are out of scope for this page.
 
-## Asset Sync Logic
+## Asset Sync Logic (REMOVED)
 
-For db-sync graphs, only managed Asset entities participate in upload/download lifecycle.
+~~For db-sync graphs, only managed Asset entities participate in upload/download lifecycle.~~
 
-- `asset_db_listener.cljs` listens for checksum writes
-- `sync/assets.cljs` uploads binaries and stores remote metadata
-- `sync/download.cljs` restores missing local managed files
+The remote asset sync system has been removed along with the entire db-sync module. The following files no longer exist:
+- `asset_db_listener.cljs` — deleted
+- `sync/assets.cljs` — deleted
+- `sync/download.cljs` — deleted
 
-Lightweight `/Insert an asset` links do not sync as asset binaries because they never create checksum-backed Asset entities.
+`handler/assets.cljs` → `maybe-request-remote-asset-download!` is now a no-op.
+
+Managed Asset entities still work locally (upload, checksum dedupe, `#Asset` page), but they no longer sync to remote.
 
 ## Known Pitfalls
 
@@ -240,7 +243,7 @@ Lightweight `/Insert an asset` links do not sync as asset binaries because they 
 - Do not route `/Insert an asset` through `db-based-save-assets!` or `new-asset-block`; that would silently turn a plain link into a managed Asset record.
 - Do not assume `#Asset` should show every file link in the graph. It only shows Asset entities.
 - `Upload an asset` and `Insert an asset` have intentionally different delete semantics.
-- Remote asset sync depends on checksum-backed Asset entities, not arbitrary `file:` links.
+- Remote asset sync has been removed; managed assets are local-only now.
 
 ## Merge Notes
 

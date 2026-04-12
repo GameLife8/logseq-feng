@@ -2,8 +2,9 @@
 
 ## Goal
 
-Use this checklist when merging `master` back into the whiteboard and mind-map branch.
-The main risk now is no longer only frontend bundles. It is also the new manifest plus worker-side sidecar storage split.
+Use this checklist when merging `master` back into the current feature branch.
+
+**Important**: The db-sync / RTC collaboration system has been fully removed from this branch. If `master` introduces new sync-related code, it must be excluded or stubbed during merge.
 
 ## New Storage Rules To Preserve
 
@@ -17,6 +18,18 @@ The main risk now is no longer only frontend bundles. It is also the new manifes
 - Legacy payload attributes are fallback-only and should not become the source of truth again.
 - Background index maintenance must not determine user-visible save success.
 
+## Sync Removal Rules (New)
+
+- `deps/db-sync/` has been deleted — do NOT re-introduce it from master.
+- `src/main/frontend/worker/sync/` and `sync.cljs` are deleted.
+- `src/main/frontend/handler/db_based/sync.cljs`, `rtc_flows.cljs`, `rtc_background_tasks.cljs` are deleted.
+- `src/main/frontend/handler/events/rtc.cljs` is deleted.
+- `src/main/frontend/components/rtc/` is deleted.
+- `src/main/frontend/db/rtc/` is deleted.
+- If master adds new requires for any of these namespaces, remove those requires during merge.
+- If master adds new RTC state atoms in `state.cljs`, do not include them.
+- `deps.edn` should NOT include `logseq/db-sync` dependency.
+
 ## Search Markers Before Resolving Conflicts
 
 - `VISUAL-DOC-SIDECAR`
@@ -26,6 +39,7 @@ The main risk now is no longer only frontend bundles. It is also the new manifes
 - `mind_map_nodes`
 - `whiteboard_elements`
 - `whiteboard_scene_meta`
+- `rtc` / `db-sync` / `sync.cljs` (should NOT exist after merge)
 
 ## Highest-Risk Files
 
@@ -39,6 +53,9 @@ The main risk now is no longer only frontend bundles. It is also the new manifes
 - `src/main/frontend/components/mind_map.cljs`
 - `src/main/frontend/extensions/excalidraw/core.cljs`
 - `src/main/frontend/extensions/mind_map/core.cljs`
+- `src/main/frontend/handler/events.cljs` (may re-add RTC event handlers from master)
+- `src/main/frontend/components/header.cljs` (may re-add RTC indicator from master)
+- `src/main/frontend/components/repo.cljs` (may re-add remote graph UI from master)
 
 ## Conflict Resolution Rules
 
@@ -50,13 +67,15 @@ The main risk now is no longer only frontend bundles. It is also the new manifes
 6. If both sides touched list pages, make sure gallery reads still work when payloads live only in sidecar storage.
 7. If both sides touched save flows, preserve `await flush success -> navigate` behavior.
 8. If both sides touched delete flows, preserve `delete sidecar -> clear cache -> delete page` ordering.
+9. **If master re-introduces sync/RTC code**, remove the sync-specific parts and keep only unrelated changes from the same file.
 
 ## Post-Merge Checks
 
 1. Compile `app` and `db-worker`.
-2. Create a whiteboard, edit it, return, reopen it, and confirm the scene survives reload.
-3. Delete a whiteboard and confirm refresh does not revive it.
-4. Create a mind map, edit it, return, reopen it, and confirm the map survives reload.
-5. Delete a mind map and confirm refresh does not revive it.
-6. Check whiteboard gallery thumbnails and mind-map gallery cards.
-7. Check that no new code writes full payload JSON back to `:block/whiteboard-canvas` or `:block/mind-map-data` as the primary store.
+2. Verify NO references to deleted sync namespaces (`frontend.worker.sync`, `frontend.handler.db-based.sync`, `frontend.handler.events.rtc`, `logseq.db-sync.*`).
+3. Create a whiteboard, edit it, return, reopen it, and confirm the scene survives reload.
+4. Delete a whiteboard and confirm refresh does not revive it.
+5. Create a mind map, edit it, return, reopen it, and confirm the map survives reload.
+6. Delete a mind map and confirm refresh does not revive it.
+7. Check whiteboard gallery thumbnails and mind-map gallery cards.
+8. Check that no new code writes full payload JSON back to `:block/whiteboard-canvas` or `:block/mind-map-data` as the primary store.
