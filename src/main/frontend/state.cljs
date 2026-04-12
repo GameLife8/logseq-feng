@@ -282,27 +282,12 @@
       :auth/access-token                     nil
       :auth/id-token                         nil
 
-      ;; graph-uuid -> ...
-      :rtc/state                             (atom {})
-      :rtc/loading-graphs?                   nil
-      ;; only latest rtc-log stored here, when a log stream is needed,
-      ;; use missionary to create a rtc-log-flow, use (missionary.core/watch <atom>)
-      :rtc/log                               (atom nil)
-      :rtc/uploading?                        false
-      :rtc/downloading-graph-uuid            nil
-      :rtc/graphs                            []
-      :rtc/online-info                       (atom {})
-      :rtc/asset-upload-download-progress    (atom {})
-      :rtc/users-info                        (atom {})
-
       :user/info                             {:UserGroups (storage/get :user-groups)}
       :encryption/graph-parsing?             false
 
       :ui/loading?                           {}
       :ui/container-id                       (atom 0)
       :ui/cached-key->container-id           (atom {})
-      :feature/enable-sync?                  (storage/get :logseq-sync-enabled)
-
       :ui/find-in-page                       nil
       :graph/importing                       nil
       :graph/importing-state                 {}
@@ -765,11 +750,6 @@ Similar to re-frame subscriptions"
   []
   (:git/current-repo @state))
 
-(defn get-rtc-graphs
-  []
-  (:rtc/graphs @state))
-
-;; TODO: rtc version
 (comment
   (defn get-remote-graph-usage
     [graphs]
@@ -1223,10 +1203,6 @@ Similar to re-frame subscriptions"
   (when clear-editing-block?
     (set-state! :editor/editing? nil)
     (set-state! :editor/block nil))
-  (when clear-editing-block?
-    (let [online-users (some-> @state :rtc/state deref :online-users)]
-      (when (and (coll? online-users) (> (count online-users) 1))
-        (pub-event! [:rtc/presence-update {:editing-block-uuid nil}]))))
   (set-state! :editor/start-pos nil)
   (clear-editor-last-pos!)
   (clear-cursor-range!)
@@ -1784,10 +1760,6 @@ Similar to re-frame subscriptions"
         (set-state! :editor/last-key-code nil)
         (set-state! :editor/set-timestamp-block nil)
         (set-state! :editor/cursor-range cursor-range)
-        (let [online-users (some-> @state :rtc/state deref :online-users)]
-          (when (and (coll? online-users) (> (count online-users) 1))
-            (when-let [block-uuid (:block/uuid block)]
-              (pub-event! [:rtc/presence-update {:editing-block-uuid (str block-uuid)}]))))
         (when (= :code (:logseq.property.node/display-type (d/entity db (:db/id block))))
           (pub-event! [:editor/focus-code-editor block block-element]))
         (when-let [input (gdom/getElement edit-input-id)]

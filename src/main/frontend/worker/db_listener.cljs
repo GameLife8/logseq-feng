@@ -7,7 +7,6 @@
             [frontend.worker.search :as search]
             [frontend.worker.shared-service :as shared-service]
             [frontend.worker.state :as worker-state]
-            [frontend.worker.sync :as db-sync]
             [logseq.db :as ldb]
             [promesa.core :as p]))
 
@@ -18,8 +17,7 @@
   "Return tx-report"
   [repo conn {:keys [tx-meta] :as tx-report}]
   (when repo (worker-state/set-db-latest-tx-time! repo))
-  (when-not (or (:rtc-download-graph? tx-meta)
-                (:mark-embedding? tx-meta))
+  (when-not (:mark-embedding? tx-meta)
     (let [{:keys [from-disk?]} tx-meta
           result (worker-pipeline/invoke-hooks conn tx-report (worker-state/get-context))
           tx-report' (:tx-report result)]
@@ -48,10 +46,6 @@
     (prn :debug-listen-db-changes)
     (prn :tx-data tx-data)
     (prn :tx-meta tx-meta)))
-
-(defmethod listen-db-changes :db-sync
-  [_ {:keys [repo]} tx-report]
-  (db-sync/handle-local-tx! repo tx-report))
 
 (defn- remove-old-embeddings-and-reset-new-updates!
   [conn tx-data tx-meta]
@@ -90,6 +84,5 @@
                                       (sync-db-to-main-thread repo conn tx-report)
                                       tx-report)
                          opt {:repo repo}]
-                     (db-sync/update-local-sync-checksum! repo tx-report')
                      (doseq [[k handler-fn] handlers]
                        (handler-fn k opt tx-report'))))))))

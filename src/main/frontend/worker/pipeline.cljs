@@ -22,11 +22,6 @@
             [logseq.outliner.datascript-report :as ds-report]
             [logseq.outliner.pipeline :as outliner-pipeline]))
 
-(def ^:private rtc-tx-or-download-graph?
-  (let [p (some-fn :rtc-op? :rtc-tx? :rtc-download-graph?)]
-    (fn [tx-meta]
-      (p tx-meta))))
-
 (defn- refs-need-recalculated?
   [tx-meta]
   (let [outliner-op (:outliner-op tx-meta)]
@@ -36,9 +31,7 @@
 
 (defn- rebuild-block-refs
   [{:keys [tx-meta db-after db-before]} blocks]
-  (when (or (and (:outliner-op tx-meta) (refs-need-recalculated? tx-meta))
-            (:rtc-tx? tx-meta)
-            (:rtc-op? tx-meta))
+  (when (and (:outliner-op tx-meta) (refs-need-recalculated? tx-meta))
     (mapcat (fn [block]
               (when (and (d/entity db-after (:db/id block))
                          ;; don't compute refs for reactions
@@ -108,49 +101,48 @@
 
 (defn- fix-page-tags
   "Add missing attributes and remove #Page when inserting or updating block/title with inline tags"
-  [{:keys [db-after tx-data tx-meta]}]
-  (when-not (:rtc-tx? tx-meta)
-    (let [page-tag (d/entity db-after :logseq.class/Page)
-          tag (d/entity db-after :logseq.class/Tag)]
-      (assert page-tag "Page tag doesn't exist")
-      (mapcat
-       (fn [datom]
-         (when (and (= :block/tags (:a datom))
-                    (:added datom))
-           (let [entity (d/entity db-after (:e datom))
-                 v-entity (d/entity db-after (:v datom))]
-             (cond
+  [{:keys [db-after tx-data]}]
+  (let [page-tag (d/entity db-after :logseq.class/Page)
+        tag (d/entity db-after :logseq.class/Tag)]
+    (assert page-tag "Page tag doesn't exist")
+    (mapcat
+     (fn [datom]
+       (when (and (= :block/tags (:a datom))
+                  (:added datom))
+         (let [entity (d/entity db-after (:e datom))
+               v-entity (d/entity db-after (:v datom))]
+           (cond
              ;; add missing :db/ident and :logseq.property.class/extends for new tag
-               (and (= (:v datom) (:db/id tag))
-                    (not (ldb/inline-tag? (:block/raw-title entity) tag))
-                    (not (:db/ident entity)))
-               (let [eid (:db/id entity)]
-                 [[:db/add eid :db/ident (db-class/create-user-class-ident-from-name db-after (:block/title entity))]
-                  [:db/add eid :logseq.property.class/extends :logseq.class/Root]
-                  [:db/retract eid :block/tags :logseq.class/Page]])
+             (and (= (:v datom) (:db/id tag))
+                  (not (ldb/inline-tag? (:block/raw-title entity) tag))
+                  (not (:db/ident entity)))
+             (let [eid (:db/id entity)]
+               [[:db/add eid :db/ident (db-class/create-user-class-ident-from-name db-after (:block/title entity))]
+                [:db/add eid :logseq.property.class/extends :logseq.class/Root]
+                [:db/retract eid :block/tags :logseq.class/Page]])
 
              ;; remove #Page from tags/journals etc.
-               (= (:db/id page-tag) (:v datom))
-               (let [tags (->> entity
-                               :block/tags
-                               (map :db/ident)
-                               (remove #{:logseq.class/Page}))]
-                 (when (and (seq tags)
+             (= (:db/id page-tag) (:v datom))
+             (let [tags (->> entity
+                             :block/tags
+                             (map :db/ident)
+                             (remove #{:logseq.class/Page}))]
+               (when (and (seq tags)
                           ;; has other page-classes other than `:logseq.class/Page`
-                            (some db-class/page-classes tags))
-                   [[:db/retract (:e datom) :block/tags :logseq.class/Page]]))
+                          (some db-class/page-classes tags))
+                 [[:db/retract (:e datom) :block/tags :logseq.class/Page]]))
 
              ;; Add other page classes to an existing page
              ;; Caused by invalid tags data from server
              ;; TODO: remove this case
              ;; DEADLINE: 2025-11-30
-               (and (contains? (disj db-class/page-classes :logseq.class/Page) (:db/ident v-entity))
-                    (ldb/internal-page? entity))
-               [[:db/retract (:e datom) :block/tags :logseq.class/Page]]
+             (and (contains? (disj db-class/page-classes :logseq.class/Page) (:db/ident v-entity))
+                  (ldb/internal-page? entity))
+             [[:db/retract (:e datom) :block/tags :logseq.class/Page]]
 
-               :else
-               nil))))
-       tx-data))))
+             :else
+             nil))))
+     tx-data)))
 
 (defn- remove-inline-page-class-from-title
   "Remove inline page tag from title"
@@ -159,94 +151,92 @@
       string/trim))
 
 (defn- fix-inline-built-in-page-classes
-  [{:keys [db-after tx-data tx-meta]}]
-  (when-not (rtc-tx-or-download-graph? tx-meta)
-    (let [classes (->> (remove #{:logseq.class/Page} db-class/page-classes)
-                       (map #(d/entity db-after %)))
-          class-ids (set (map :db/id classes))]
-      (->>
-       (keep
-        (fn [datom]
-          (when (and (= :block/tags (:a datom))
-                     (:added datom)
-                     (contains? class-ids (:v datom)))
-            (let [id (:e datom)
-                  entity (d/entity db-after id)
-                  title (or (:block/raw-title entity) (:block/title entity))
-                  page-tag (d/entity db-after (:v datom))]
-              (when (and title
-                         (string/includes? title "#[[")
-                         (ldb/inline-tag? title page-tag))
-                (let [title (remove-inline-page-class-from-title entity page-tag)]
-                  [{:db/id id
-                    :block/title title}
-                   [:db/retract id :block/tags (:v datom)]
-                   [:db/retract id :block/tags :logseq.class/Page]])))))
-        tx-data)
-       (apply concat)))))
+  [{:keys [db-after tx-data]}]
+  (let [classes (->> (remove #{:logseq.class/Page} db-class/page-classes)
+                     (map #(d/entity db-after %)))
+        class-ids (set (map :db/id classes))]
+    (->>
+     (keep
+      (fn [datom]
+        (when (and (= :block/tags (:a datom))
+                   (:added datom)
+                   (contains? class-ids (:v datom)))
+          (let [id (:e datom)
+                entity (d/entity db-after id)
+                title (or (:block/raw-title entity) (:block/title entity))
+                page-tag (d/entity db-after (:v datom))]
+            (when (and title
+                       (string/includes? title "#[[")
+                       (ldb/inline-tag? title page-tag))
+              (let [title (remove-inline-page-class-from-title entity page-tag)]
+                [{:db/id id
+                  :block/title title}
+                 [:db/retract id :block/tags (:v datom)]
+                 [:db/retract id :block/tags :logseq.class/Page]])))))
+      tx-data)
+     (apply concat))))
 
 (defn- toggle-page-and-block
-  [db {:keys [db-before db-after tx-data tx-meta]}]
-  (when-not (rtc-tx-or-download-graph? tx-meta)
-    (let [page-tag (d/entity db :logseq.class/Page)
-          library-page (ldb/get-library-page db-after)]
-      (mapcat
-       (fn [datom]
-         (let [id (:e datom)
-               page-tag-update? (and (= :block/tags (:a datom))
-                                     (= (:db/id page-tag) (:v datom)))
-               move-to-library? (and (= :block/parent (:a datom))
-                                     (= (:db/id library-page) (:v datom))
-                                     (:added datom))]
-           (when (or page-tag-update? move-to-library?)
-             (let [block-before (d/entity db-before id)
-                   block-after (d/entity db-after id)]
-               (when block-after
-                 (cond
-                   ;; move non-page block to Library
-                   (and move-to-library? (not (ldb/page? block-after)))
-                   [{:db/id id
-                     :block/name (common-util/page-name-sanity-lc (:block/title block-after))
-                     :block/tags :logseq.class/Page}
-                    [:db/retract id :block/page]]
+  [db {:keys [db-before db-after tx-data]}]
+  (let [page-tag (d/entity db :logseq.class/Page)
+        library-page (ldb/get-library-page db-after)]
+    (mapcat
+     (fn [datom]
+       (let [id (:e datom)
+             page-tag-update? (and (= :block/tags (:a datom))
+                                   (= (:db/id page-tag) (:v datom)))
+             move-to-library? (and (= :block/parent (:a datom))
+                                   (= (:db/id library-page) (:v datom))
+                                   (:added datom))]
+         (when (or page-tag-update? move-to-library?)
+           (let [block-before (d/entity db-before id)
+                 block-after (d/entity db-after id)]
+             (when block-after
+               (cond
+                 ;; move non-page block to Library
+                 (and move-to-library? (not (ldb/page? block-after)))
+                 [{:db/id id
+                   :block/name (common-util/page-name-sanity-lc (:block/title block-after))
+                   :block/tags :logseq.class/Page}
+                  [:db/retract id :block/page]]
 
-                   ;; block->page
-                   (and (:added datom) (or (nil? block-before) (not (ldb/page? block-before)))) ; block->page
-                   (let [block (d/entity db-after (:e datom))
-                         block-parent (:block/parent block)
-                         ;; remove inline #Page from title
-                         page-title (remove-inline-page-class-from-title block page-tag)
-                         ->page-tx (concat
-                                    [{:db/id id
-                                      :block/name (common-util/page-name-sanity-lc page-title)
-                                      :block/title page-title}
-                                     [:db/retract id :block/page]]
-                                    (when (or (ldb/class? block-parent) (ldb/property? block-parent))
-                                      [[:db/retract id :block/parent]
-                                       [:db/retract id :block/order]]))
-                         move-parent-to-library-tx (when (and (ldb/page? block-parent)
-                                                              (nil? (:block/parent block-parent))
-                                                              block-parent
-                                                              (not= (:db/id block-parent) (:db/id library-page))
-                                                              (not (:db/ident block-parent))
-                                                              (not (ldb/built-in? block-parent)))
-                                                     [{:db/id (:db/id block-parent)
-                                                       :block/parent (:db/id (ldb/get-library-page db-after))
-                                                       :block/order (db-order/gen-key)}])]
-                     (concat ->page-tx move-parent-to-library-tx))
+                 ;; block->page
+                 (and (:added datom) (or (nil? block-before) (not (ldb/page? block-before)))) ; block->page
+                 (let [block (d/entity db-after (:e datom))
+                       block-parent (:block/parent block)
+                       ;; remove inline #Page from title
+                       page-title (remove-inline-page-class-from-title block page-tag)
+                       ->page-tx (concat
+                                  [{:db/id id
+                                    :block/name (common-util/page-name-sanity-lc page-title)
+                                    :block/title page-title}
+                                   [:db/retract id :block/page]]
+                                  (when (or (ldb/class? block-parent) (ldb/property? block-parent))
+                                    [[:db/retract id :block/parent]
+                                     [:db/retract id :block/order]]))
+                       move-parent-to-library-tx (when (and (ldb/page? block-parent)
+                                                            (nil? (:block/parent block-parent))
+                                                            block-parent
+                                                            (not= (:db/id block-parent) (:db/id library-page))
+                                                            (not (:db/ident block-parent))
+                                                            (not (ldb/built-in? block-parent)))
+                                                   [{:db/id (:db/id block-parent)
+                                                     :block/parent (:db/id (ldb/get-library-page db-after))
+                                                     :block/order (db-order/gen-key)}])]
+                   (concat ->page-tx move-parent-to-library-tx))
 
-                   ;; page->block
-                   (and block-before (not (:added datom)) (ldb/internal-page? block-before))
-                   (let [parent (:block/parent block-before)
-                         parent-page (when parent
-                                       (loop [parent parent]
-                                         (if (ldb/page? parent)
-                                           parent
-                                           (recur (:block/parent parent)))))]
-                     (when parent-page
-                       [[:db/retract id :block/name]
-                        [:db/add id :block/page (:db/id parent-page)]]))))))))
-       tx-data))))
+                 ;; page->block
+                 (and block-before (not (:added datom)) (ldb/internal-page? block-before))
+                 (let [parent (:block/parent block-before)
+                       parent-page (when parent
+                                     (loop [parent parent]
+                                       (if (ldb/page? parent)
+                                         parent
+                                         (recur (:block/parent parent)))))]
+                   (when parent-page
+                     [[:db/retract id :block/name]
+                      [:db/add id :block/page (:db/id parent-page)]]))))))))
+     tx-data)))
 
 (defn- add-missing-properties-to-typed-display-blocks
   "Add missing properties for these cases:
@@ -254,8 +244,7 @@
   2. Add properties when tagging a block.
   3. Add properties when removing a tag from a block"
   [db datoms tx-meta]
-  (when-not (rtc-tx-or-download-graph? tx-meta)
-    (mapcat
+  (mapcat
      (fn [d]
        (cond
          (and (= (:a d) :logseq.property.node/display-type) (keyword? (:v d)) (:added d))
@@ -276,7 +265,7 @@
               :logseq.property.node/display-type display-type}
               (and (= display-type :code) (d/entity db :logseq.kv/latest-code-lang))
               (assoc :logseq.property.code/lang (:kv/value (d/entity db :logseq.kv/latest-code-lang))))])))
-     datoms)))
+     datoms))
 
 (defn- ensure-query-property-on-tag-additions
   [tx-report]
@@ -285,7 +274,6 @@
         query-property (d/entity db-after :logseq.property/query)]
     (when (and query-class
                query-property
-               (not (rtc-tx-or-download-graph? tx-meta))
                (not (:undo? tx-meta))
                (not (:redo? tx-meta)))
       (let [tagged-block-ids (->> tx-data
@@ -337,7 +325,7 @@
 
 (defn- add-created-by-ref-hook
   [db-before db-after tx-data tx-meta]
-  (when (and (not (or (:undo? tx-meta) (:redo? tx-meta) (rtc-tx-or-download-graph? tx-meta)))
+  (when (and (not (or (:undo? tx-meta) (:redo? tx-meta)))
              (seq tx-data))
     (when-let [decoded-id-token (some-> (worker-state/get-id-token) worker-util/parse-jwt)]
       (let [created-by-ent (d/entity db-after [:block/uuid (uuid (:sub decoded-id-token))])
@@ -371,8 +359,7 @@
 
 (defn- revert-disallowed-changes
   [{:keys [tx-meta tx-data db-before db-after]}]
-  (when-not (or (rtc-tx-or-download-graph? tx-meta)
-                (:fix-db? tx-meta))
+  (when-not (:fix-db? tx-meta)
     (let [built-in-page? (fn [id]
                            (let [block (d/entity db-after id)]
                              (and (contains? sqlite-create-graph/built-in-pages-names
@@ -437,10 +424,9 @@
                                         (toggle-page-and-block db tx-report))
         display-blocks-tx-data (add-missing-properties-to-typed-display-blocks db-after tx-data tx-meta)
         ensure-query-tx-data (ensure-query-property-on-tag-additions tx-report)
-        commands-tx (when-not (or (:undo? tx-meta) (:redo? tx-meta) (rtc-tx-or-download-graph? tx-meta))
+        commands-tx (when-not (or (:undo? tx-meta) (:redo? tx-meta))
                       (commands/run-commands tx-report))
-        insert-templates-tx (when-not (rtc-tx-or-download-graph? tx-meta)
-                              (insert-tag-templates tx-report))
+        insert-templates-tx (insert-tag-templates tx-report)
         created-by-tx (add-created-by-ref-hook db-before db-after tx-data tx-meta)]
     (concat revert-tx-data
             toggle-page-and-block-tx-data
@@ -478,10 +464,9 @@
   "Compute extra tx-data and block/refs, should ensure it's a pure function and
   doesn't call `d/transact!` or `ldb/transact!`."
   [{:keys [db-after tx-meta _tx-data] :as tx-report}]
-  (or
-   (when-not (:sync-download-graph? tx-meta)
-     (ensure-journal-page-protected-attrs-not-updated! tx-report)
-     (let [extra-tx-data (compute-extra-tx-data tx-report)
+  (do
+   (ensure-journal-page-protected-attrs-not-updated! tx-report)
+   (let [extra-tx-data (compute-extra-tx-data tx-report)
            tx-report* (if (seq extra-tx-data)
                         (let [result (d/with db-after extra-tx-data)]
                           (assoc tx-report
@@ -514,8 +499,7 @@
               :tx-meta tx-meta
               :db-before (:db-before tx-report)
               :db-after (or (:db-after tx-report')
-                            (:db-after tx-report)))))
-   tx-report))
+                            (:db-after tx-report))))))
 
 (defn- invoke-hooks-default
   [{:keys [tx-meta] :as tx-report} context]
@@ -536,7 +520,7 @@
                                    (when (ldb/asset? e)
                                      {:block/uuid (:block/uuid e)
                                       :ext (:logseq.property.asset/type e)}))) deleted-block-ids)
-          affected-query-keys (when-not (or (:importing? context) (:rtc-download-graph? tx-meta))
+          affected-query-keys (when-not (:importing? context)
                                 (worker-react/get-affected-queries-keys tx-report))]
       {:tx-report tx-report
        :affected-keys affected-query-keys

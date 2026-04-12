@@ -14,7 +14,6 @@
             [frontend.date :as date]
             [frontend.db :as db]
             [frontend.db.async :as db-async]
-            [frontend.db.rtc.debug-ui :as rtc-debug-ui]
             [frontend.handler.editor :as editor-handler]
             [frontend.handler.route :as route-handler]
             [frontend.handler.ui :as ui-handler]
@@ -143,10 +142,6 @@
         :shortcut-settings
         [[:.flex.items-center (ui/icon "command" {:class "text-md mr-2"}) (t :help/shortcuts)]
          (shortcut-settings)]
-        :rtc
-        [[:.flex.items-center (ui/icon "cloud" {:class "text-md mr-2"}) "(Dev) RTC"]
-         (rtc-debug-ui/rtc-debug-ui)]
-
         :profiler
         [[:.flex.items-center (ui/icon "cloud" {:class "text-md mr-2"}) "(Dev) Profiler"]
          (profiler/profiler)]

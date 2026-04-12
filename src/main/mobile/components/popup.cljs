@@ -109,11 +109,6 @@
 (defn popup-hide!
   [& args]
   (cond
-    (= :download-rtc-graph (first args))
-    (do
-      (dismiss-native-sheet!)
-      (mobile-state/set-tab! "home"))
-
     :else
     (if (and @*last-popup? (not (= (first args) :editor.commands/commands)))
       (dismiss-native-sheet!)

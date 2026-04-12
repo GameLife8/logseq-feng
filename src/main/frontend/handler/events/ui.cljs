@@ -19,8 +19,6 @@
             [frontend.config :as config]
             [frontend.db :as db]
             [frontend.extensions.fsrs :as fsrs]
-            [frontend.handler.db-based.rtc-flows :as rtc-flows]
-            [frontend.handler.db-based.sync :as rtc-handler]
             [frontend.handler.editor :as editor-handler]
             [frontend.handler.events :as events]
             [frontend.handler.notification :as notification]
@@ -324,21 +322,6 @@
     :title (str (if asset-block "Edit" "Create") " asset")
     :center? true}))
 
-(defn ensure-user-rsa-keys-if-possible!
-  []
-  (if @state/*db-worker
-    (-> (p/do!
-         (state/pub-event! [:rtc/sync-app-state])
-         (state/<invoke-db-worker :thread-api/set-db-sync-config
-                                  {:enabled? true
-                                   :ws-url config/db-sync-ws-url
-                                   :http-base config/db-sync-http-base})
-         (state/<invoke-db-worker :thread-api/db-sync-ensure-user-rsa-keys))
-        (p/catch (fn [error]
-                   (log/error :db-sync/ensure-user-rsa-keys-failed error)
-                   nil)))
-    (p/resolved nil)))
-
 (defmethod events/handle :user/fetch-info-and-graphs [[_]]
   (state/set-state! [:ui/loading? :login] false)
   (async/go
@@ -350,18 +333,7 @@
         (do
           (state/set-user-info! result)
           (when-let [uid (user-handler/user-uuid)]
-            (sentry-event/set-user! uid)
-            (ensure-user-rsa-keys-if-possible!))
-          (let [status (if (user-handler/alpha-or-beta-user?) :welcome :unavailable)
-                fetch-graphs? (and (user-handler/logged-in?)
-                                   (or (= status :welcome)
-                                       (user-handler/rtc-group?)))]
-            (when fetch-graphs?
-              (async/<! (p->c (rtc-handler/<get-remote-graphs)))
-              (repo-handler/refresh-repos!)
-              (when-let [current-repo (state/get-current-repo)]
-                (when (some #(= current-repo (:url %)) (state/get-rtc-graphs))
-                  (rtc-flows/trigger-rtc-start current-repo))))))))))
+            (sentry-event/set-user! uid)))))))
 
 (defmethod events/handle :dialog/show-block [[_ block option]]
   (shui/dialog-open!

@@ -447,10 +447,7 @@
         (when (util/electron?)
           (find-in-page/search))
 
-        (if (state/sub :rtc/uploading?)
-          [:div.flex.items-center.justify-center.full-height-without-header
-           (ui/loading "Creating remote graph...")]
-          (main {:route-match route-match
+        (main {:route-match route-match
                  :margin-less-pages? margin-less-pages?
                  :logged? logged?
                  :home? home?

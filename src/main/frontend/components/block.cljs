@@ -1021,21 +1021,6 @@
         asset-file-write-finished? (state/sub :assets/asset-file-write-finish
                                               {:path-in-sub-atom [repo (str (:block/uuid block))]})
         file-ready? (or file-exists? asset-file-write-finished?)
-        progress-entry (state/sub :rtc/asset-upload-download-progress
-                                  {:path-in-sub-atom [repo (str (:block/uuid block))]})
-        {:keys [direction loaded total]} progress-entry
-        in-progress? (and (number? loaded) (number? total) (pos? total) (not= loaded total))
-        percent (when in-progress?
-                  (int (* 100 (/ loaded total))))
-        label (case direction
-                :upload "Uploading"
-                :download "Downloading"
-                "Syncing")
-        progress-view (when in-progress?
-                        [:div.asset-transfer-progress
-                         [:div.asset-transfer-progress-label (str label " " percent "%")]
-                         [:div.asset-transfer-progress-bar
-                          [:span {:style {:width (str percent "%")}}]]])
         image? (contains? (common-config/img-formats) (keyword asset-type))
         width (get-in block [:logseq.property.asset/resize-metadata :width])
         asset-width (:logseq.property.asset/width block)
@@ -1063,12 +1048,7 @@
                               nil)
                   image?
                   img-placeholder)]
-    (if progress-view
-      [:div.asset-transfer-shell
-       (or content
-           [:div.asset-transfer-placeholder (str label " asset...")])
-       progress-view]
-      content)))
+    content))
 
 (defn- img-audio-video?
   [block]
@@ -1848,10 +1828,6 @@
   (let [*bullet-dragging? (::dragging? state)
         doc-mode? (state/sub :document/mode?)
         control-show? (util/react *control-show?)
-        rtc-state (state/sub :rtc/state)
-        online-users (:online-users rtc-state)
-        current-user-uuid (user-handler/user-uuid)
-        editing-user (editing-user-for-block uuid online-users current-user-uuid)
         ref? (:ref? config)
         container-id (:container-id config)
         empty-content? (block-content-empty? block)
@@ -1877,8 +1853,6 @@
                                 :is-with-icon with-icon?
                                 :bullet-closed collapsed?
                                 :bullet-hidden (:hide-bullet? config)}])}
-     (when (and (not page-title?) editing-user)
-       (editing-user-avatar editing-user))
      (when (and (or (not fold-button-right?) collapsable? collapsed?)
                 (not (:table? config)))
        [:a.block-control

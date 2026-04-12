@@ -3,7 +3,6 @@
   (:require ["@capacitor/dialog" :refer [Dialog]]
             [clojure.string :as string]
             [frontend.components.repo :as repo]
-            [frontend.components.rtc.indicator :as rtc-indicator]
             [frontend.date :as date]
             [frontend.db :as db]
             [frontend.db.async :as db-async]
@@ -129,9 +128,6 @@
                       "add-graph" (state/pub-event! [:graph/new-db-graph])
                       "home-setting" (open-home-settings-actions!)
                       "graph-setting" (open-graph-settings-actions!)
-                      "sync" (shui/popup-show! nil
-                                               (rtc-indicator/details)
-                                               {})
                       "favorite" (when-let [id (state/get-current-page)]
                                    (when (common-util/uuid-string? id)
                                      (when-let [block (db/entity [:block/uuid (uuid id)])]
@@ -208,15 +204,9 @@
         route-id (get-in route-match [:parameters :path :name])
         page-route? (= route-name :page)
         [*configure-top-bar-f _] (hooks/use-state (atom nil))
-        detail-info (hooks/use-flow-state (m/watch rtc-indicator/*detail-info))
         _ (hooks/use-flow-state flows/current-login-user-flow)
         online? (hooks/use-flow-state flows/network-online-event-flow)
-        rtc-state (:rtc-state detail-info)
-        graph-uuid (or (:graph-uuid detail-info)
-                       (ldb/get-graph-rtc-uuid (db/get-db)))
-        show-sync? (and current-repo graph-uuid (user-handler/logged-in?))
-        unpushed-block-update-count (:pending-local-ops detail-info)
-        pending-asset-ops           (:pending-asset-ops detail-info)
+        show-sync? false
         fallback-title (cond
                          (= tab "home")
                          short-repo-name
@@ -226,14 +216,7 @@
 
                          :else
                          (string/capitalize tab))
-        sync-color (if (and online?
-                            (= :open rtc-state)
-                            (zero? unpushed-block-update-count)
-                            (zero? pending-asset-ops))
-                     ;; green
-                     "#16A34A"
-                     ;; yellow
-                     "#CA8A04")]
+        sync-color nil]
     (hooks/use-effect!
      (fn []
        (when (and (mobile-util/native-platform?)

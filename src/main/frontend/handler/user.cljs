@@ -312,7 +312,7 @@
 
 (defn rtc-group?
   []
-  (boolean (seq (set/intersection (state/user-groups) #{"team" "rtc_2025_07_10"}))))
+  false)
 
 (defn alpha-user?
   []
@@ -329,13 +329,12 @@
   (or (alpha-user?) (beta-user?)))
 
 (defn get-user-type
-  [repo]
-  (-> (some #(when (= repo (:url %)) %) (:rtc/graphs @state/state))
-      :graph<->user-user-type))
+  [_repo]
+  nil)
 
 (defn manager?
-  [repo]
-  (= (get-user-type repo) "manager"))
+  [_repo]
+  false)
 
 ;; TODO: Remove if still unused
 #_(defn member?
@@ -422,13 +421,11 @@
 (defn- fire-file-sync-storage-exceed-limit-event!
   [exp]
   (when (storage-exceed-limit? exp)
-    (state/pub-event! [:rtc/storage-exceed-limit])
     true))
 
 (defn- fire-file-sync-graph-count-exceed-limit-event!
   [exp]
   (when (graph-count-exceed-limit? exp)
-    (state/pub-event! [:rtc/graph-count-exceed-limit])
     true))
 
 (defprotocol IToken

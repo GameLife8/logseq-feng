@@ -8,7 +8,6 @@
             [clojure.core.async :as async]
             [clojure.string :as string]
             [frontend.commands :as commands]
-            [frontend.components.rtc.indicator :as indicator]
             [frontend.config :as config]
             [frontend.date :as date]
             [frontend.db :as db]
@@ -20,8 +19,6 @@
             [frontend.handler.code :as code-handler]
             [frontend.handler.common.page :as page-common-handler]
             [frontend.handler.db-based.property :as db-property-handler]
-            [frontend.handler.db-based.rtc-flows :as rtc-flows]
-            [frontend.handler.db-based.sync :as rtc-handler]
             [frontend.handler.editor :as editor-handler]
             [frontend.handler.export :as export]
             [frontend.handler.graph :as graph-handler]
@@ -99,18 +96,7 @@
   (p/do!
    (repo-handler/restore-and-setup-repo! graph)
    (graph-switch graph)
-   (state/set-state! :sync-graph/init? false)
-   (when (:rtc-download? opts)
-     (repo-handler/refresh-repos!)
-     (p/do!
-      (p/delay 5000)
-      (p/let [repo (state/get-current-repo)
-              _ (state/<invoke-db-worker :thread-api/search-build-blocks-indice-in-worker repo)]
-        (search-handler/rebuild-embeddings! repo)
-        (when state/lsp-enabled?
-          (doseq [service (state/get-all-plugin-services-with-type :search)]
-            (search-plugin/call-service! service "search:rebuildPagesIndice" {})
-            (search-plugin/call-service! service "search:rebuildBlocksIndice" {}))))))))
+   (state/set-state! :sync-graph/init? false))))
 
 (defmethod handle :graph/switch [[_ graph opts]]
   (let [switch-promise
@@ -232,7 +218,6 @@
   (when graph
     (schedule-search-index-build! graph))
   (export/auto-db-backup! graph)
-  (rtc-flows/trigger-rtc-start graph)
   (fsrs/update-due-cards-count)
   (when-not (mobile-util/native-platform?)
     (state/pub-event! [:graph/ready graph])))
@@ -339,55 +324,6 @@
 
 (defmethod handle :vector-search/sync-state [[_ state]]
   (state/set-state! :vector-search/state state))
-
-(defmethod handle :rtc/sync-state [[_ state]]
-  (state/update-state! :rtc/state (fn [old] (merge old state))))
-
-(defmethod handle :rtc/presence-update [[_ {:keys [editing-block-uuid]}]]
-  (rtc-handler/<rtc-update-presence! editing-block-uuid))
-
-(defmethod handle :rtc/log [[_ data]]
-  (state/set-state! :rtc/log data))
-
-(defmethod handle :rtc/remote-graph-gone [_]
-  (p/do!
-   (notification/show! "This graph has been removed from Logseq Sync." :warning false)
-   (rtc-handler/<get-remote-graphs)))
-
-(defmethod handle :rtc/download-remote-graph [[_ graph-name graph-uuid graph-schema-version graph-e2ee?]]
-  (assert (= (:major (db-schema/parse-schema-version db-schema/version))
-             (:major (db-schema/parse-schema-version graph-schema-version)))
-          {:app db-schema/version
-           :remote-graph graph-schema-version})
-  (->
-   (p/do!
-    (when (util/mobile?)
-      (shui/popup-show!
-       nil
-       (fn []
-         [:div.flex.flex-col.items-center.justify-center.mt-8.gap-4
-          [:div (str "Downloading " graph-name " ...")]
-          (indicator/downloading-logs)])
-       {:id :download-rtc-graph}))
-    (rtc-handler/<rtc-download-graph! graph-name graph-uuid graph-e2ee?)
-    (rtc-handler/<get-remote-graphs)
-    (when (util/mobile?)
-      (shui/popup-hide! :download-rtc-graph)))
-   (p/catch (fn [e]
-              (println "RTC download graph failed, error:")
-              (log/error :rtc-download-graph-failed e)
-              (shui/popup-hide! :download-rtc-graph)
-              ;; TODO: notify error
-              ))))
-
-;; db-worker -> UI
-(defmethod handle :db/sync-changes [[_ data]]
-  (let [retract-datoms (filter (fn [d] (and (= :block/uuid (:a d)) (false? (:added d)))) (:tx-data data))
-        retracted-tx-data (map (fn [d] [:db/retractEntity (:e d)]) retract-datoms)
-        tx-data (concat (:tx-data data) retracted-tx-data)]
-    (pipeline/invoke-hooks (assoc data :tx-data tx-data))
-
-    nil))
 
 (defmethod handle :db/export-sqlite [_]
   (export/export-repo-as-sqlite-db! (state/get-current-repo))

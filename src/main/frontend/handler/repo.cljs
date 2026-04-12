@@ -116,12 +116,9 @@
 
 (defn refresh-repos!
   []
-  (p/let [repos (get-repos)
-          repos' (combine-local-&-remote-graphs
-                  repos
-                  (state/get-rtc-graphs))]
-    (state/set-repos! repos')
-    repos'))
+  (p/let [repos (get-repos)]
+    (state/set-repos! repos)
+    repos))
 
 (defn graph-ready!
   ;; FIXME: Call electron that the graph is loaded, an ugly implementation for redirect to page when graph is restored

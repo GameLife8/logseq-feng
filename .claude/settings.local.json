@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep:*)",
+      "Bash(npx shadow-cljs:*)",
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(ls -la static/js/*.js)",
+      "Bash(yarn install:*)",
+      "Bash(clojure -M -e \"\\(require '[cljs.build.api :as b]\\) \\(b/inputs \\\\\"src/main\\\\\"\\)\")"
+    ]
+  }
+}

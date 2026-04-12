@@ -13,7 +13,6 @@
             [frontend.db :as db]
             [frontend.dicts :as dicts]
             [frontend.handler.config :as config-handler]
-            [frontend.handler.db-based.sync :as rtc-handler]
             [frontend.handler.db-based.vector-search-flows :as vector-search-flows]
             [frontend.handler.global-config :as global-config-handler]
             [frontend.handler.excalidraw-config :as ex-cfg]
@@ -913,86 +912,6 @@
 
   [:<>])
 
-(rum/defc settings-rtc-members
-  []
-  (let [[invite-email set-invite-email!] (hooks/use-state "")
-        [loading? set-loading!] (hooks/use-state true)
-        current-repo (state/get-current-repo)
-        manager? (user-handler/manager? current-repo)
-        [users-info] (hooks/use-atom (:rtc/users-info @state/state))
-        users (get users-info current-repo)
-        invite-user! (fn []
-                       (let [graph-uuid (ldb/get-graph-rtc-uuid (db/get-db))]
-                         (when-not (string/blank? invite-email)
-                           (when graph-uuid
-                             (rtc-handler/<rtc-invite-email graph-uuid invite-email)))))]
-    (hooks/use-effect!
-     #(c.m/run-task*
-       (m/sp
-         (c.m/<? (rtc-handler/<rtc-get-users-info))
-         (set-loading! false)))
-     [])
-    [:div.flex.flex-col.gap-2.mt-4
-     {:on-key-press (fn [e]
-                      (when (= "Enter" (.-key e))
-                        (invite-user!)))}
-     [:h2.opacity-50.font-medium "Members:"]
-     [:div.users.flex.flex-col.gap-1
-      (if loading?
-        (for [i (range 2)]
-          [:div.flex.flex-row.items-center.gap-2.pr-4 {:key (str "skeleton-" i)}
-           (shui/skeleton {:class "h-4 w-32"})
-           (shui/skeleton {:class "h-4 w-full"})])
-        (for [{user-name :user/name
-               user-email :user/email
-               user-uuid :user/uuid
-               graph<->user-user-type :graph<->user/user-type} users]
-          (let [member? (= :member graph<->user-user-type)
-                can-remove? (and manager? member?)]
-            [:div.flex.flex-row.items-center.gap-2
-             {:key (str "user-" (or user-uuid user-name))}
-             [:div user-name]
-             (when user-email [:div.opacity-50.text-sm user-email])
-             (when graph<->user-user-type [:div.opacity-50.text-sm (name graph<->user-user-type)])
-             (when can-remove?
-               (shui/dropdown-menu
-                (shui/dropdown-menu-trigger
-                 {:asChild true}
-                 (shui/button
-                  {:variant "ghost"
-                   :size :sm
-                   :class "px-1 h-7"}
-                  (ui/icon "dots" {:size 14})))
-                (shui/dropdown-menu-content
-                 {:align "end"}
-                 (shui/dropdown-menu-item
-                  {:class "remove-member-menu-item"
-                   :on-click (fn []
-                               (let [graph-uuid (ldb/get-graph-rtc-uuid (db/get-db))
-                                     member-id user-uuid]
-                                 (when (and graph-uuid member-id)
-                                   (-> (rtc-handler/<rtc-remove-member! graph-uuid member-id)
-                                       (p/then (fn []
-                                                 (rtc-handler/<rtc-get-users-info)))
-                                       (p/catch (fn [e]
-                                                  (notification/show! "Failed to remove member." :error)
-                                                  (log/error :db-sync/remove-member-failed {:error e
-                                                                                            :graph-uuid graph-uuid
-                                                                                            :member-id member-id})))))))}
-                  "Remove access"))))])))]
-     [:div.flex.flex-col.gap-4.mt-4
-      (shui/input
-       {:placeholder   "Email address"
-        :on-change     #(set-invite-email!
-                         (string/trim (util/evalue %)))})
-      (shui/button
-       {:on-click invite-user!}
-       "Invite")]]))
-
-(rum/defc settings-collaboration
-  []
-  [:div.panel-wrap.is-collaboration.mb-8
-   (settings-rtc-members)])
 
 (rum/defc forgot-password
   [token refresh-token user-uuid]
@@ -1411,9 +1330,6 @@
                [:advanced "advanced" (t :settings-page/tab-advanced) (ui/icon "bulb")]
                [:features "features" (t :settings-page/tab-features) (ui/icon "app-feature")]
                (when logged-in?
-                 [:collaboration "collaboration" (t :settings-page/tab-collaboration) (ui/icon "users")])
-
-               (when logged-in?
                  [:encryption "encryption" (t :settings-page/tab-encryption) (ui/icon "lock")])
 
                (when plugins-of-settings
@@ -1466,9 +1382,6 @@
 
          :features
          (settings-features)
-
-         :collaboration
-         (settings-collaboration)
 
          :encryption
          (encryption)
