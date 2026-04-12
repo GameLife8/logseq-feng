@@ -310,6 +310,107 @@ page-graph (Rum 组件)
 
 ---
 
+## 引用关系机制与边类型
+
+### `:block/refs` 如何产生页面间关系
+
+当前 `get-pages-relation` 的核心查询：
+
+```clojure
+[:find ?p ?ref-page
+ :where
+ [?block :block/page ?p]        ;; 块属于页面 ?p
+ [?block :block/refs ?ref-page]] ;; 块引用了 ?ref-page
+```
+
+`:block/refs` 是多值 ref 属性，存储块的所有引用目标。不同引用方式写入的内容：
+
+| 用户操作 | `:block/refs` 中存入 | 页面关系 |
+|---------|---------------------|---------|
+| `[[Page B]]` 页面引用 | Page B 实体 | A→B 直接关系 |
+| `((block-uuid))` 块引用 | 被引用的块实体（+ 该块所属页面，由解析器写入） | A→B 间接关系 |
+| `#Tag` 标签 | Tag 页面实体 | 由 `get-all-tagged-pages` 单独处理 |
+
+**关键点**：`get-pages-relation` 结果中 `?ref-page` 可以是**页面实体或块实体**。但 `build-global-graph` 中只有页面是 node，`render!` 里的 `nodes-set` 过滤会丢弃 target 为块 db/id 的 link。
+
+这意味着：如果一个块引用只在 `:block/refs` 中写入了目标块（没有同时写入目标块的所属页面），这条跨页关系**可能在图谱中丢失**。
+
+### 区分边类型的设计思路
+
+**需求**：页面 A 和 B 之间如果存在块级引用（不管谁引用谁、引用多少次），用一条虚线表示，区别于页面级直接引用的实线。
+
+**实现方案**：在 Worker 端增加一个查询，标记哪些页面对有块级引用关系：
+
+```clojure
+;; 查询经由块引用连接的页面对
+[:find ?p1 ?p2
+ :where
+ [?block1 :block/page ?p1]
+ [?block1 :block/refs ?target-block]
+ [?target-block :block/page ?p2]     ;; 目标是块（有 :block/page）
+ [(not= ?p1 ?p2)]]                   ;; 排除自引用
+```
+
+然后在 `build-links` 中给每条 link 附加 `:type` 标记（`:page-ref` / `:block-ref`），pixi 渲染层据此画实线或虚线。
+
+### 性能分析
+
+**这个方案基本没有性能问题**，原因：
+
+1. **节点数不变** — 仍然只有页面节点，不增加图的复杂度
+2. **边数不变** — 同一对页面之间无论多少块引用，只合并为一条虚线
+3. **D3 模拟不受影响** — 力计算的复杂度取决于节点数和边数，两者都不增加
+4. **额外查询开销极小** — 新增的 DataScript 查询是 4-clause join，在 Worker 线程执行，对于 10 万块的库耗时约 10–50ms，一次性开销
+5. **渲染开销可忽略** — Pixi.js 画虚线和实线的 GPU 开销几乎相同
+
+| 对比项 | 块作为节点方案 | 虚线标记方案 |
+|--------|--------------|-------------|
+| 新增节点数 | +2,000–15,000 | **0** |
+| 新增边数 | ×2–3 倍 | **0** |
+| D3 模拟影响 | 严重（O(n log n)/tick） | **无** |
+| 查询额外开销 | 大（返回大量块数据） | **极小**（只返回页面对 set） |
+| 渲染影响 | 严重（万级 sprite） | **可忽略** |
+
+### 改造涉及的文件
+
+如果实现虚线标记方案，需要修改的文件：
+
+| 文件 | 改动 |
+|------|------|
+| `deps/db/src/logseq/db.cljs` | 新增 `get-block-ref-page-pairs` 查询函数 |
+| `common/graph_view.cljs` | `build-links` 增加 `:type` 字段；`build-global-graph` / `build-page-graph` 调用新查询 |
+| `extensions/graph/pixi.cljs` | `default-style` 的 `:edge` 根据 type 区分实线/虚线样式 |
+| `extensions/graph.cljs` | `highlight-edges!` 适配新边类型 |
+
+**不需要改动**：`page.cljs`（过滤器）、`handler/graph.cljs`（n-hops）、D3 力模型参数。
+
+---
+
+## 性能特性与限制
+
+### D3-force 复杂度
+
+每 tick 使用 Barnes-Hut 近似（`theta 0.5`），复杂度 O(n log n)：
+
+| 节点数 | 每 tick 约耗时 | 体感 |
+|--------|---------------|------|
+| 500 | ~2ms | 流畅 |
+| 2,000 | ~10ms | 可接受 |
+| 5,000 | ~30ms | 开始卡顿 |
+| 10,000+ | >80ms | 不可用 |
+
+### 无分片/节流
+
+- `tick!` 回调每帧遍历全部 nodes + links 更新位置，无 requestAnimationFrame 节流
+- 无 lazy loading / 分页 / LOD（Level of Detail）
+- 唯一的减压手段是用户侧的过滤器（orphan、journal、n-hops 等）
+
+### `uuid-or-asset?` 标记为 slow
+
+`graph_view.cljs:51` 注释 `; slow` — 对每个节点做正则匹配过滤 UUID 和资产路径，大量节点时有一定开销。
+
+---
+
 ## 已知问题和待办
 
 1. **命名空间（Namespace）图谱**：代码中有 `namespaces` 变量但始终为空数组 `[]`，注释 `FIXME: Implement for DB graphs`。
