@@ -142,7 +142,7 @@
   dependencies:
     "@babel/types" "^7.28.0"
 
-"@babel/runtime@^7.10.1", "@babel/runtime@^7.10.2", "@babel/runtime@^7.11.1", "@babel/runtime@^7.13.10", "@babel/runtime@^7.15.4", "@babel/runtime@^7.18.0", "@babel/runtime@^7.18.3", "@babel/runtime@^7.20.0", "@babel/runtime@^7.20.7", "@babel/runtime@^7.23.2", "@babel/runtime@^7.9.2":
+"@babel/runtime@^7.10.2", "@babel/runtime@^7.13.10":
   version "7.29.2"
   resolved "https://registry.yarnpkg.com/@babel/runtime/-/runtime-7.29.2.tgz#9a6e2d05f4b6692e1801cd4fb176ad823930ed5e"
   integrity sha512-JiDShH45zKHWyGe4ZNVRrCjBz8Nh9TMmZG1kh4QTK8hCBTWBi8Da+i7s1fJw7/lYpM4ccepSNfqzZ/QvABBi5g==
@@ -514,10 +514,10 @@
   resolved "https://registry.yarnpkg.com/@excalidraw/random-username/-/random-username-1.1.0.tgz#6f388d6a9708cf655b8c9c6aa3fa569ee71ecf0f"
   integrity sha512-nULYsQxkWHnbmHvcs+efMkJ4/9TtvNyFeLyHdeGxW0zHs6P+jYVqcRff9A6Vq9w9JXeDRnRh2VKvTtS19GW2qA==
 
-"@flatten-js/interval-tree@^1.1.3":
-  version "1.1.4"
-  resolved "https://registry.yarnpkg.com/@flatten-js/interval-tree/-/interval-tree-1.1.4.tgz#08d90dec1ede2026196c832059b296182a32c5a0"
-  integrity sha512-o4emRDDvGdkwX18BSVSXH8q27qAL7Z2WDHSN75C8xyRSE4A8UOkig0mWSGoT5M5KaTHZxoLmalFwOTQmbRusUg==
+"@flatten-js/interval-tree@1.1.3":
+  version "1.1.3"
+  resolved "https://registry.yarnpkg.com/@flatten-js/interval-tree/-/interval-tree-1.1.3.tgz#7d9b4bb92042c6bbcefae5bbb822b5ec3c073e88"
+  integrity sha512-xhFWUBoHJFF77cJO1D6REjdgJEMRf2Y2Z+eKEPav8evGKcLSnj1ud5pLXQSbGuxF3VSvT1rWhMfVpXEKJLTL+A==
 
 "@floating-ui/core@^1.7.5":
   version "1.7.5"
@@ -1724,7 +1724,7 @@
     "@radix-ui/react-use-callback-ref" "1.1.1"
     "@radix-ui/react-use-controllable-state" "1.2.2"
 
-"@radix-ui/react-separator@^1.1.7":
+"@radix-ui/react-separator@^1.1.8":
   version "1.1.8"
   resolved "https://registry.yarnpkg.com/@radix-ui/react-separator/-/react-separator-1.1.8.tgz#24f871fbf9630af316d0c14cbc7519a6e33aa11e"
   integrity sha512-sDvqVY4itsKwwSMEe0jtKgfTh+72Sy3gPmQpjqcQneqQ4PFmr/1I0YA+2/puilhggCe2gJcx5EBAYFkWkdpa5g==
@@ -1753,7 +1753,7 @@
   dependencies:
     "@radix-ui/react-compose-refs" "1.1.2"
 
-"@radix-ui/react-slot@1.2.4", "@radix-ui/react-slot@^1.2.3":
+"@radix-ui/react-slot@1.2.4", "@radix-ui/react-slot@^1.2.4":
   version "1.2.4"
   resolved "https://registry.yarnpkg.com/@radix-ui/react-slot/-/react-slot-1.2.4.tgz#63c0ba05fdf90cc49076b94029c852d7bac1fb83"
   integrity sha512-Jl+bCv8HxKnlTLVrcDE8zTMJ09R9/ukw4qBs/oZClOfoQk/cOTbDn+NceXfV7j09YPVQUryJPHurafcSg6EVKA==
@@ -1890,27 +1890,6 @@
   version "1.1.1"
   resolved "https://registry.yarnpkg.com/@radix-ui/rect/-/rect-1.1.1.tgz#78244efe12930c56fd255d7923865857c41ac8cb"
   integrity sha512-HPwpGIzkl28mWyZqG52jiqDJ12waP11Pa1lGoiyUkIEuMLBP0oeK/C89esbXrxsky5we7dfd8U58nm0SgAWpVw==
-
-"@rc-component/portal@^1.1.0":
-  version "1.1.2"
-  resolved "https://registry.yarnpkg.com/@rc-component/portal/-/portal-1.1.2.tgz#55db1e51d784e034442e9700536faaa6ab63fc71"
-  integrity sha512-6f813C0IsasTZms08kfA8kPAGxbbkYToa8ALaiDIGGECU4i9hj8Plgbx0sNJDrey3EtHO30hmdaxtT0138xZcg==
-  dependencies:
-    "@babel/runtime" "^7.18.0"
-    classnames "^2.3.2"
-    rc-util "^5.24.4"
-
-"@rc-component/trigger@^2.0.0":
-  version "2.3.1"
-  resolved "https://registry.yarnpkg.com/@rc-component/trigger/-/trigger-2.3.1.tgz#83fc0c4165a58fdc66bd9171082d08acf31be6bb"
-  integrity sha512-ORENF39PeXTzM+gQEshuk460Z8N4+6DkjpxlpE7Q3gYy1iBpLrx0FOJz3h62ryrJZ/3zCAUIkT1Pb/8hHWpb3A==
-  dependencies:
-    "@babel/runtime" "^7.23.2"
-    "@rc-component/portal" "^1.1.0"
-    classnames "^2.3.2"
-    rc-motion "^2.0.0"
-    rc-resize-observer "^1.3.1"
-    rc-util "^5.44.0"
 
 "@sentry-internal/browser-utils@8.55.1":
   version "8.55.1"
@@ -2178,13 +2157,6 @@
     "@types/vinyl-fs" "*"
     chokidar "^3.3.1"
 
-"@types/hoist-non-react-statics@^3.3.0":
-  version "3.3.7"
-  resolved "https://registry.yarnpkg.com/@types/hoist-non-react-statics/-/hoist-non-react-statics-3.3.7.tgz#306e3a3a73828522efa1341159da4846e7573a6c"
-  integrity sha512-PQTyIulDkIDro8P+IHbKCsw7U2xxBYflVzW/FgWdCAePD9xGSidgA76/GeJ6lBKoblyhf9pBY763gbrN+1dI8g==
-  dependencies:
-    hoist-non-react-statics "^3.3.0"
-
 "@types/json-schema@*", "@types/json-schema@^7.0.15", "@types/json-schema@^7.0.9":
   version "7.0.15"
   resolved "https://registry.yarnpkg.com/@types/json-schema/-/json-schema-7.0.15.tgz#596a1747233694d50f6ad8a7869fcb6f56cf5841"
@@ -2228,23 +2200,6 @@
   version "4.0.3"
   resolved "https://registry.yarnpkg.com/@types/picomatch/-/picomatch-4.0.3.tgz#d92bbf24166478c5457c8bb9ba41a7f49d55e094"
   integrity sha512-iG0T6+nYJ9FAPmx9SsUlnwcq1ZVRuCXcVEvWnntoPlrOpwtSTKNDC9uVAxTsC3PUvJ+99n4RpAcNgBbHX3JSnQ==
-
-"@types/react-redux@^7.1.20":
-  version "7.1.34"
-  resolved "https://registry.yarnpkg.com/@types/react-redux/-/react-redux-7.1.34.tgz#83613e1957c481521e6776beeac4fd506d11bd0e"
-  integrity sha512-GdFaVjEbYv4Fthm2ZLvj1VSCedV7TqE5y1kNwnjSdBOTXuRSgowux6J8TAct15T3CKBr63UMk+2CO7ilRhyrAQ==
-  dependencies:
-    "@types/hoist-non-react-statics" "^3.3.0"
-    "@types/react" "*"
-    hoist-non-react-statics "^3.3.0"
-    redux "^4.0.0"
-
-"@types/react@*":
-  version "19.2.14"
-  resolved "https://registry.yarnpkg.com/@types/react/-/react-19.2.14.tgz#39604929b5e3957e3a6fa0001dafb17c7af70bad"
-  integrity sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==
-  dependencies:
-    csstype "^3.2.2"
 
 "@types/slice-ansi@^4.0.0":
   version "4.0.0"
@@ -2299,1187 +2254,1237 @@
     "@types/expect" "^1.20.4"
     "@types/node" "*"
 
-"@univerjs-pro/collaboration-client-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/collaboration-client-ui/-/collaboration-client-ui-0.10.14.tgz#1e56e1b25b329431a8b97d7eb734a053c09257b2"
-  integrity sha512-wlwwi9aFtByUnZ8Ezf6Mbk0Hd5Yqq6ssjYxG53tFy/uzn0m7dZWLo11Jlbkpg5HCMPUZE0gDx+O5ww9pJnHcjw==
+"@univerjs-pro/collaboration-client-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/collaboration-client-ui/-/collaboration-client-ui-0.20.1.tgz#d954c120487f96ecddafe8d6ada5c353785b8501"
+  integrity sha512-uPwtmx+/smG/Vcu7tfktNeSMdP6tY1l+o0lsaCJBe5pSaooDEQI6qe8qCX2Ndt7Ij11w/kleKHF3mcQHL2HNbA==
   dependencies:
-    "@univerjs-pro/collaboration" "0.10.14"
-    "@univerjs-pro/collaboration-client" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/docs-ui" "0.10.14"
-    "@univerjs/drawing" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/network" "0.10.14"
-    "@univerjs/protocol" "0.1.47"
-    "@univerjs/rpc" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs-pro/collaboration" "0.20.1"
+    "@univerjs-pro/collaboration-client" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/docs-ui" "0.20.1"
+    "@univerjs/drawing" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/network" "0.20.1"
+    "@univerjs/protocol" "0.1.49"
+    "@univerjs/rpc" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
     crypto-js "4.2.0"
 
-"@univerjs-pro/collaboration-client@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/collaboration-client/-/collaboration-client-0.10.14.tgz#03788afc065c1dd8feeefc621b4405b700756139"
-  integrity sha512-ztFngUtaKyyS7aymBwXntyaMvpHm4zGOWGNRRAxHHjtFlUEZUwYyDjLWj7CuUgB/OWQ+uKYm/tR1xGfX+bkWwQ==
+"@univerjs-pro/collaboration-client@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/collaboration-client/-/collaboration-client-0.20.1.tgz#85cdd4a971a2d44a1ce9fd8e6d180d7adb27be12"
+  integrity sha512-nZTtXLtR8mh556HgkHINxVfxZVO72YsN8hIAqgoVJeJFsAavcEypQ+ohlXvuIL9hxGo/Q3YJBnHZmgJmoZGfuA==
   dependencies:
-    "@univerjs-pro/collaboration" "0.10.14"
-    "@univerjs-pro/license" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/drawing" "0.10.14"
-    "@univerjs/network" "0.10.14"
-    "@univerjs/protocol" "0.1.47"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/telemetry" "0.10.14"
+    "@univerjs-pro/collaboration" "0.20.1"
+    "@univerjs-pro/license" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/drawing" "0.20.1"
+    "@univerjs/network" "0.20.1"
+    "@univerjs/protocol" "0.1.49"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/telemetry" "0.20.1"
     crypto-js "4.2.0"
 
-"@univerjs-pro/collaboration@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/collaboration/-/collaboration-0.10.14.tgz#f5f9d6ced7beaab593d8e956da4f01d34ef593ba"
-  integrity sha512-TzkBtF1oCFPej7imd2PDQ850WFobGarH+8XOi86EMhrQiXzj4pZh8YeHHlUNI4Se6ZRKxsUmWFCc21Xt/8p9MQ==
+"@univerjs-pro/collaboration@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/collaboration/-/collaboration-0.20.1.tgz#ef2540c39a53916f50fe68e6f04faaf9850526fa"
+  integrity sha512-e6DupTLljB2VrQU0qiZI6CeMF3q4/PnBx5pxebsr5EmnJb7z4mZEmFijqccrdX148b7FlfWTmoEF9jEbKvkV/w==
   dependencies:
-    "@univerjs-pro/license" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/data-validation" "0.10.14"
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/protocol" "0.1.47"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-conditional-formatting" "0.10.14"
-    "@univerjs/sheets-drawing" "0.10.14"
-    "@univerjs/sheets-filter" "0.10.14"
-    "@univerjs/sheets-hyper-link" "0.10.14"
-    "@univerjs/thread-comment" "0.10.14"
+    "@univerjs-pro/license" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/data-validation" "0.20.1"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/protocol" "0.1.49"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-conditional-formatting" "0.20.1"
+    "@univerjs/sheets-drawing" "0.20.1"
+    "@univerjs/sheets-filter" "0.20.1"
+    "@univerjs/sheets-hyper-link" "0.20.1"
+    "@univerjs/thread-comment" "0.20.1"
     uuid "^13.0.0"
 
-"@univerjs-pro/docs-exchange-client@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/docs-exchange-client/-/docs-exchange-client-0.10.14.tgz#f3c6c88c48e106901db72f57d6b3d64a1455acee"
-  integrity sha512-PN+JSc47XnXA9wzo8u5UP48C+AilGiOG4IA5g8kW2K0oZYLrZflmbj93kBvI8EYig5J0n8veuDfgH2tB4MMj9g==
+"@univerjs-pro/docs-exchange-client@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/docs-exchange-client/-/docs-exchange-client-0.20.1.tgz#e1f0040c01f122bbff93f52c16f96af2bb79f8dc"
+  integrity sha512-wAguVjCF5PjpH7AAzrtjRv6Trnxy16iO5cMrlvV5C9ao09LWiz+QGdsDkLGXNqnVX3vSvGzalPquOJD889c10g==
   dependencies:
-    "@univerjs-pro/exchange-client" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs-pro/exchange-client" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs-pro/docs-print@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/docs-print/-/docs-print-0.10.14.tgz#6e8b796de3af78ad5b340518a21b30b69a54a8f3"
-  integrity sha512-HHmbYy3k5m0h5jtm6/ylgCzSoTbldiXd7fYEtxpunxE50z4RiCl5VTqybqOOnQodPaRZBzlI2MtHPIReAGzYlg==
+"@univerjs-pro/docs-print@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/docs-print/-/docs-print-0.20.1.tgz#a5b29364beda08a97dd1ee7157810e550ad1c42d"
+  integrity sha512-eDBwg/tksTgCsrnX4ylI9WPSXEoylFSSeC4URE8HE9eoypzZcgAVNCgYM++lBR5w6jJl8W78vH6/DnyroAlfRA==
   dependencies:
-    "@univerjs-pro/license" "0.10.14"
-    "@univerjs-pro/print" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/docs-ui" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/network" "0.10.14"
-    "@univerjs/ui" "0.10.14"
-  optionalDependencies:
-    "@univerjs-pro/collaboration-client" "0.10.14"
+    "@univerjs-pro/license" "0.20.1"
+    "@univerjs-pro/print" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/docs-ui" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/network" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs-pro/edit-history-loader@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/edit-history-loader/-/edit-history-loader-0.10.14.tgz#84a8ca7c8c9f3a7fe8bb9f49a46f6c892244b95e"
-  integrity sha512-ypYszqvGYwdaAnkSWTNRH9hd3DgwyIa5/2YlA6X8r9A+Jf/LHOEAbXnhJgDIFHfygX52UHCee5+HKQfuCAdtaA==
+"@univerjs-pro/edit-history-loader@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/edit-history-loader/-/edit-history-loader-0.20.1.tgz#f5649dd26c9110e9eaad838ba6431e886ea23ba4"
+  integrity sha512-aIdbPguBNlhcKDWYqESD+XH6qq7VI2iWUhnFEZFe/aVRulJ7cesu2jOt6VrFNxOrEJQ7hdfj9LqKMnOgycS0Kg==
   dependencies:
-    "@univerjs-pro/collaboration" "0.10.14"
-    "@univerjs-pro/collaboration-client" "0.10.14"
-    "@univerjs-pro/edit-history-viewer" "0.10.14"
-    "@univerjs-pro/license" "0.10.14"
-    "@univerjs-pro/sheets-pivot" "0.10.14"
-    "@univerjs-pro/sheets-sparkline" "0.10.14"
-    "@univerjs-pro/sheets-sparkline-ui" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/data-validation" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/docs-ui" "0.10.14"
-    "@univerjs/drawing" "0.10.14"
-    "@univerjs/drawing-ui" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/network" "0.10.14"
-    "@univerjs/rpc" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-conditional-formatting" "0.10.14"
-    "@univerjs/sheets-conditional-formatting-ui" "0.10.14"
-    "@univerjs/sheets-data-validation" "0.10.14"
-    "@univerjs/sheets-data-validation-ui" "0.10.14"
-    "@univerjs/sheets-drawing" "0.10.14"
-    "@univerjs/sheets-drawing-ui" "0.10.14"
-    "@univerjs/sheets-filter" "0.10.14"
-    "@univerjs/sheets-filter-ui" "0.10.14"
-    "@univerjs/sheets-formula" "0.10.14"
-    "@univerjs/sheets-formula-ui" "0.10.14"
-    "@univerjs/sheets-hyper-link" "0.10.14"
-    "@univerjs/sheets-hyper-link-ui" "0.10.14"
-    "@univerjs/sheets-numfmt" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs-pro/collaboration" "0.20.1"
+    "@univerjs-pro/collaboration-client" "0.20.1"
+    "@univerjs-pro/collaboration-client-ui" "0.20.1"
+    "@univerjs-pro/edit-history-viewer" "0.20.1"
+    "@univerjs-pro/license" "0.20.1"
+    "@univerjs-pro/sheets-chart" "0.20.1"
+    "@univerjs-pro/sheets-chart-ui" "0.20.1"
+    "@univerjs-pro/sheets-pivot" "0.20.1"
+    "@univerjs-pro/sheets-shape" "0.20.1"
+    "@univerjs-pro/sheets-shape-ui" "0.20.1"
+    "@univerjs-pro/sheets-sparkline" "0.20.1"
+    "@univerjs-pro/sheets-sparkline-ui" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/data-validation" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/docs-ui" "0.20.1"
+    "@univerjs/drawing" "0.20.1"
+    "@univerjs/drawing-ui" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/network" "0.20.1"
+    "@univerjs/protocol" "0.1.49"
+    "@univerjs/rpc" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-conditional-formatting" "0.20.1"
+    "@univerjs/sheets-conditional-formatting-ui" "0.20.1"
+    "@univerjs/sheets-data-validation" "0.20.1"
+    "@univerjs/sheets-data-validation-ui" "0.20.1"
+    "@univerjs/sheets-drawing" "0.20.1"
+    "@univerjs/sheets-drawing-ui" "0.20.1"
+    "@univerjs/sheets-filter" "0.20.1"
+    "@univerjs/sheets-filter-ui" "0.20.1"
+    "@univerjs/sheets-formula" "0.20.1"
+    "@univerjs/sheets-formula-ui" "0.20.1"
+    "@univerjs/sheets-hyper-link" "0.20.1"
+    "@univerjs/sheets-hyper-link-ui" "0.20.1"
+    "@univerjs/sheets-numfmt" "0.20.1"
+    "@univerjs/sheets-table" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs-pro/edit-history-viewer@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/edit-history-viewer/-/edit-history-viewer-0.10.14.tgz#e8a018e4e7644ebecddd9f03d06281c72aa75d12"
-  integrity sha512-FC+bVJYYICoHH+X2Xx5Q7ffrPv1m/T93feOb0WFLWwIQyST5+r6z4ApabUOZ7xpqE4OmKLsDVwZsRTWPk2hSwQ==
+"@univerjs-pro/edit-history-viewer@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/edit-history-viewer/-/edit-history-viewer-0.20.1.tgz#9727c6c0d8110bdbeb03294e133d2c4a5b2351a9"
+  integrity sha512-nNS75RTZnqm4LREcj/pm9Bi3F+0wSltStfD+JOtwGxROQfAKDVt2d4xL7zMu0dEYKUee9U9LfD1tC5/cHL/I7w==
   dependencies:
-    "@univerjs-pro/collaboration" "0.10.14"
-    "@univerjs-pro/collaboration-client" "0.10.14"
-    "@univerjs-pro/collaboration-client-ui" "0.10.14"
-    "@univerjs-pro/sheets-sparkline" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/data-validation" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/drawing" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/network" "0.10.14"
-    "@univerjs/protocol" "0.1.47"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-conditional-formatting" "0.10.14"
-    "@univerjs/sheets-filter" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs-pro/collaboration" "0.20.1"
+    "@univerjs-pro/collaboration-client" "0.20.1"
+    "@univerjs-pro/collaboration-client-ui" "0.20.1"
+    "@univerjs-pro/sheets-chart" "0.20.1"
+    "@univerjs-pro/sheets-pivot" "0.20.1"
+    "@univerjs-pro/sheets-shape" "0.20.1"
+    "@univerjs-pro/sheets-sparkline" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/data-validation" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/drawing" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/network" "0.20.1"
+    "@univerjs/protocol" "0.1.49"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-conditional-formatting" "0.20.1"
+    "@univerjs/sheets-data-validation" "0.20.1"
+    "@univerjs/sheets-drawing" "0.20.1"
+    "@univerjs/sheets-filter" "0.20.1"
+    "@univerjs/sheets-table" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs-pro/engine-chart@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/engine-chart/-/engine-chart-0.10.14.tgz#8f66148ad8f9d3f6571f7948d2b25cb0f819a998"
-  integrity sha512-csPSnRkiFutELan3YkejKwgo+UEnGUPhy/pGJ3si2x1/8U7j8b0UTNZFZEA1xlbECi9wfQvZI8J1hB805iux9w==
+"@univerjs-pro/engine-chart@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/engine-chart/-/engine-chart-0.20.1.tgz#c5bf30fd663217bc8a3b3a521e109c041c8c64fa"
+  integrity sha512-YuX+iVKNcWWbAsV8bGsSzGEQpXvweSwRXLpXzQl7T51eoine/UoBfGuuwWVUDM2mKh+yh9vAJxjewXEzdx129Q==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
 
-"@univerjs-pro/engine-formula@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/engine-formula/-/engine-formula-0.10.14.tgz#626b7c3e77cabb3806395bd60ccc85ec298d7784"
-  integrity sha512-YtPM6+cfz3m/Z/fFyYAoJTyF+FKG8k6SQfsDtNuIKXs54wKXGuDEuOHV8SG53SwMqFzPLT1FayxK7CtqS5nYhw==
+"@univerjs-pro/engine-formula@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/engine-formula/-/engine-formula-0.20.1.tgz#03cb8e9870d8f52a6968d1a198ae4a23d7dc12d0"
+  integrity sha512-2A90/aox3oBhX8uUwtPRULkKlE0LoimN8Gy59inY1gvuPddsys9OdBBCiuouxlOdGCCypZB/15G6L4NlQrfI/Q==
   dependencies:
-    "@univerjs-pro/license" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
+    "@univerjs-pro/license" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
 
-"@univerjs-pro/engine-pivot@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/engine-pivot/-/engine-pivot-0.10.14.tgz#cb437fe1f6d03f4d80b24a6fb44390d356db8cf2"
-  integrity sha512-b8I4YrqcncWKheBdMkYdXZRC7oEmaydgURVuT/8MUwLffK/2hRVSIMoIOpAfAxuvnveuvdT5pRVITS47+YxbnQ==
+"@univerjs-pro/engine-pivot@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/engine-pivot/-/engine-pivot-0.20.1.tgz#70381f5d1f1502842dc7e2973040e629c5500b48"
+  integrity sha512-sULQneX4oAZwr/VlCoeFfvMjPww6mDMXuL5YsqZqQUh/0/hWjXj/XdWOxLh/RBuHeTd52s5NBiVXGoueqCynFQ==
 
-"@univerjs-pro/exchange-client@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/exchange-client/-/exchange-client-0.10.14.tgz#3aedb4b4bd2277ff27e636e7f368407b095e4f90"
-  integrity sha512-U62uUJMWAo+FTPHUHKbR0fZwvJD4oPwT+3jjjemGNFzSBKh8TeVijaS+dP3PtrlFOIl74x7OizbMWYjVwf/OEQ==
+"@univerjs-pro/engine-shape@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/engine-shape/-/engine-shape-0.20.1.tgz#27e8bfd062994a62bb69314203e0a2515a199909"
+  integrity sha512-XHQZzSBZf+gko9q8gfKg8VXZbndX8/02MqxAbqyGlJzDafBlSQ+o/R/D5C73bpH7EEx7+VVX0EZt+MossG/n1Q==
+
+"@univerjs-pro/exchange-client@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/exchange-client/-/exchange-client-0.20.1.tgz#37cee0523e55578b8367432c4483da1904dfbc25"
+  integrity sha512-N2iPiGk+DLQyORd/uEPJ9lYrBu7unAVIOCqgQmiDKInyj1MXEdaagB2qsoC5b6ZvO7sjevRosdtHC1lYWbDivA==
   dependencies:
-    "@univerjs-pro/collaboration" "0.10.14"
-    "@univerjs-pro/license" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/network" "0.10.14"
-    "@univerjs/protocol" "0.1.47"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs-pro/collaboration" "0.20.1"
+    "@univerjs-pro/license" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/network" "0.20.1"
+    "@univerjs/protocol" "0.1.49"
+    "@univerjs/ui" "0.20.1"
     pako "^2.1.0"
 
-"@univerjs-pro/license@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/license/-/license-0.10.14.tgz#1f839f7aa8bd1838a1e3b50d5127d5dff2c070a6"
-  integrity sha512-gBl5mmQ3c5LH16s1OV/MfItOq5Rf43+RSC88I9Mnyvvwep35naUTj5Hg4HqHEmIiYUg4FtjdGHoFUaKcKnn/1A==
+"@univerjs-pro/license@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/license/-/license-0.20.1.tgz#d3f13247aaa3dd6673484e504d8f4a940cccde43"
+  integrity sha512-4sRYBA9PH1WnlDaLq1nh7W8q+5gHxkIkjjoMgeXrUK3JSJtLb+BeCR+AmMV5u6eKWwLVtB5ZpSjBFDvzILX0mg==
   dependencies:
     "@noble/ed25519" "2.3.0"
     "@noble/hashes" "1.8.0"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
 
-"@univerjs-pro/print@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/print/-/print-0.10.14.tgz#d2dae59489241718909943946da7d904cbd8b3fb"
-  integrity sha512-fs8yx+m8TXGDkwWvTXbz3t+ZpAQYpN3ALO1I/gIaK8m4wQaPMGnUWBL3J6j6jO6kmJA9PbfrhWjD4e6RN90QlQ==
+"@univerjs-pro/print@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/print/-/print-0.20.1.tgz#589c6be90d0ab5d4bd83f67c05b2a12d3eff7df7"
+  integrity sha512-OgS9YkqGe45z7/yFbq+bcp9br4gQxFb/XARrCGU1cdDB8MpSHm+5R0n7XXhz3YkFThPhZMh62FsLkkXagjlaRw==
 
-"@univerjs-pro/sheets-chart-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-chart-ui/-/sheets-chart-ui-0.10.14.tgz#aeba957522089cfd7b75078e4da25b6ffcb8fc5d"
-  integrity sha512-PP+yzfn3jowxR1F3vsIpTQMg1uFlFqVK8SSi+NffgqJBkyeySNQL4lE0cZnd2+kFm90K72rEXUBa18SkICVQig==
+"@univerjs-pro/sheets-chart-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-chart-ui/-/sheets-chart-ui-0.20.1.tgz#b81a5b2013079d35d21ef0ee9a89be184671f60c"
+  integrity sha512-awHhh5YDFW8+OcD+a0YBsgGRrkmp2srh3Ez9LoNBTHiOiqQoBmL0uL+cpQxww3XsJa2urt4g2RJECw1/05t60A==
   dependencies:
-    "@univerjs-pro/engine-chart" "0.10.14"
-    "@univerjs-pro/sheets-chart" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/drawing" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-drawing-ui" "0.10.14"
-    "@univerjs/sheets-formula-ui" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
-    echarts "^5.6.0"
-    echarts-wordcloud "^2.1.0"
+    "@univerjs-pro/engine-chart" "0.20.1"
+    "@univerjs-pro/sheets-chart" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/drawing" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-drawing" "0.20.1"
+    "@univerjs/sheets-drawing-ui" "0.20.1"
+    "@univerjs/sheets-formula-ui" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs-pro/sheets-chart@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-chart/-/sheets-chart-0.10.14.tgz#5ea7ab1bcdd5e1ee4d19816f8130660300168c1f"
-  integrity sha512-6KwkZFt+Xk0rLP/b3BbL+pQInux+vFCgRMRKMuGdy4nxxoe/gDJIp7EmTvlL/5fD361p7EgVsOaVxX/qIFAzgA==
+"@univerjs-pro/sheets-chart@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-chart/-/sheets-chart-0.20.1.tgz#ef42f9308ec25eacf6ee959346ce2257005f94ef"
+  integrity sha512-ljEjVlCjMNlJ2gis1MQhedBk0EKaQWiW4LT47Uh7zj8Iir1qxlDVgnGeJwUipxMIt/4387k+c6CwFcrhhNyo+A==
   dependencies:
-    "@univerjs-pro/engine-chart" "0.10.14"
-    "@univerjs-pro/license" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
+    "@univerjs-pro/engine-chart" "0.20.1"
+    "@univerjs-pro/license" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-drawing" "0.20.1"
 
-"@univerjs-pro/sheets-exchange-client@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-exchange-client/-/sheets-exchange-client-0.10.14.tgz#f792d10d774f6122792f855a87462d2dcb29d6b9"
-  integrity sha512-TMeUVSKqviRFgfpAaQwR2UncMTV/hQCnQPlCeZ54TMFgbkpkSHVRvl+t6jzhnzSHnbA6sh0eukS1u4bcmZdgAA==
+"@univerjs-pro/sheets-exchange-client@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-exchange-client/-/sheets-exchange-client-0.20.1.tgz#e6e316bb7ccca075caac2432dc93cf0c18deb0fd"
+  integrity sha512-aXxFIMUQi+lO8+HaZvHvmS03YOV9Dg/+gVCTW3v1EeWTMtqr2OjepMmdR/ywOQn9fC0XgAOrIPzL/0F5qls+zw==
   dependencies:
-    "@univerjs-pro/exchange-client" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs-pro/exchange-client" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs-pro/sheets-pivot-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-pivot-ui/-/sheets-pivot-ui-0.10.14.tgz#043cd439a74b1aebb3a305b739b054132e50e42c"
-  integrity sha512-5xgvbtNv4Uh02ACxNZxkJgdyH+1zQSZaiTN3iNBvKYpcKFUVtR68vAAf82h9L6MqQylgmzxmU+dNDq+f59XVag==
+"@univerjs-pro/sheets-pivot-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-pivot-ui/-/sheets-pivot-ui-0.20.1.tgz#9087cb96fac851ef344dbd23020171977799dfc6"
+  integrity sha512-mBcYiyu0EAZohvkqCOBIVRggGJGTztG6c0A7L8DiY7OinOVx5eHn8vEO1+1SDH3wCYY+uzGRzoFamtXeqw2zww==
   dependencies:
-    "@univerjs-pro/engine-pivot" "0.10.14"
-    "@univerjs-pro/sheets-pivot" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/docs-ui" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-formula-ui" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
-    react-beautiful-dnd "^13.1.1"
+    "@univerjs-pro/engine-pivot" "0.20.1"
+    "@univerjs-pro/sheets-pivot" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/docs-ui" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-formula-ui" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs-pro/sheets-pivot@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-pivot/-/sheets-pivot-0.10.14.tgz#f908b4fd70cc0ba346c3e63f6c140c5c50744d4d"
-  integrity sha512-OD3qa6jHdxn2uACN18nt8sfaCaVgx2tOYJYw1hRTpJvKpSwgcd1yuGKEqAilY1vkwZYoTwbzg4q/u9Qv6SvOuw==
+"@univerjs-pro/sheets-pivot@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-pivot/-/sheets-pivot-0.20.1.tgz#83d674f318c118318a26bd9247614cb54ad21fd8"
+  integrity sha512-GpVV4ORdKvMJR7yJH99LoWAk9ryEDiXEFX45xx0wsG2SKu1yRpJeDYyk63pcOHK19W53EebgRlHxfDoEs4QLqA==
   dependencies:
-    "@univerjs-pro/engine-pivot" "0.10.14"
-    "@univerjs-pro/license" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/rpc" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-filter" "0.10.14"
+    "@univerjs-pro/engine-pivot" "0.20.1"
+    "@univerjs-pro/license" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/rpc" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-filter" "0.20.1"
 
-"@univerjs-pro/sheets-print@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-print/-/sheets-print-0.10.14.tgz#b66965d0aa78c92761a6f3ec0c2f65137a649989"
-  integrity sha512-x1XDDzc3NvIlr1QA/rRIHjhn1OzRhS6f4/haKGkMSvBcupqJ9p0EMsXhfdzVbPJ7pynJKvhftuJjvQY8gGobTQ==
+"@univerjs-pro/sheets-print@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-print/-/sheets-print-0.20.1.tgz#dc51ce5faedd7c29a316201e2af9377aa7221783"
+  integrity sha512-x0u9KoI9ZzOGz9MQYOGkOiaUpOreJG0f4WJ4YqibINBPEEWMN9nXVpytyjK0PfUVv2Y7/8rKk9nvo0f12RqwZQ==
   dependencies:
-    "@univerjs-pro/license" "0.10.14"
-    "@univerjs-pro/print" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/docs-ui" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/network" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
-  optionalDependencies:
-    "@univerjs-pro/collaboration-client" "0.10.14"
+    "@univerjs-pro/collaboration-client" "0.20.1"
+    "@univerjs-pro/license" "0.20.1"
+    "@univerjs-pro/print" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/docs-ui" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/network" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs-pro/sheets-sparkline-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-sparkline-ui/-/sheets-sparkline-ui-0.10.14.tgz#462a8723a2f694690068bc734a6899aee89fdce1"
-  integrity sha512-IzzaPmm10JTLKpIpIaULfkkOdB46irqMAeq6cg5jbfAxxwiQCmGMiDDUxkHWHwuXoeORTVrFqgPwoBsXIdwpvg==
+"@univerjs-pro/sheets-shape-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-shape-ui/-/sheets-shape-ui-0.20.1.tgz#756bc6b485e020cc90f93248cca3323e9a3e757e"
+  integrity sha512-dyaJ9M/BGAamTnEhRsGfBPoNoIBeIwb+XOKhCjkZcN87Cb4zLWXV6rngiXClIQZTnxphD0B3g74sCFYSVG8j6g==
   dependencies:
-    "@univerjs-pro/sheets-sparkline" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-formula-ui" "0.10.14"
-    "@univerjs/sheets-graphics" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs-pro/engine-shape" "0.20.1"
+    "@univerjs-pro/sheets-shape" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/docs-ui" "0.20.1"
+    "@univerjs/drawing" "0.20.1"
+    "@univerjs/drawing-ui" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-drawing" "0.20.1"
+    "@univerjs/sheets-drawing-ui" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs-pro/sheets-sparkline@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-sparkline/-/sheets-sparkline-0.10.14.tgz#d6cd77b6b55c66a4c48ed4136f1f8fc1091a0c23"
-  integrity sha512-wKJuStpp5MyzZhqg9ItuCI++du1715h8Aeiv9UgbXNEICFWmt5dsw/VvHNGyfHQhljil4c8TLqySh2rovCDhxQ==
+"@univerjs-pro/sheets-shape@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-shape/-/sheets-shape-0.20.1.tgz#10a09194ab77972520101bd7074520517c66c324"
+  integrity sha512-HjXIm3uW8KX8zwpVABEQCEipDJgSsUEME9Eud7hiGhG22gBVMTtzmNUuSQWY/WDddrR8eSOus2rDVUqqJLi/tw==
   dependencies:
-    "@univerjs-pro/license" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
+    "@univerjs-pro/engine-shape" "0.20.1"
+    "@univerjs-pro/license" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/drawing" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-drawing" "0.20.1"
 
-"@univerjs-pro/thread-comment-datasource@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs-pro/thread-comment-datasource/-/thread-comment-datasource-0.10.14.tgz#927b310a3597f33c42f2fafc99c94344663d5708"
-  integrity sha512-Vj8v8Uzm3I8dhREyzNKt0K2pIuVsS1GvKLdoSd+q8Ju6V5pT0j3tBkD+aLQAsIo3Gi2gs7kmKesc+/kUb6WBmA==
+"@univerjs-pro/sheets-sparkline-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-sparkline-ui/-/sheets-sparkline-ui-0.20.1.tgz#ae1e4be1138387c6b76ab30fe7b6947ae22053f1"
+  integrity sha512-KbzL8pIf3kILolzvwaHfGTlQWClMKVRxb6Aart0kI3Qp73Q/Wx+KJd1R8m86bSt0T671MLhoClnwIkC1Qq6KHw==
   dependencies:
-    "@univerjs-pro/collaboration-client" "0.10.14"
-    "@univerjs-pro/license" "0.10.14"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/network" "0.10.14"
-    "@univerjs/protocol" "0.1.47"
-    "@univerjs/thread-comment" "0.10.14"
-    "@univerjs/thread-comment-ui" "0.10.14"
+    "@univerjs-pro/sheets-sparkline" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-formula-ui" "0.20.1"
+    "@univerjs/sheets-graphics" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/core@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/core/-/core-0.10.14.tgz#8352a2cf5c2b1be9cddedb4f207973589e412113"
-  integrity sha512-TeeP9WkV6SYdgrI8hwt2RWDVKLozJiFmjO8wIbr9Y7sPxpi1ecfvDKvaept74h2S+VDeaEIYyyLWS6+73S6m8A==
+"@univerjs-pro/sheets-sparkline@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/sheets-sparkline/-/sheets-sparkline-0.20.1.tgz#8c4a08615d25d7f7d70d8c1c4cc700e04eb56398"
+  integrity sha512-bIvEK/cAf6cyVfPeYE1esa/GgNI0KnWFVfP3qoz2fPVVH8wU+prUounP2I4kHOoStAdiZixjfaGheYpyD5oLKg==
   dependencies:
-    "@univerjs/protocol" "0.1.47"
-    "@univerjs/themes" "0.10.14"
-    "@wendellhu/redi" "1.0.1"
+    "@univerjs-pro/license" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
+
+"@univerjs-pro/thread-comment-datasource@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs-pro/thread-comment-datasource/-/thread-comment-datasource-0.20.1.tgz#8e362e7c9e353ec9443a5b0f1f8945ce8679d329"
+  integrity sha512-pcmSZ+DKrtGDJ/BfQS325jfhpJrCnisJ6XYPttVA1G4y5tBfOmRgG+wBeAmGqXg0IhAelyYEIvqXTxB4YMVaoA==
+  dependencies:
+    "@univerjs-pro/collaboration-client" "0.20.1"
+    "@univerjs-pro/license" "0.20.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/network" "0.20.1"
+    "@univerjs/protocol" "0.1.49"
+    "@univerjs/thread-comment" "0.20.1"
+    "@univerjs/thread-comment-ui" "0.20.1"
+
+"@univerjs/core@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/core/-/core-0.20.1.tgz#4fe1b270b12d83fef70e64542e3a6846a20e8b65"
+  integrity sha512-grP1xH2KO/rmNyzSdmuryEnHI/4jH9Qo2yvvJhTup5950QNSX6UKXA/E3NnVj3TpflKY3kDnwugLJ+1Suw4IxA==
+  dependencies:
+    "@univerjs/protocol" "0.1.48"
+    "@univerjs/themes" "0.20.1"
+    "@wendellhu/redi" "1.1.1"
     async-lock "^1.4.1"
-    dayjs "^1.11.18"
     fast-diff "1.3.0"
     kdbush "^4.0.2"
-    lodash-es "^4.17.21"
-    nanoid "5.1.6"
+    lodash-es "^4.18.1"
+    nanoid "5.1.7"
     numfmt "^3.2.3"
     ot-json1 "^1.0.2"
     rbush "^4.0.1"
 
-"@univerjs/data-validation@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/data-validation/-/data-validation-0.10.14.tgz#37aba074d011577dcf69f16fb12c99b6017d63b0"
-  integrity sha512-d8GA+J4celrUymSHilszI6k9HynqQkyk3PSXo2mbpjaa7xb6N8vesaFv06Z2US/vuAn4lOG0Ge4SoTlyKtLLZQ==
+"@univerjs/data-validation@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/data-validation/-/data-validation-0.20.1.tgz#f1a2f9b49cba9fba730152d6f33dd88c4785a6bf"
+  integrity sha512-dlrb2kdFjL1sQzRhpluCSfGZsXEcq9UBr/ROhOA6EAQ2pMIP5Ndsj3ooChmGlqwZPwwQyCZ7YWKc9R1zEYEL/w==
   dependencies:
-    "@univerjs/core" "0.10.14"
+    "@univerjs/core" "0.20.1"
 
-"@univerjs/design@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/design/-/design-0.10.14.tgz#392b95d572c710b6f14e6b02982362de56cdd2ee"
-  integrity sha512-Schh/IgyypNI8Iw9qSASjQwVFROwQWdl+22Ri2gLHtyXdnv5jCRgxVJ8oX6YkG5sqjat4ZlgGnhAgzb9xVEGLQ==
+"@univerjs/design@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/design/-/design-0.20.1.tgz#79b4970fc611b7b75af7596d79fd021d168e8e3e"
+  integrity sha512-VN/AQgqKrXzINc7TvTbbU1uTydaohkmhcdoPxdF2Iefh/ERkKiYRwW9hGkzRIzWi8eT/l/LX/nHf9hRo3NJ8xg==
   dependencies:
     "@radix-ui/react-dialog" "^1.1.15"
     "@radix-ui/react-dropdown-menu" "^2.1.16"
     "@radix-ui/react-hover-card" "^1.1.15"
     "@radix-ui/react-popover" "^1.1.15"
-    "@radix-ui/react-separator" "^1.1.7"
-    "@radix-ui/react-slot" "^1.2.3"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/themes" "0.10.14"
+    "@radix-ui/react-separator" "^1.1.8"
+    "@radix-ui/react-slot" "^1.2.4"
+    "@univerjs/icons" "^1.1.1"
     class-variance-authority "^0.7.1"
     clsx "^2.1.1"
-    dayjs "^1.11.18"
-    rc-dropdown "^4.2.1"
-    rc-menu "^9.16.0"
-    rc-virtual-list "^3.16.1"
-    react-grid-layout "^1.5.1"
     react-transition-group "^4.4.5"
     sonner "^2.0.7"
     tailwind-merge "2.6.0"
 
-"@univerjs/docs-drawing-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/docs-drawing-ui/-/docs-drawing-ui-0.10.14.tgz#a9415d75ff380282370832661934571d1f2f07c0"
-  integrity sha512-gLxrhLcG3Pkx7JtdiX1h7fqaaMrZu+4Hv3sI6sTqhRhaDm+BAqnrRDK+mfAd3WUoluIoixEvJA0AaLT9e66kWg==
+"@univerjs/docs-drawing-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/docs-drawing-ui/-/docs-drawing-ui-0.20.1.tgz#fbf39884137307c12fdefbf82a69d0bcf299c20d"
+  integrity sha512-MVeuO1zs5/sqn3exsrOZFZvLtmxuR2rP4bdDZ4WTnymLgMafXXqbeIpAB2KFNO3ybaydWrYyR3kLjVfMixlH/Q==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/docs-drawing" "0.10.14"
-    "@univerjs/docs-ui" "0.10.14"
-    "@univerjs/drawing" "0.10.14"
-    "@univerjs/drawing-ui" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/docs-drawing" "0.20.1"
+    "@univerjs/docs-ui" "0.20.1"
+    "@univerjs/drawing" "0.20.1"
+    "@univerjs/drawing-ui" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/docs-drawing@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/docs-drawing/-/docs-drawing-0.10.14.tgz#96357fea59575b7fa7762b370cce60ed173a38ad"
-  integrity sha512-riSTDGVACfCTopNStRMb3XRQSnEJKGdb86W1I7HR66E9eYlxOW59DgufpdID0ytqOz/rDqBo9x6GfOFJ3w+CXQ==
+"@univerjs/docs-drawing@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/docs-drawing/-/docs-drawing-0.20.1.tgz#6b437ebb5b95d15847e6f90d444b5531b0afd883"
+  integrity sha512-xd9aPtA/VsVvItjuxsj2nC1lG0KqpLG7AQxbv/9b6YjGAVNf2Y/UR+4NjW6D0YQ8y9P63ls3rdhNGg0rS7epRg==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/drawing" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/drawing" "0.20.1"
 
-"@univerjs/docs-hyper-link-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/docs-hyper-link-ui/-/docs-hyper-link-ui-0.10.14.tgz#b5de6669e20be0f63ad5b298362ce7b29f027c72"
-  integrity sha512-TGn35jhcKeHFjbTQmWgX2cflAP9ZrL6AVedLqyVVpKuKJu9dMmFKymTurmgMWSIqar6r505HuhvYplxr8Kc7nQ==
+"@univerjs/docs-hyper-link-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/docs-hyper-link-ui/-/docs-hyper-link-ui-0.20.1.tgz#6f9057002713e6019c5625d36d2ccf660258d9da"
+  integrity sha512-2z2GX2/CT8LZ/hpN0XHKu9A/5VE8NGHkI8MmlVVNShxmGhxp3763maILC9Wx4Ji/QRz/5BgdL7kH+2ut+zzCpw==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/docs-hyper-link" "0.10.14"
-    "@univerjs/docs-ui" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/docs-hyper-link" "0.20.1"
+    "@univerjs/docs-ui" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/docs-hyper-link@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/docs-hyper-link/-/docs-hyper-link-0.10.14.tgz#90d62f2e3f94d9abcde78652914e5a079f56811f"
-  integrity sha512-0+aartqa97Wg5EeVXIWipJ+Qy8ILpO5DOk78rxsA/cC8H2ugu6KcwfcW7KLBWrG4VHjLE0YrihsUE0Ydjms6Wg==
+"@univerjs/docs-hyper-link@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/docs-hyper-link/-/docs-hyper-link-0.20.1.tgz#dddd82e177b5d8251d3536ea973c0daff083ec33"
+  integrity sha512-WZF2esfWx3S3W7tj7MS3OvTpei/mpTkxN81ttaoUlHE/m8VfvJXFBIwDaqteRBp2FyOv8cxRWSE2ZCB1KackGw==
   dependencies:
-    "@univerjs/core" "0.10.14"
+    "@univerjs/core" "0.20.1"
 
-"@univerjs/docs-thread-comment-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/docs-thread-comment-ui/-/docs-thread-comment-ui-0.10.14.tgz#8a04bc0567d8d00d8471ebe378fb61e02612141f"
-  integrity sha512-7eC2xEd3q9tfrZAjATWFN6jrrbkffuvDSjhsTfgN62t2V3w6ElcpD9/YxIHoAwGWxvfaZLqzm6Kd2yWoR0du2g==
+"@univerjs/docs-thread-comment-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/docs-thread-comment-ui/-/docs-thread-comment-ui-0.20.1.tgz#834acdd732601f4560872896988fe9c80b6fc485"
+  integrity sha512-V10nqNEObPjMESjqvTfG7G0LjZBJCExLxN04vWHocupQS8ao48I81D4Bl0j3/BhwCQ/+BRoPaAEU2DftX/iGNA==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/docs-ui" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/thread-comment" "0.10.14"
-    "@univerjs/thread-comment-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/docs-ui" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/thread-comment" "0.20.1"
+    "@univerjs/thread-comment-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/docs-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/docs-ui/-/docs-ui-0.10.14.tgz#899050563d84ad2395cf12f6b1dcbf4fef836e4e"
-  integrity sha512-6CDQuDOenAAW/I6T0EHHt6+Ki077VOMU7buE9kgkk9lJdv4aiaqo2IQsZ1HIFLdWifLJMUpI0DmEajhGTbxtTg==
+"@univerjs/docs-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/docs-ui/-/docs-ui-0.20.1.tgz#9d824e6f9a7f00c240be006146ffb12e86132d4f"
+  integrity sha512-UoF5mab+qXIiJfXasJKrfSa1Vcg4hdSBOj+xRLk5H3vV65PLoHa5apiA5MHanD46RPXyz58R9iSRplCbB1FCmg==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/drawing" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/drawing" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/docs@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/docs/-/docs-0.10.14.tgz#768bf3d84e3bb47fc707a3f47b09e7c02c65a75b"
-  integrity sha512-uus74TID4Hz3dFEWdXq8CUvfRZ4YoASajI262jxdKAqH8K8qgYAL7Uaw3Y2DfgZjvFNQ8LxjuI2Hf6VrpwJJgA==
+"@univerjs/docs@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/docs/-/docs-0.20.1.tgz#15cd5251cd0325cd9f86f581f5d442ed4246231b"
+  integrity sha512-fHH4U1zGTz7LNjFz2YfyN6ppe19xTsJymsqbe3dvwL5rHp77+s/S2Tm7ObgI5TABN127N7sXZ0HlvulcZUNhhQ==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
 
-"@univerjs/drawing-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/drawing-ui/-/drawing-ui-0.10.14.tgz#68460ea86b1cd6aeeb803347b4d4a42edb77f51d"
-  integrity sha512-kdMT4PLGrelhvKJMzhDAbUq73qNdLNpLPqrMkcpAuk+2hgib8s9q37P+xqLCFVgO2+03N96eaE/c6fP9Xf6nfw==
+"@univerjs/drawing-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/drawing-ui/-/drawing-ui-0.20.1.tgz#a3b5c2eebfeded2a5586d833e5a485e61d9cff26"
+  integrity sha512-BL2DkE1OJ/b0k/vl01pLBNl5Z3LNBhoZ+2iBdPvPA05fwIJe0/S6IPuNOQ5JAGneh+y0hwoMr8KKX+yQ6IQxeQ==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/drawing" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/drawing" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/drawing@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/drawing/-/drawing-0.10.14.tgz#d6d6ea34f51a119bef5e4d504ccac34ae71b55bc"
-  integrity sha512-68qWHkNJxPSCPFpVQ6sbkNO5wgOqA8LjH6Ea7DC4FQkxQzwkF7Jgs0n3gDMSGrnmVu2/CqctyCrkUI/oEFG7Kg==
+"@univerjs/drawing@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/drawing/-/drawing-0.20.1.tgz#5a7c4f01a25e30cea47993b884847a02e37e7cda"
+  integrity sha512-7DMc6U4tHGWK37EJS1vIaaFdqBf22WrOlAS4A9tbqyQLlqE+WhJf1nxtiO7EMAPZEfIHbIDsABUAHEDBHBQGVg==
   dependencies:
-    "@univerjs/core" "0.10.14"
+    "@univerjs/core" "0.20.1"
     ot-json1 "^1.0.2"
 
-"@univerjs/engine-formula@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/engine-formula/-/engine-formula-0.10.14.tgz#0d28895029877dd10587c11a2df3a228d5fb46f7"
-  integrity sha512-+EiR8FHazmJv4ZN7aYlO/7i6hhCSE8UH42qk4OAvMLYCTkfmzBLWUsmfZ921j54Nc8eXF49ebTyilpaIsV86ug==
+"@univerjs/engine-formula@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/engine-formula/-/engine-formula-0.20.1.tgz#d5656c9995b8ec60842f9a2554d561303a776efd"
+  integrity sha512-Fpc6F7PVLhWxlkNY2VMYssWfuc4TT0IcGemzRh12/HYeIEPsyBvDAnBzJ1OCEeFfP2ZvpoEC0QkhQJlv7UY2rA==
   dependencies:
-    "@flatten-js/interval-tree" "^1.1.3"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/rpc" "0.10.14"
+    "@flatten-js/interval-tree" "1.1.3"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/rpc" "0.20.1"
     decimal.js "^10.6.0"
 
-"@univerjs/engine-render@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/engine-render/-/engine-render-0.10.14.tgz#e5624ec9f256883152c04f406e7e8a96b8947004"
-  integrity sha512-eLHT028HeGadnguy4txhaohBZrg+FO6CKhzTRWKxDFSWVVJ2JeKTu2j3aXur/KTGUbelSgR6ctRabGarQjHLVA==
+"@univerjs/engine-render@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/engine-render/-/engine-render-0.20.1.tgz#6fd22bf8038c914f13c7879b794b0da2c10c308c"
+  integrity sha512-kfPTAfJ7tMrVhLBIkvSZASAfB1m/s+TR0Gv8mv9S5lvUiNd+Thtlku/ZuDC0KFygHFLNXUqmXAOT+MMVJh7iqw==
   dependencies:
     "@floating-ui/dom" "^1.7.4"
     "@floating-ui/utils" "^0.2.10"
-    "@univerjs/core" "0.10.14"
-    cjk-regex "^3.3.0"
+    "@univerjs/core" "0.20.1"
+    cjk-regex "^3.4.0"
     franc-min "^6.2.0"
     opentype.js "^1.3.4"
 
-"@univerjs/find-replace@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/find-replace/-/find-replace-0.10.14.tgz#dae911a8b17ca44cd8dc5401d51454a37c3e09a0"
-  integrity sha512-KcpFcWv7orYn4bZuSvi2KzIr85IckMrrPajfo30anyVAIjuufyGLHf3WomBCiekhxyCzlNvrT4YaGfpocanItA==
+"@univerjs/find-replace@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/find-replace/-/find-replace-0.20.1.tgz#c19551ccd34316e15b0f09ee2b3913e92b52896f"
+  integrity sha512-ACcZy+w8T/FW6DeGWxeejFY21m52InsO20qELZQqlSZsLaFCqKefYiZ//faq8kXKZiXNJQHVsXEPhHZu6OKsRQ==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/icons@^1.0.2":
+"@univerjs/icons@^1.1.1":
   version "1.1.1"
   resolved "https://registry.yarnpkg.com/@univerjs/icons/-/icons-1.1.1.tgz#b9c90f3c3d9473969d75f1a5db59ead94436968b"
   integrity sha512-3agWxYwNEyfpiCerajLZvZWfa+Fsx2LhGY9EeacSiPk+32BX9NwmCa9uTpDVe0F94iEO+fGfkTB8pCeIFU4l8w==
 
-"@univerjs/network@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/network/-/network-0.10.14.tgz#280676aae95156ab38107e762397c1f370cbe540"
-  integrity sha512-ELPdDaXthaQe3NmWOJ2aDicT/rgE463T/9/k5z04B0PrQ44R9AROvArJnms65zO0jEr/fiJMI9Qd0nWu4f79GA==
+"@univerjs/network@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/network/-/network-0.20.1.tgz#f2c643170130132e90121d619b22132290087ec1"
+  integrity sha512-x2ySyo2qhoZ3FTk2L2Emko/kLoikldvTFdTD19iZrIqjReCz+B7lWeo1M7Biag3+AL5SpT1vaHnSjfIzYjeSkw==
   dependencies:
-    "@univerjs/core" "0.10.14"
+    "@univerjs/core" "0.20.1"
 
-"@univerjs/preset-docs-advanced@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-docs-advanced/-/preset-docs-advanced-0.10.14.tgz#7b75b2b81bf03baa403a54f805b7e1baf730e7a4"
-  integrity sha512-3542nalHALt3XGCU5Jt2V2xdUn4jEhnWzBHsucoY3+INmzfm9qICfYfzBv5bHSa0QuJv6MX450Q4NTsfWfOmYw==
+"@univerjs/preset-docs-advanced@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-docs-advanced/-/preset-docs-advanced-0.20.1.tgz#151c90933b588e6cba64c1aedba9dd09e4d9cdfb"
+  integrity sha512-N2F7XVuD8HBOXWpkiowBq+OxE4O74AGx2QXEaj4FLLpOycnzUIiO4vgQLkikgQErSmY6TtqeYO2+u/sfo/dmHA==
   dependencies:
-    "@univerjs-pro/docs-exchange-client" "0.10.14"
-    "@univerjs-pro/docs-print" "0.10.14"
-    "@univerjs-pro/exchange-client" "0.10.14"
-    "@univerjs-pro/license" "0.10.14"
+    "@univerjs-pro/docs-exchange-client" "0.20.1"
+    "@univerjs-pro/docs-print" "0.20.1"
+    "@univerjs-pro/exchange-client" "0.20.1"
+    "@univerjs-pro/license" "0.20.1"
 
-"@univerjs/preset-docs-collaboration@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-docs-collaboration/-/preset-docs-collaboration-0.10.14.tgz#e9ab055da4c6953916642205055471aec0be7481"
-  integrity sha512-I47A7lrKMxbypbQc/2L9Vo+wEC+4CtZF/igymk/0TckZGQltalC2RddkLNP4UCNhoQNW/1UQqtU5bd3ko592Fg==
+"@univerjs/preset-docs-collaboration@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-docs-collaboration/-/preset-docs-collaboration-0.20.1.tgz#4dcbafee77757617e25bac25dca9529a5c1a70cb"
+  integrity sha512-tnHSWrRsIq99yYNhbHN975V1qXpkoUzyx+pZA+wtDNIxe/eWw9PYgapun7PmuVmcp/LB9D7oliPSQKubAGgbQg==
   dependencies:
-    "@univerjs-pro/collaboration" "0.10.14"
-    "@univerjs-pro/collaboration-client" "0.10.14"
-    "@univerjs-pro/collaboration-client-ui" "0.10.14"
+    "@univerjs-pro/collaboration" "0.20.1"
+    "@univerjs-pro/collaboration-client" "0.20.1"
+    "@univerjs-pro/collaboration-client-ui" "0.20.1"
 
-"@univerjs/preset-docs-core@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-docs-core/-/preset-docs-core-0.10.14.tgz#8dd84ffa3afb142b8f71f553e5d2ca2af5bacf48"
-  integrity sha512-YZ/NGcQ3NY9wgATLbHQoVBL2giuOBLF1dolEsvruYW9mp31CnGc1XVl0nei79uG0JRuWLUO3v+3lFM0np2Z0DA==
+"@univerjs/preset-docs-core@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-docs-core/-/preset-docs-core-0.20.1.tgz#80fdbb88f275c28e8302264396f1518538a8109f"
+  integrity sha512-qwNEjqIpm6ypuao495YDmxzRIL5hqbZ/eqUCnzGkvy7LBBf8Yseh6wySroSdQ3CiBVAh9MtI/ndslGIlKMvJpg==
   dependencies:
-    "@univerjs/design" "0.10.14"
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/docs-ui" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/network" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/docs-ui" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/network" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/preset-docs-drawing@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-docs-drawing/-/preset-docs-drawing-0.10.14.tgz#3c2be97409ddc17c90f52705eed0402b9123072a"
-  integrity sha512-c9eRP1RKYwio5aBPfVMXfUsTcofBe/RTAT6SMa3KYhZaplITGWJ27LANh4Qn9mIz4dFoPV3Lf5XeVlH8yMnpJQ==
+"@univerjs/preset-docs-drawing@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-docs-drawing/-/preset-docs-drawing-0.20.1.tgz#553f2925340eb01321ea00070ecccea07506b3e1"
+  integrity sha512-5xTglZKKVxgzjAvzFntyU7ewBk88Wiib2CUiHTYG7/zfbkrv2PguzAB1iqKlZHFp3jnaJEDwKoOVoatTLwHaxQ==
   dependencies:
-    "@univerjs/docs-drawing" "0.10.14"
-    "@univerjs/docs-drawing-ui" "0.10.14"
-    "@univerjs/drawing" "0.10.14"
-    "@univerjs/drawing-ui" "0.10.14"
+    "@univerjs/docs-drawing" "0.20.1"
+    "@univerjs/docs-drawing-ui" "0.20.1"
+    "@univerjs/drawing" "0.20.1"
+    "@univerjs/drawing-ui" "0.20.1"
 
-"@univerjs/preset-docs-hyper-link@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-docs-hyper-link/-/preset-docs-hyper-link-0.10.14.tgz#a208314f00c19ae92a7eaa5abce0c9d1e3291cff"
-  integrity sha512-uYPLZ6/GjHbdOKop8tTP/Pc4MEf47V3TSEMDpB5Gq7bmSsykkbPP1r0IkTBdRpUBNgdiUnDwW/TgtoyfRqMZYQ==
+"@univerjs/preset-docs-hyper-link@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-docs-hyper-link/-/preset-docs-hyper-link-0.20.1.tgz#c052f55c3199a6062e02af5813e0ef0c88cac457"
+  integrity sha512-5ZK4ZwD6lEcqWYgs9bgvS73GmKO9bib7pE/X0dwqSwjXI82gZvCa0+46KpaK66dMlb/VC3BzXvOJjSpEwUnUQw==
   dependencies:
-    "@univerjs/docs-hyper-link" "0.10.14"
-    "@univerjs/docs-hyper-link-ui" "0.10.14"
+    "@univerjs/docs-hyper-link" "0.20.1"
+    "@univerjs/docs-hyper-link-ui" "0.20.1"
 
-"@univerjs/preset-docs-node-core@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-docs-node-core/-/preset-docs-node-core-0.10.14.tgz#4d8225850e99784a52ee99f0a7c4ff500acd1316"
-  integrity sha512-qLnSpqIV+mfArVdKlTSNaiuypQacV2dkd63UPn2sgWu4xhOMjpr7riIzACpI9IBRaYIRU3FFkyOsnEG5/5vOSA==
+"@univerjs/preset-docs-node-core@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-docs-node-core/-/preset-docs-node-core-0.20.1.tgz#2f8e09f7a16833d0b6f387ad4706197419bf3a70"
+  integrity sha512-orRgG/8iz0PkikemuPU6e42qx+pmdfhW0xxJdTLVi4yq1wCt/r8+j4Y3dCS4Be6ktbmCPPrGVVL+0PCSXpQaDg==
   dependencies:
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/docs-drawing" "0.10.14"
-    "@univerjs/docs-hyper-link" "0.10.14"
-    "@univerjs/drawing" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/rpc-node" "0.10.14"
-    "@univerjs/thread-comment" "0.10.14"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/docs-drawing" "0.20.1"
+    "@univerjs/docs-hyper-link" "0.20.1"
+    "@univerjs/drawing" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/rpc-node" "0.20.1"
+    "@univerjs/thread-comment" "0.20.1"
 
-"@univerjs/preset-docs-thread-comment@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-docs-thread-comment/-/preset-docs-thread-comment-0.10.14.tgz#f596d0bf39466b3dd9b5e47fc81d8f473618abf6"
-  integrity sha512-KVRgZe7SsxRo0T2/viL6oTA9sbVw7ReNsc1PxI88SGbwNlRWfN8Acf3aIXEBVdd1ndN7kmDcno9zVVD2Ko0c6g==
+"@univerjs/preset-docs-thread-comment@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-docs-thread-comment/-/preset-docs-thread-comment-0.20.1.tgz#d202165a4c7be286532b1ad0b4a2b8ece80cecf5"
+  integrity sha512-VdWfRyutjpHqnH9uvSkYREeoPQh2B01ptzfDWpyqfsqlDrR9/botv+edlelE7/gmdj2P6sbvz1Bo75ABurmLQw==
   dependencies:
-    "@univerjs/docs-thread-comment-ui" "0.10.14"
-    "@univerjs/thread-comment" "0.10.14"
-    "@univerjs/thread-comment-ui" "0.10.14"
+    "@univerjs/docs-thread-comment-ui" "0.20.1"
+    "@univerjs/thread-comment" "0.20.1"
+    "@univerjs/thread-comment-ui" "0.20.1"
 
-"@univerjs/preset-sheets-advanced@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-advanced/-/preset-sheets-advanced-0.10.14.tgz#098fc72128d1290475ecc51cb37d25eba2421722"
-  integrity sha512-FIguISuDAPWFHIEvzyPnnpVCMQYqJryJX86UAJKZyDoOlRWM/l7/DIqIQawPjtH5V5sDuMw+bsBy7P+xUBoFZg==
+"@univerjs/preset-sheets-advanced@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-advanced/-/preset-sheets-advanced-0.20.1.tgz#049a468c595462937ee107fe1a9cd448f1e33740"
+  integrity sha512-dzFNvkzreLqi1tb5V43GRRsho0qcXT4GLY01O7/L+c7WwwSdbi0gkVWuu/ovXYNj4c5Cg698bE/dYT0818NHrw==
   dependencies:
-    "@univerjs-pro/engine-chart" "0.10.14"
-    "@univerjs-pro/engine-formula" "0.10.14"
-    "@univerjs-pro/exchange-client" "0.10.14"
-    "@univerjs-pro/license" "0.10.14"
-    "@univerjs-pro/sheets-chart" "0.10.14"
-    "@univerjs-pro/sheets-chart-ui" "0.10.14"
-    "@univerjs-pro/sheets-exchange-client" "0.10.14"
-    "@univerjs-pro/sheets-pivot" "0.10.14"
-    "@univerjs-pro/sheets-pivot-ui" "0.10.14"
-    "@univerjs-pro/sheets-print" "0.10.14"
-    "@univerjs-pro/sheets-sparkline" "0.10.14"
-    "@univerjs-pro/sheets-sparkline-ui" "0.10.14"
-    "@univerjs/sheets-graphics" "0.10.14"
+    "@univerjs-pro/engine-chart" "0.20.1"
+    "@univerjs-pro/engine-formula" "0.20.1"
+    "@univerjs-pro/engine-shape" "0.20.1"
+    "@univerjs-pro/exchange-client" "0.20.1"
+    "@univerjs-pro/license" "0.20.1"
+    "@univerjs-pro/sheets-chart" "0.20.1"
+    "@univerjs-pro/sheets-chart-ui" "0.20.1"
+    "@univerjs-pro/sheets-exchange-client" "0.20.1"
+    "@univerjs-pro/sheets-pivot" "0.20.1"
+    "@univerjs-pro/sheets-pivot-ui" "0.20.1"
+    "@univerjs-pro/sheets-print" "0.20.1"
+    "@univerjs-pro/sheets-shape" "0.20.1"
+    "@univerjs-pro/sheets-shape-ui" "0.20.1"
+    "@univerjs-pro/sheets-sparkline" "0.20.1"
+    "@univerjs-pro/sheets-sparkline-ui" "0.20.1"
+    "@univerjs/sheets-graphics" "0.20.1"
 
-"@univerjs/preset-sheets-collaboration@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-collaboration/-/preset-sheets-collaboration-0.10.14.tgz#6fbbac6e6a04391207e04d27c0de645855ec7670"
-  integrity sha512-WJVzZVkhmD6kOykUTO0GMXB+6ICqn5mMe7Pu3d01ukMUDHbLxH6QT5Ifen7fXVik5u3kqyp9ibwTF5r1DwRhaQ==
+"@univerjs/preset-sheets-collaboration@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-collaboration/-/preset-sheets-collaboration-0.20.1.tgz#9954d8b6872a1c8cd383eb4b6dc4774b2674bae1"
+  integrity sha512-+YKa/R8UDjvIzSjYcpVMC6TSxPLctpqoAoCz44vqOF9Ny9qex9Qv4OMbHvHIFoJ3fq6Bztaw9cKZ4tjoJXqf6g==
   dependencies:
-    "@univerjs-pro/collaboration" "0.10.14"
-    "@univerjs-pro/collaboration-client" "0.10.14"
-    "@univerjs-pro/collaboration-client-ui" "0.10.14"
-    "@univerjs-pro/edit-history-loader" "0.10.14"
-    "@univerjs-pro/edit-history-viewer" "0.10.14"
-    "@univerjs-pro/thread-comment-datasource" "0.10.14"
-    "@univerjs/preset-sheets-advanced" "0.10.14"
+    "@univerjs-pro/collaboration" "0.20.1"
+    "@univerjs-pro/collaboration-client" "0.20.1"
+    "@univerjs-pro/collaboration-client-ui" "0.20.1"
+    "@univerjs-pro/edit-history-loader" "0.20.1"
+    "@univerjs-pro/edit-history-viewer" "0.20.1"
+    "@univerjs-pro/thread-comment-datasource" "0.20.1"
+    "@univerjs/preset-sheets-advanced" "0.20.1"
 
-"@univerjs/preset-sheets-conditional-formatting@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-conditional-formatting/-/preset-sheets-conditional-formatting-0.10.14.tgz#cb2eba9cc4d648bce8dc2921025562a2c36b8ede"
-  integrity sha512-iu02RD8crPoXIknwV4D+nvU3gsI2SxBvcpbneKNNDuwwJ7KuCRKZGFMkICK1FR6VTKaKyFXqBYbjej2M+oqvlw==
+"@univerjs/preset-sheets-conditional-formatting@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-conditional-formatting/-/preset-sheets-conditional-formatting-0.20.1.tgz#d56bb7e0ac75f77355257e7ec6c94d42b8c68859"
+  integrity sha512-ziF6RcYBpbPFCPIgnY72PVZzYCfL+NCTQVJY4uN8gEKmGwIVR64q23mL2+WD1a+Xpc8KA3FAOl65YZybDAsdiw==
   dependencies:
-    "@univerjs/sheets-conditional-formatting" "0.10.14"
-    "@univerjs/sheets-conditional-formatting-ui" "0.10.14"
+    "@univerjs/sheets-conditional-formatting" "0.20.1"
+    "@univerjs/sheets-conditional-formatting-ui" "0.20.1"
 
-"@univerjs/preset-sheets-core@0.10.14", "@univerjs/preset-sheets-core@^0.10.10":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-core/-/preset-sheets-core-0.10.14.tgz#5de58d64361b0b84c260f1dd026424906836945d"
-  integrity sha512-HrQX+FH4InUd3P42cjT5O9JEDaD+UR5BO8dgQjKO7GunHyW6KFJy+RFgQn80kPhxUjf7oj/mz4UA315C9hHCNA==
+"@univerjs/preset-sheets-core@0.20.1", "@univerjs/preset-sheets-core@^0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-core/-/preset-sheets-core-0.20.1.tgz#29344ef464f407e9be0b0422d98a775616cc44c1"
+  integrity sha512-dlY1wvy2IUTo/ij8JkHYl0lBTRGktrtaOVKK3RunO65Fwq5S2EQ6Ub1xKMotrh5Mbk/GkU+qNIkQzdt4vThVjA==
   dependencies:
-    "@univerjs/design" "0.10.14"
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/docs-ui" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/network" "0.10.14"
-    "@univerjs/rpc" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-formula" "0.10.14"
-    "@univerjs/sheets-formula-ui" "0.10.14"
-    "@univerjs/sheets-numfmt" "0.10.14"
-    "@univerjs/sheets-numfmt-ui" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/docs-ui" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/network" "0.20.1"
+    "@univerjs/rpc" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-formula" "0.20.1"
+    "@univerjs/sheets-formula-ui" "0.20.1"
+    "@univerjs/sheets-numfmt" "0.20.1"
+    "@univerjs/sheets-numfmt-ui" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/preset-sheets-data-validation@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-data-validation/-/preset-sheets-data-validation-0.10.14.tgz#952c67dc270ec587b0b897048be1e5953beeb239"
-  integrity sha512-6mWPJaRO7NPxXEASuxPTbMznwVCyxSGDBRkQvNjLJJTrOKFIBe3TgKzg9WMKH0+hKjGXAFy7v1u1IlbW1LNJNA==
+"@univerjs/preset-sheets-data-validation@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-data-validation/-/preset-sheets-data-validation-0.20.1.tgz#74f432098d8c9b41386cfacd0bb7c10318121310"
+  integrity sha512-9AgmEp+25u/H3X7SMJH/nk1NX1jwcXA6DY65UP6giWIT+F9UrrxLN3lrSon+aWnBgrK0BlRYYt7uL5JaBboYpQ==
   dependencies:
-    "@univerjs/data-validation" "0.10.14"
-    "@univerjs/sheets-data-validation" "0.10.14"
-    "@univerjs/sheets-data-validation-ui" "0.10.14"
+    "@univerjs/data-validation" "0.20.1"
+    "@univerjs/sheets-data-validation" "0.20.1"
+    "@univerjs/sheets-data-validation-ui" "0.20.1"
 
-"@univerjs/preset-sheets-drawing@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-drawing/-/preset-sheets-drawing-0.10.14.tgz#c5b5828fe46b76ccf36883ee83091dc2577a8ed4"
-  integrity sha512-5BpAeAj7Pf7tIM6aB09EPBfbWjLQ9PQy43HFialFDaeIQWI4Rv/Dsn56tMPvLFqPlADqrfIBHkb+Q2ftOGC0lQ==
+"@univerjs/preset-sheets-drawing@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-drawing/-/preset-sheets-drawing-0.20.1.tgz#b21a9988edda263018b87c1c6a3c61e1a36d597d"
+  integrity sha512-MCMPI4QAnAldwqu4td8r60yBJljYBwAzk4qOuFxQ953veizQu8LINg2Af48J4G6Xqrv5u7FWsIznbsfgRKzx9w==
   dependencies:
-    "@univerjs/docs-drawing" "0.10.14"
-    "@univerjs/drawing" "0.10.14"
-    "@univerjs/drawing-ui" "0.10.14"
-    "@univerjs/sheets-drawing" "0.10.14"
-    "@univerjs/sheets-drawing-ui" "0.10.14"
+    "@univerjs/docs-drawing" "0.20.1"
+    "@univerjs/drawing" "0.20.1"
+    "@univerjs/drawing-ui" "0.20.1"
+    "@univerjs/sheets-drawing" "0.20.1"
+    "@univerjs/sheets-drawing-ui" "0.20.1"
 
-"@univerjs/preset-sheets-filter@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-filter/-/preset-sheets-filter-0.10.14.tgz#bc28911a46e03c3892ed5502fbf31d6d6c230875"
-  integrity sha512-QV+uNiT2KXYaGRReDWx3Woj3UFEdT0fy75Mt12b9J1lMdpEH4PX4G8zxbTb0OWcUuNZXZIlFjQu+8Q7sSu3B5Q==
+"@univerjs/preset-sheets-filter@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-filter/-/preset-sheets-filter-0.20.1.tgz#a001d8239e9b8f8f452a5db2949bbec4d515b5bc"
+  integrity sha512-PJT9T/NmjngvME9p1Ivfrx8Tyc6y7IslGLXewAJNk5AcWKD2VYXvCX8IlDHLcZX4iGD4YhVFtwhn+F7lrXuAOw==
   dependencies:
-    "@univerjs/sheets-filter" "0.10.14"
-    "@univerjs/sheets-filter-ui" "0.10.14"
+    "@univerjs/sheets-filter" "0.20.1"
+    "@univerjs/sheets-filter-ui" "0.20.1"
 
-"@univerjs/preset-sheets-find-replace@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-find-replace/-/preset-sheets-find-replace-0.10.14.tgz#95fe817e0ebf8d8780f7313ceea43b5eab5623f5"
-  integrity sha512-PN7fSNwEurq0Y/pOt/BNQbS8cxUYlKPGcV3fidS1VAb8Nx/IlUHfRJzR0iIpf0P4Bhna0zY/y0XtTosX65n4Gg==
+"@univerjs/preset-sheets-find-replace@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-find-replace/-/preset-sheets-find-replace-0.20.1.tgz#3843f79b282a4a529af5619f298f418525765e82"
+  integrity sha512-JFLA2yIlc8S1e/VEsuqHGS1EIjiLtXstngEqKOdZX5WzZuP+8v9CwHmV7Bpu9UkGGfz7aMYHFxb2PPWcQI+9lQ==
   dependencies:
-    "@univerjs/find-replace" "0.10.14"
-    "@univerjs/sheets-find-replace" "0.10.14"
+    "@univerjs/find-replace" "0.20.1"
+    "@univerjs/sheets-find-replace" "0.20.1"
 
-"@univerjs/preset-sheets-hyper-link@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-hyper-link/-/preset-sheets-hyper-link-0.10.14.tgz#b07e03083f0d924ccff846214028010cce74e904"
-  integrity sha512-fgcK9DM/vfWaGm5Zc5otgO1q7CdCfmr2t7AvCNWayvEdOoDoWzOooYq/qiQaBZ1Ig5Fa5AAQiebV92tLuCHcaw==
+"@univerjs/preset-sheets-hyper-link@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-hyper-link/-/preset-sheets-hyper-link-0.20.1.tgz#0871c5a9f00323fe2ad40bd56807b8c963d039e8"
+  integrity sha512-W2s7kB7CLxFRWBHmA30QlHo8eUz2GRsHL5eW77D+dpNGgyLmzcQHVGSSwDFtx9z4nl1mjA+VU8HVsvCjElpnpQ==
   dependencies:
-    "@univerjs/sheets-hyper-link" "0.10.14"
-    "@univerjs/sheets-hyper-link-ui" "0.10.14"
+    "@univerjs/sheets-hyper-link" "0.20.1"
+    "@univerjs/sheets-hyper-link-ui" "0.20.1"
 
-"@univerjs/preset-sheets-node-core@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-node-core/-/preset-sheets-node-core-0.10.14.tgz#6b8e787e7cf6c293c79ee08fc4810da05be8808f"
-  integrity sha512-g7hFJYe8g064r+uXdQ6bc/6WW3Jvlq/mI7I5rXIB+6REU3SeKGVOrfhlSLKZh3FVOnMg0ag0VigMiHLcqOBMHw==
+"@univerjs/preset-sheets-node-core@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-node-core/-/preset-sheets-node-core-0.20.1.tgz#d2d6656cdf3eb700898a9a7da123e0994330b3d2"
+  integrity sha512-8cAAT3a8tEuPaMUSqvz0f5cacZQ3d4PKG3PGVBnFVo3W/dACfeLj63MR9qUQ69fYckRVdP8mZPe8+czLx8dUaA==
   dependencies:
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/rpc-node" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-data-validation" "0.10.14"
-    "@univerjs/sheets-drawing" "0.10.14"
-    "@univerjs/sheets-filter" "0.10.14"
-    "@univerjs/sheets-formula" "0.10.14"
-    "@univerjs/sheets-hyper-link" "0.10.14"
-    "@univerjs/sheets-numfmt" "0.10.14"
-    "@univerjs/sheets-sort" "0.10.14"
-    "@univerjs/sheets-thread-comment" "0.10.14"
-    "@univerjs/thread-comment" "0.10.14"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/rpc-node" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-data-validation" "0.20.1"
+    "@univerjs/sheets-drawing" "0.20.1"
+    "@univerjs/sheets-filter" "0.20.1"
+    "@univerjs/sheets-formula" "0.20.1"
+    "@univerjs/sheets-hyper-link" "0.20.1"
+    "@univerjs/sheets-numfmt" "0.20.1"
+    "@univerjs/sheets-sort" "0.20.1"
+    "@univerjs/sheets-thread-comment" "0.20.1"
+    "@univerjs/thread-comment" "0.20.1"
 
-"@univerjs/preset-sheets-note@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-note/-/preset-sheets-note-0.10.14.tgz#1583efe43e72bfad9a28a3e484ba49b4ec157af7"
-  integrity sha512-1bHBDL9NztMO1rAstJ9z4c8dEov4r9W9nersEGoB6e/EqE0y3Mshg6aOFrqKu+eGUaLMJDqJ7TF+witdravGpw==
+"@univerjs/preset-sheets-note@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-note/-/preset-sheets-note-0.20.1.tgz#115697f983351abacd882c0ef7372e456b24ee37"
+  integrity sha512-tmM2J5MN1fdr8nIxY0VWBfJ32osfUxMhTVJCtrs2OdwJhUsecK0Ne2tVZPNhjPbTscO3IXCRAZvTsfBDUQqmuw==
   dependencies:
-    "@univerjs/sheets-note" "0.10.14"
-    "@univerjs/sheets-note-ui" "0.10.14"
+    "@univerjs/sheets-note" "0.20.1"
+    "@univerjs/sheets-note-ui" "0.20.1"
 
-"@univerjs/preset-sheets-sort@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-sort/-/preset-sheets-sort-0.10.14.tgz#f77d855e6e94a80ba2c000c8333cc2fb9685b38f"
-  integrity sha512-N0kjCtv1bkXTdnPF+kqdUTv+Gj+ZgcrP919HnQAcdqZoC8PhOcE0IWTZeTB/NdZsqUF5Cd5A4wHUSRLDOWFQug==
+"@univerjs/preset-sheets-sort@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-sort/-/preset-sheets-sort-0.20.1.tgz#de4aeabd9d803b666844e1897a51556141c3ae4a"
+  integrity sha512-TpPaI64fQyN6a2XQk1Ytgfi6N2Y1hy0H4KYfmdcUTjhfqWwCsu1f+TGvbxCIOaxfkHRKKvWAlQ/sX0+UMGZihg==
   dependencies:
-    "@univerjs/sheets-sort" "0.10.14"
-    "@univerjs/sheets-sort-ui" "0.10.14"
+    "@univerjs/sheets-sort" "0.20.1"
+    "@univerjs/sheets-sort-ui" "0.20.1"
 
-"@univerjs/preset-sheets-table@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-table/-/preset-sheets-table-0.10.14.tgz#cd9f5383abeb41cf9f7756058548425ea625a056"
-  integrity sha512-lr1p27oLRU5YF+r1shAboNBKFYVe2utQhvA97wrFjD31UcV0Qv8xzL2N6VXzA5aLTLw175YuhGGXX8yxb2kbCA==
+"@univerjs/preset-sheets-table@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-table/-/preset-sheets-table-0.20.1.tgz#17446fa6aa81f3487e30373a15dbf165070af78c"
+  integrity sha512-uvgHLQpvl5n3jhe1jlS8L+ml0RSqBS6Le0V5heFnibxV3s0RL8M+NpeogXtGZAcR1s78RLxwvhL59FVnW45eHA==
   dependencies:
-    "@univerjs/sheets-table" "0.10.14"
-    "@univerjs/sheets-table-ui" "0.10.14"
+    "@univerjs/sheets-table" "0.20.1"
+    "@univerjs/sheets-table-ui" "0.20.1"
 
-"@univerjs/preset-sheets-thread-comment@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-thread-comment/-/preset-sheets-thread-comment-0.10.14.tgz#780c23f933e3f9577fa110835e4b7e04bad6ee98"
-  integrity sha512-q3fBX24pz7waUvEoaJoC3d7mSSSxHLQC5FTz8tp4hL5yM4nGBXL80k5McpjoW/bbvJ3YDLu9WjhlMkxOQfuS7w==
+"@univerjs/preset-sheets-thread-comment@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/preset-sheets-thread-comment/-/preset-sheets-thread-comment-0.20.1.tgz#3a473cf2b1d7bf32975f3fdb153a8510edf2c8b1"
+  integrity sha512-FXOm89Lx9nYi8ntFUONy1UysDzcfBMth+wGT5iHrQrF8wIMHMAxRuM5fm3Wi6EbaYb4IZZ7g7iyP8+M4f0reTw==
   dependencies:
-    "@univerjs/sheets-thread-comment" "0.10.14"
-    "@univerjs/sheets-thread-comment-ui" "0.10.14"
-    "@univerjs/thread-comment" "0.10.14"
-    "@univerjs/thread-comment-ui" "0.10.14"
+    "@univerjs/sheets-thread-comment" "0.20.1"
+    "@univerjs/sheets-thread-comment-ui" "0.20.1"
+    "@univerjs/thread-comment" "0.20.1"
+    "@univerjs/thread-comment-ui" "0.20.1"
 
-"@univerjs/presets@^0.10.6":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/presets/-/presets-0.10.14.tgz#679a99f020d92dbaea8e536d833d9e8ad12479e7"
-  integrity sha512-IOKvdoOPZkCMeuu62s6CWAU1aIE97cdLGRIC0dRDnoCdStvJ7IAFCMU4AiORtqFy3U0NmS/QbkQvsLIODtELuw==
+"@univerjs/presets@^0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/presets/-/presets-0.20.1.tgz#f9d68e7f5f06397a6477679aad137283a1dd01b6"
+  integrity sha512-t9nsFZxzjr/aQT/7RGPum0SRvI8D8647tL55+Is7D1D9H2J2A0syUt5W55tBZpodl8S3bCMwIGHCR+JYpckqNQ==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/preset-docs-advanced" "0.10.14"
-    "@univerjs/preset-docs-collaboration" "0.10.14"
-    "@univerjs/preset-docs-core" "0.10.14"
-    "@univerjs/preset-docs-drawing" "0.10.14"
-    "@univerjs/preset-docs-hyper-link" "0.10.14"
-    "@univerjs/preset-docs-node-core" "0.10.14"
-    "@univerjs/preset-docs-thread-comment" "0.10.14"
-    "@univerjs/preset-sheets-advanced" "0.10.14"
-    "@univerjs/preset-sheets-collaboration" "0.10.14"
-    "@univerjs/preset-sheets-conditional-formatting" "0.10.14"
-    "@univerjs/preset-sheets-core" "0.10.14"
-    "@univerjs/preset-sheets-data-validation" "0.10.14"
-    "@univerjs/preset-sheets-drawing" "0.10.14"
-    "@univerjs/preset-sheets-filter" "0.10.14"
-    "@univerjs/preset-sheets-find-replace" "0.10.14"
-    "@univerjs/preset-sheets-hyper-link" "0.10.14"
-    "@univerjs/preset-sheets-node-core" "0.10.14"
-    "@univerjs/preset-sheets-note" "0.10.14"
-    "@univerjs/preset-sheets-sort" "0.10.14"
-    "@univerjs/preset-sheets-table" "0.10.14"
-    "@univerjs/preset-sheets-thread-comment" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/preset-docs-advanced" "0.20.1"
+    "@univerjs/preset-docs-collaboration" "0.20.1"
+    "@univerjs/preset-docs-core" "0.20.1"
+    "@univerjs/preset-docs-drawing" "0.20.1"
+    "@univerjs/preset-docs-hyper-link" "0.20.1"
+    "@univerjs/preset-docs-node-core" "0.20.1"
+    "@univerjs/preset-docs-thread-comment" "0.20.1"
+    "@univerjs/preset-sheets-advanced" "0.20.1"
+    "@univerjs/preset-sheets-collaboration" "0.20.1"
+    "@univerjs/preset-sheets-conditional-formatting" "0.20.1"
+    "@univerjs/preset-sheets-core" "0.20.1"
+    "@univerjs/preset-sheets-data-validation" "0.20.1"
+    "@univerjs/preset-sheets-drawing" "0.20.1"
+    "@univerjs/preset-sheets-filter" "0.20.1"
+    "@univerjs/preset-sheets-find-replace" "0.20.1"
+    "@univerjs/preset-sheets-hyper-link" "0.20.1"
+    "@univerjs/preset-sheets-node-core" "0.20.1"
+    "@univerjs/preset-sheets-note" "0.20.1"
+    "@univerjs/preset-sheets-sort" "0.20.1"
+    "@univerjs/preset-sheets-table" "0.20.1"
+    "@univerjs/preset-sheets-thread-comment" "0.20.1"
 
-"@univerjs/protocol@0.1.47":
-  version "0.1.47"
-  resolved "https://registry.yarnpkg.com/@univerjs/protocol/-/protocol-0.1.47.tgz#1ecc8e61beefefcf1ed2fd0de2fde524a791bf26"
-  integrity sha512-EkBSaBe51nGPcG1j58JRjE0yBe8ulomJMLKJbKikkkfhgAlt+f8i5inHFESfsfpG2Ui9FOueo2K0exYDpf6iaw==
+"@univerjs/protocol@0.1.48":
+  version "0.1.48"
+  resolved "https://registry.yarnpkg.com/@univerjs/protocol/-/protocol-0.1.48.tgz#c68e443da0d8e125a5c723defb4fe2911e48cecf"
+  integrity sha512-nFHNtGAWOV0u1+IqoznH9K7hV/M9OZ61Vqwy8JMWKlgLLsx12m3vJqodkrVlLkI2YU5WuwjaUT1+J8/nM+kcUg==
 
-"@univerjs/rpc-node@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/rpc-node/-/rpc-node-0.10.14.tgz#ef46bfddacce14b0d7f56ed6e26829f582ebd644"
-  integrity sha512-GmcrP3TYVZJPuok0nu/d6q9qF+kqQRtS/cVEz5Vwz/yYa1T3mA7QoqgDaU7Aflab0zUCoYNgr5r6w0uN7rWzSg==
+"@univerjs/protocol@0.1.49":
+  version "0.1.49"
+  resolved "https://registry.yarnpkg.com/@univerjs/protocol/-/protocol-0.1.49.tgz#b00900d88a5904a3b63759471c2009364e7968ce"
+  integrity sha512-xVKSmSCQTElzozs8+zCWDdx3OJU7u/s/O25r7h9r9/Xot5tr0yTOwdjeEpjwjUCn1L1e67iBPKLkqegq9h4U/Q==
+
+"@univerjs/rpc-node@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/rpc-node/-/rpc-node-0.20.1.tgz#4036f709821ee9be619cdc418907869f561da1a2"
+  integrity sha512-kR7IDVmeNHw7fk4IHTnXaeSUQJNEKzJ8HeyZu5xv1AcKmq85eCU+AA3ZgF9BPGMhnat9FBTqRfHg61GSTvHKwg==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/rpc" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/rpc" "0.20.1"
 
-"@univerjs/rpc@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/rpc/-/rpc-0.10.14.tgz#49e5f2db3024958dfe8f91a6844ca68479a682dc"
-  integrity sha512-zYUEjMwHC/ruL54IXs06aGwBZAaui2OHcNOgMeV+m8wQaNuuVnHb7PzB+rRi/9sEIbt8m/375JpYUXANMfINVA==
+"@univerjs/rpc@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/rpc/-/rpc-0.20.1.tgz#288e7bb7242266c38861138d75643db9647c12f5"
+  integrity sha512-4l0uyHWKD0dDl1YT+7YaBUxV9DdKRBO+WSpKtPxW2dLIuBgEwN0JAbqnVC7DpXUalrzWtqMUba7MM5p3Z347rw==
   dependencies:
-    "@univerjs/core" "0.10.14"
+    "@univerjs/core" "0.20.1"
 
-"@univerjs/sheets-conditional-formatting-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-conditional-formatting-ui/-/sheets-conditional-formatting-ui-0.10.14.tgz#370bec86f71eb7033cbacdc645428266a9a43d2e"
-  integrity sha512-Zu++UvfK9BxThmCufzEEBi8LeDxRn0O4tOMt/x2Cp1cv2jLXNMpjahBZv0t5bOmphpZXMHHakKa1EgbUr/ZYCg==
+"@univerjs/sheets-conditional-formatting-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-conditional-formatting-ui/-/sheets-conditional-formatting-ui-0.20.1.tgz#bf5a315f6d2cc60c1c9b23086cc66ee15d1bb5f8"
+  integrity sha512-K6Z9e143hjBb0UD2s0v6xnvxYN6mUjt0secNWHbYQDvsPUBISkv+E/wKb5EkwxgFtwTmufzWnMu+CtQhe2On1w==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-conditional-formatting" "0.10.14"
-    "@univerjs/sheets-formula-ui" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-conditional-formatting" "0.20.1"
+    "@univerjs/sheets-formula" "0.20.1"
+    "@univerjs/sheets-formula-ui" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/sheets-conditional-formatting@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-conditional-formatting/-/sheets-conditional-formatting-0.10.14.tgz#71d9dd63eef9b6510157ded0d3ae7e2a4280f059"
-  integrity sha512-uxmwC+jHni3jGKWzzs3bY3b7t/5cyqEPVNb42vE86vnmc1RPLkDerhXfUAWYZdLf5efQN61PCoDVHcyTSr5Adw==
+"@univerjs/sheets-conditional-formatting@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-conditional-formatting/-/sheets-conditional-formatting-0.20.1.tgz#c22642786b13e0b559092d6955bbfe5cc4b8db57"
+  integrity sha512-Ifo0NqVV8R5uQva7ribBIHzGl8ZPzgHKG1ujHy97+u7tGVX8PgOAi//hGkgbzRyjId2Yyeweb+OZc2FRJML/2Q==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
 
-"@univerjs/sheets-data-validation-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-data-validation-ui/-/sheets-data-validation-ui-0.10.14.tgz#4709c38231760235ff39c0a3b3b645c321b2781c"
-  integrity sha512-IAbExT4zWsHg0+thsc8zoZhgGnAoBGjJGlwuCkLa+DD3cc/PaLwtu9Cj8Q7ZeacF9110R5WNRmw5UHHqSYhWgA==
+"@univerjs/sheets-data-validation-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-data-validation-ui/-/sheets-data-validation-ui-0.20.1.tgz#9c4721260298b010eebcb09751612c24f56f8731"
+  integrity sha512-vvLQ3e/5LjIo9LK9nil0xVHR4yAZcurq4UtUrfk01QumxVcdX2NDiYGidMVSYYotUOn56iWnUtV6oALWeIXSOA==
   dependencies:
-    "@flatten-js/interval-tree" "^1.1.3"
-    "@univerjs/core" "0.10.14"
-    "@univerjs/data-validation" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-data-validation" "0.10.14"
-    "@univerjs/sheets-formula-ui" "0.10.14"
-    "@univerjs/sheets-numfmt" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/data-validation" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-data-validation" "0.20.1"
+    "@univerjs/sheets-formula-ui" "0.20.1"
+    "@univerjs/sheets-numfmt" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/sheets-data-validation@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-data-validation/-/sheets-data-validation-0.10.14.tgz#16c08fbc177b3c80e6275ddd2c2b3ea3f8dd985d"
-  integrity sha512-rSxoPuId8TEoTShz4Ky86sB1Z+PGmWsomMaS9iKoglX7anm5VkKW9Y7+XRfM5HGILcLTGJe8upBci2dsy00k1Q==
+"@univerjs/sheets-data-validation@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-data-validation/-/sheets-data-validation-0.20.1.tgz#80851f922b2cbc66507ff924611438d7b51dfc47"
+  integrity sha512-uryXRc755GB+dIMPA3erBuzH8ZFgLn6hcUjmUJVd/5qJf+Gz7PBbsgq19xqZizuLWAgLnValemtx5+oo9VUszg==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/data-validation" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/protocol" "0.1.47"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-formula" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/data-validation" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/protocol" "0.1.48"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-formula" "0.20.1"
 
-"@univerjs/sheets-drawing-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-drawing-ui/-/sheets-drawing-ui-0.10.14.tgz#42c829acf4bef1a433ed02b28c04588f3932b1d7"
-  integrity sha512-wkZ714PeDvaHtxpWseq0sHVYPPukvfdC/ruPkt6xXcy5Bmz+CYvsB51BZXmo6YAYEUzWITmqinuJ8bs3zVQwTA==
+"@univerjs/sheets-drawing-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-drawing-ui/-/sheets-drawing-ui-0.20.1.tgz#d2a75f19481fc59991c76e0997813ea0dd39eb9b"
+  integrity sha512-dq/1c0kgiK2n5FVYXm1YeWaxgqIZTi+HWANR2KPnWcBq5NkEPk4lqnPjEHllXjJJVzLm2TCH4FapOWk/vT9jTQ==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/docs-drawing" "0.10.14"
-    "@univerjs/docs-ui" "0.10.14"
-    "@univerjs/drawing" "0.10.14"
-    "@univerjs/drawing-ui" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-drawing" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/docs-drawing" "0.20.1"
+    "@univerjs/docs-ui" "0.20.1"
+    "@univerjs/drawing" "0.20.1"
+    "@univerjs/drawing-ui" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-drawing" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/sheets-drawing@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-drawing/-/sheets-drawing-0.10.14.tgz#729162d56b35c097e069ed50ef39f4b644fe06d6"
-  integrity sha512-r87YE2m7DKCf+wGeSeZFjmn/69nFPxJKXLwlWc4OxdZq2X5LKrCxkgVeRIXWWCO0BDoPB3G20WKmb5wl9j5dfw==
+"@univerjs/sheets-drawing@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-drawing/-/sheets-drawing-0.20.1.tgz#f642f37aa44c787254ab2c6e8890944eb7680657"
+  integrity sha512-wHV28DPmkDy5r3uRVk+5I0pNciaeUwHQ0OOfHtRRHVZNCyEe1DRMd0UWIbW74dwNOz5Y5v542nSYTGmbBk12tg==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/drawing" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/drawing" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
 
-"@univerjs/sheets-filter-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-filter-ui/-/sheets-filter-ui-0.10.14.tgz#02f8183b314448f10456f82c759ecb1ce2b41b51"
-  integrity sha512-iContQVy57Kah3TW1pwQ1AlmSTnZG2lMU9NA4+Wy2DxZC7g/XNZYUfOwKnbwiQTrMvszZIKxF9E7XU8oEU+SHA==
+"@univerjs/sheets-filter-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-filter-ui/-/sheets-filter-ui-0.20.1.tgz#b2fbbaf6621f4c17d8d1388ac7dc2189fb2dca74"
+  integrity sha512-7dnrH363+Wjk6YHl7GLiQuPTJZsXtKSYGT8FGnrA0TUmgr787rtsSlzGNLEWlkHut+Xw7+0/mT8hdDpkIbSE7g==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/rpc" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-filter" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/rpc" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-filter" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/sheets-filter@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-filter/-/sheets-filter-0.10.14.tgz#c461cceb6cd1ca2beaa9b2b2a9fe0ba828912df0"
-  integrity sha512-uAZTNzjHFedRzaTdpBf35hZGyQBrbN2ii5ZNYulZ9+boc9muRg/NbhdfHkrBzOC+vWBoq2uk0vQQLjZU3tKm2g==
+"@univerjs/sheets-filter@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-filter/-/sheets-filter-0.20.1.tgz#15bda48d49f0a1f72d4457a265230388632f6399"
+  integrity sha512-RqSt1TJLYUZTSka6/ypdY/lDVNsrh7fmSNaM1GGR+98D7WSkY3nzeEVcKVovU4Errrr2FmWQADlZj8wKM0ok+w==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/rpc" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/rpc" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
 
-"@univerjs/sheets-find-replace@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-find-replace/-/sheets-find-replace-0.10.14.tgz#5dddaa235e568e4be38405366c64619b96289a99"
-  integrity sha512-AfKhB8/l3Um5iQeWWlkJ531Ln5wJKsZUKxZodIaNBluObds76TtqrFp75kviZsKCZnpIKqnhqYBXSVIowo/tRA==
+"@univerjs/sheets-find-replace@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-find-replace/-/sheets-find-replace-0.20.1.tgz#e562d96649c5a43a3e5601891730755ac990aafc"
+  integrity sha512-w0r4JRDr9yXUa6OOm8+CceRNfvOAttPoFCR05FxkkDRwcqrPK3azGZbS4F/Q0LXv7A4E8tFg8OPHtSnHBTpwtA==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/find-replace" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/find-replace" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
 
-"@univerjs/sheets-formula-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-formula-ui/-/sheets-formula-ui-0.10.14.tgz#2df0406ec00d7762efeea86b9306e44fcc94ff7f"
-  integrity sha512-2eEbLfNqhxaefJCS+Gx7h0pZMxh4uqmVlVxLY83vhPfbtDA7yWkHtGK/J4902Fz6nMI+CpSya2V5wFkYRJjIFA==
+"@univerjs/sheets-formula-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-formula-ui/-/sheets-formula-ui-0.20.1.tgz#31f8f6091563bc4b3d249e956f34f8d6a6dd2dce"
+  integrity sha512-VhSthFtDXhK/B7cqpu2hxUkAc927U4GOY/vPJQlZoEDq4xM4yq0U719BEr7xI+FKfgYLA1j4USwX2Z2OffO75g==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/docs-ui" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-formula" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/docs-ui" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-formula" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/sheets-formula@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-formula/-/sheets-formula-0.10.14.tgz#9ddcef4a53f9ba2aa969a03384f3b80b82355ffb"
-  integrity sha512-mC5r1pU2OZyXSdGfcirggzUzMnH5m+LNtUemOSUAhREoysK2mZQagsFupk/utleCGeR9ktb8EaaaTvykNUDTaA==
+"@univerjs/sheets-formula@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-formula/-/sheets-formula-0.20.1.tgz#60880a60bafc4911a6802b22953616bc7398f38a"
+  integrity sha512-AESehaGW0PFaS5x8maEc0WzjmIcM0ZGvO4UPw6841ROSf7yVHpVSxgAfiLrO59yyYc6fQ1P9rF95mrkqpl23yg==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/rpc" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/rpc" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
 
-"@univerjs/sheets-graphics@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-graphics/-/sheets-graphics-0.10.14.tgz#2c3fbc674e38ecde0ea8268e8bc86a2129d4c83d"
-  integrity sha512-ZbHK3wXz23rJ14LzWyvChgSOPDH4dnkUkzj7UQc/gqhAz6r+Zc0lOZ+IzFRhzzrz/pTAM2cw+chh75x2/OatXA==
+"@univerjs/sheets-graphics@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-graphics/-/sheets-graphics-0.20.1.tgz#4a48736c85296b47047fc70f34f1bd0b2894bf5a"
+  integrity sha512-lOkOddCcIddxlc18wjoJQfEVr8IrqMXcZe0jdOM2BIenfa2jo0JzbEGlIBmEHE6yB6YGlE178BqlA+MNKKoRZQ==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
 
-"@univerjs/sheets-hyper-link-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-hyper-link-ui/-/sheets-hyper-link-ui-0.10.14.tgz#5170dc943b227f7d36b229b9e257ec047b9b45ce"
-  integrity sha512-Qbz4YJnTU57vtyDiaMZ9GbNpXFsnmlEhnX3bbiYOVogUIqxRePGj7bGnu2v1fuc/Njk2tl+t/0BUnLOSH3/EeQ==
+"@univerjs/sheets-hyper-link-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-hyper-link-ui/-/sheets-hyper-link-ui-0.20.1.tgz#eaea9a346771e2dc20551d730656001e2d19053c"
+  integrity sha512-1fJxbBhi/E8krAAtdNaE2C+wgVjy4iQNkGHdXxc0UIBw278V32sQ1b9Zp1ezZ8osz3hVNrkvXz0TPBJM8moqVA==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/docs-ui" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-data-validation" "0.10.14"
-    "@univerjs/sheets-formula-ui" "0.10.14"
-    "@univerjs/sheets-hyper-link" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/docs-ui" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-data-validation" "0.20.1"
+    "@univerjs/sheets-formula-ui" "0.20.1"
+    "@univerjs/sheets-hyper-link" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/sheets-hyper-link@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-hyper-link/-/sheets-hyper-link-0.10.14.tgz#c762788bd4e60e76df4d44260764e5f9e0ec9127"
-  integrity sha512-DoZjdxfsMZ/SFUrsJ5JuFv+e/5Ei6w6RgY22cfDjGfAXeLMoh+qBmVTMBoAFYEHJrKJ9CdnyCB0sz/RF7wufRg==
+"@univerjs/sheets-hyper-link@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-hyper-link/-/sheets-hyper-link-0.20.1.tgz#ba47e621997c84a7f833d3be43aced4c11d4331f"
+  integrity sha512-qlDaU6ggk1rWkxl+LKHNQnqtMHXpFetoT2xvzgLveCSja6wWDP8HEHWoujtd19S2P3ia4NJutJ+r3QEZZtU4DQ==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
 
-"@univerjs/sheets-note-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-note-ui/-/sheets-note-ui-0.10.14.tgz#6593f094b0d00de26385f5ebbf9d559b3559866b"
-  integrity sha512-2Pvy4PX6JOjx+sjgULqoI5j/szW+xEl4xpMT4p7Ma+x1WjpPpS7IsgE7A8qmVjRfjvrGgm7savbOeSvwrTWJsQ==
+"@univerjs/sheets-note-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-note-ui/-/sheets-note-ui-0.20.1.tgz#a47aaa0f92f5b0884cb8f6bf7273db6413da3174"
+  integrity sha512-znI7bZ39M7F2oWHOeLKhbf+u3MIOVLUP/MsADH+EllVbVAx4nas+S9RJJogD9LWaTvetcs+jd101iFZBgFPVFQ==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-note" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
-    rxjs "^7.8.2"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-note" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/sheets-note@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-note/-/sheets-note-0.10.14.tgz#74b33cca33210e3451015cec7903846b01626da3"
-  integrity sha512-EJU7AI4ojj1NipxEkK92OZ3NYbH2Hf4DF8lMtGrX/Er9Jgg3DPsyoSWtJ49FF7TOESP47F/s/Gi50lDW0n/j9Q==
+"@univerjs/sheets-note@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-note/-/sheets-note-0.20.1.tgz#67d0cfadfc97ea148d1482b4950282f4c37f7009"
+  integrity sha512-kPUnkcWlqVthz/2r8A+avEd3XersGZ8GVXgzj+eYr8iPoJXoZBJVABD4iezAOHgt3aM/q8uwWWU86CnoaqaLcw==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
 
-"@univerjs/sheets-numfmt-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-numfmt-ui/-/sheets-numfmt-ui-0.10.14.tgz#b44d4c3adae9ae1b504d7b8e35c07ffa8541641a"
-  integrity sha512-bhOUj5c9dtkx4fV7FMrn8Ua+71Qhq4nJ63hbkLOE23j2QZoTe2GL/zUHpf7v2kTVyoVwtiAEP9VYs7vpXiL8kA==
+"@univerjs/sheets-numfmt-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-numfmt-ui/-/sheets-numfmt-ui-0.20.1.tgz#3ee7a324aa46574b9f099627103ab47131cb61d4"
+  integrity sha512-VnCMPVI8qgG/sMCMmayG4e7MCf8+v0O5W05U8tuxP1kdJxuBc+RLgllRNLHJ6Ca+Rxm0ONSi6Dqd7A3otxeIFA==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-numfmt" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-numfmt" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/sheets-numfmt@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-numfmt/-/sheets-numfmt-0.10.14.tgz#1566e2f49294f77e050f93bd6badeabab059eec1"
-  integrity sha512-VrJxFo1gfPTXYxllLuc6OCgRkrKi6TykJT4ZLjAW+jsYqL27+E2+2VSWzTaHj/iWkavkOkdv2pwgB8ND0+yp+g==
+"@univerjs/sheets-numfmt@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-numfmt/-/sheets-numfmt-0.20.1.tgz#2c7bd58c221099019f6883504e60876420f2a0a1"
+  integrity sha512-cugnl9dHrrOhTg0EeKIubQ1wBkbN4qYu5pqM2C1F0/KmyZgnHj10coGxMc6nwvoTrFJxbU+BugR60xA2dDIkoQ==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
 
-"@univerjs/sheets-sort-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-sort-ui/-/sheets-sort-ui-0.10.14.tgz#8cc825bbc359aec1f6b976103ec2cf545ad8fe5f"
-  integrity sha512-ankRo7MTDHiE7VZSkRlDm8+/JYfbRSSYtAghLAzTRxBpUV/usyjYKpeAy8Gq5kPblZjYtDaisJOes34XnCthuw==
+"@univerjs/sheets-sort-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-sort-ui/-/sheets-sort-ui-0.20.1.tgz#d38b90f7983b6ba202057c4461ff5f7a40445d77"
+  integrity sha512-wFPP8gHqbDgtjnCwybr4QMWD3xhkxdgtJq0lCY3IXzrSLutGEoiUyNWIdEFUKx9C9uV39Md3q+MxV13mqewA9g==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-sort" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-sort" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/sheets-sort@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-sort/-/sheets-sort-0.10.14.tgz#d5781b9dd4a30746db7848edeedf958777104232"
-  integrity sha512-1WOJKufWOxRlsjLpe26OCzMc3XQdd2AWqZ3ytWbMNSuhfOUItSenVRR0fXYijrR1i1NwElr3PCLDVCPmruXhHg==
+"@univerjs/sheets-sort@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-sort/-/sheets-sort-0.20.1.tgz#30906a79e8035bfaa867a72489abef16680f90c8"
+  integrity sha512-+hqCd9GOcZTSpVpPm+gsVOpE0grV49hgg16mtnlr24Gf1dFcReWEZSVYGtIY2Ha8dfsDfoR8oiiYU0c2LEyQjQ==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
 
-"@univerjs/sheets-table-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-table-ui/-/sheets-table-ui-0.10.14.tgz#dbd9d92ffe1b3245248dd49af57b3a61c1b8f7a0"
-  integrity sha512-jaoJkYwMhUINUgFwyxqhj2mmuM8xvKPkxrkffMMQTJxfw3hWn/INkoGB4w+s58ZxKo/zXKbXsSJTnOYP0VbBJg==
+"@univerjs/sheets-table-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-table-ui/-/sheets-table-ui-0.20.1.tgz#7ca5986dccd21ca180ff90458dfe2b16d66b7a8b"
+  integrity sha512-JcWxA40Q/Fg1YAnMCdc3W9WaIdHu2FElTZ61m6W4EFzrgzefIpOstlqoPdyGg3+76eqyTnxcY5BFYFYeZwxeUA==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-formula-ui" "0.10.14"
-    "@univerjs/sheets-sort" "0.10.14"
-    "@univerjs/sheets-table" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-formula-ui" "0.20.1"
+    "@univerjs/sheets-sort" "0.20.1"
+    "@univerjs/sheets-table" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/sheets-table@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-table/-/sheets-table-0.10.14.tgz#229e7a8d70e530dfdd6db9cb5730f5420695767e"
-  integrity sha512-Hjmn3zII0dyn/a7EXrF8V/q8v+/wkFjiTRKKkT7T56FxR+OlV+qUXz3D7YTgHUnNYRk77hGkpwTNxI2TsPoo3Q==
+"@univerjs/sheets-table@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-table/-/sheets-table-0.20.1.tgz#b6c05dcb1ea619b93121d42a47bfafc98c178002"
+  integrity sha512-pC61Dn6ZChYvC3VNo6TLJ/GmuCtfJ8P/PbWkbygI7KlqxiNmMaGGq7auBTAPbUeDswV7mimeh4/0c1llQntaog==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
 
-"@univerjs/sheets-thread-comment-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-thread-comment-ui/-/sheets-thread-comment-ui-0.10.14.tgz#f8b1782f1ed6305d9ddd4f1d5ac8fe68357ed811"
-  integrity sha512-F2yGDgLqJgZicokbE7cLPsLgf+lQRTQ0yd9hy48COHw9gL59ttsZhGwhqBqzOaBZrvqoGkJXuQKiAM6sMIOCuA==
+"@univerjs/sheets-thread-comment-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-thread-comment-ui/-/sheets-thread-comment-ui-0.20.1.tgz#5d4879a61d022cd4cee54ccf5788eb6a4a80412b"
+  integrity sha512-x+7+LJAftvwbokFdofGU3UwIsMZE+W3koDhthe+tr9MXC23HLOe18nN2XpJtihlxCAOfqUMYvCUziG+Mr4u7Cw==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/sheets-thread-comment" "0.10.14"
-    "@univerjs/sheets-ui" "0.10.14"
-    "@univerjs/thread-comment" "0.10.14"
-    "@univerjs/thread-comment-ui" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/sheets-thread-comment" "0.20.1"
+    "@univerjs/sheets-ui" "0.20.1"
+    "@univerjs/thread-comment" "0.20.1"
+    "@univerjs/thread-comment-ui" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/sheets-thread-comment@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-thread-comment/-/sheets-thread-comment-0.10.14.tgz#5ef160031cb073d69dfdb3bec72cd077b7e74045"
-  integrity sha512-z1fPSIJptlHLcLEa1ECoWa0dwJymhAqZgJD5/ypcyv/bQ0oxU1ErXCrL8OmnVYgWkDJdld75qfRhdEstQnEzZA==
+"@univerjs/sheets-thread-comment@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-thread-comment/-/sheets-thread-comment-0.20.1.tgz#40e2f9213192d927d2e4ba10bb8a97e746a69f5e"
+  integrity sha512-o24gis9YKsGyX3XkuJ6lZAaH35m3Yti3egMAaXB5FxwrP+G0Y7M14GYEKXvWSCrj0DuDGt/fKfQxAAOh2B4hMg==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/thread-comment" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/thread-comment" "0.20.1"
 
-"@univerjs/sheets-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets-ui/-/sheets-ui-0.10.14.tgz#806810ca5238777c29cca53803d992b06dbe7134"
-  integrity sha512-LCE3CzhaaFifwmMw0myQ/4od0lB5HCRqL809Mpq1NBv00qqvFg7TQdWRWBI4pABs1AxCy8YxFYbLtmti9Ry2YA==
+"@univerjs/sheets-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets-ui/-/sheets-ui-0.20.1.tgz#7a1bbeb99a8609bebb0991114a0ce583d94c1bc3"
+  integrity sha512-jZlmCVpPJoXL1v6z0MsGDT0XWgKgcEZvifFr0UaYJsFoTMzu1LkqZw5YCudrQKY+lURprLzkI2lT1T0npSXwkg==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/docs" "0.10.14"
-    "@univerjs/docs-ui" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/protocol" "0.1.47"
-    "@univerjs/sheets" "0.10.14"
-    "@univerjs/telemetry" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/docs" "0.20.1"
+    "@univerjs/docs-ui" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/protocol" "0.1.48"
+    "@univerjs/sheets" "0.20.1"
+    "@univerjs/telemetry" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/sheets@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/sheets/-/sheets-0.10.14.tgz#ae92bf6f88b202bf430110aab45ac86bdc8c656d"
-  integrity sha512-VDmjYfO6EB8aQsIkeIHkHiXcCyh5oz9Yt7AgZBs2N/aB56JLmAS52AjM5BN+LcrDFjQCKfd3FRPOkBdwVf3E8A==
+"@univerjs/sheets@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/sheets/-/sheets-0.20.1.tgz#48e55cd3de09b3d7b60a87a2f03f357d8d9b22e9"
+  integrity sha512-wxEXUJ0hJkkIifzbyxNBUgHiY07v71EIb501ltcnT8d2JUoP6JiS9tLyOvHsLK6OvvBKXNvohN0WbIUHLlXiFg==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/engine-formula" "0.10.14"
-    "@univerjs/protocol" "0.1.47"
-    "@univerjs/rpc" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/engine-formula" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/protocol" "0.1.48"
+    "@univerjs/rpc" "0.20.1"
 
-"@univerjs/telemetry@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/telemetry/-/telemetry-0.10.14.tgz#f4b233aaed5c09596abafafbb49e9a9c8cd11f5e"
-  integrity sha512-U8ocw00ylwBlmMjv47zyehV715jZhkE+F4677kzGQu2wzl/G/Pd+nwWmceg1KK9KqU2FgYZJMq4Ro4OvB1jmvA==
+"@univerjs/telemetry@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/telemetry/-/telemetry-0.20.1.tgz#08b5b864c3aaac50d77b9026e1699f8dfc6440b7"
+  integrity sha512-84BYQ80jiKU2sYEdfNMXk+3lANTWjGu4nDYNMeilTOlHLjpL925BnAxM0owAnql7jgzohRG62d6gtfukH/Qp/w==
   dependencies:
-    "@univerjs/core" "0.10.14"
+    "@univerjs/core" "0.20.1"
 
-"@univerjs/themes@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/themes/-/themes-0.10.14.tgz#b2acab62e23a70334132823b4db74213881176d7"
-  integrity sha512-ng1NIXVxXwIGyq124Tn5syMgiZqXUQkrUVoZ1T1DXjPvgYyzc9Ia55qaBUiDb+ozUYiyA2xfxwqsFC+RwoO25w==
+"@univerjs/themes@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/themes/-/themes-0.20.1.tgz#a9de27f65720d548de72f59cb49d1e2ea0ead3e4"
+  integrity sha512-/CK4jt59WeY+WkpXJxY9eVknGM/yFZOgMvprRyEAS0Vp+VYfV5w9dqLm/Z8zZBdWtgToteU8XfBQNNKYuaefpQ==
 
-"@univerjs/thread-comment-ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/thread-comment-ui/-/thread-comment-ui-0.10.14.tgz#1e2b7d2297f1fe8da3dccc1a46117adcb8dcd9c5"
-  integrity sha512-WSW2R5DT7Svg8VCSgvWmsHdpTfD98atYta7uYlOscyh2T05SODhbedDz3/WQFKRGMOi7FcEWWEFvPBivEcrnkA==
+"@univerjs/thread-comment-ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/thread-comment-ui/-/thread-comment-ui-0.20.1.tgz#21a5a23a290c9169c54fcedb0fec83f8bf248c9f"
+  integrity sha512-Ci8IUblnBRPYzFvngTIpn7sXyeu+tTgoZDp9t+v3UwZTVf+RO0hq63cTKGc1jfLOC9C+3icQGoaEPfgRYw3cuQ==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/docs-ui" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@univerjs/thread-comment" "0.10.14"
-    "@univerjs/ui" "0.10.14"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/docs-ui" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@univerjs/thread-comment" "0.20.1"
+    "@univerjs/ui" "0.20.1"
 
-"@univerjs/thread-comment@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/thread-comment/-/thread-comment-0.10.14.tgz#48171adb2cd8389f5adc8ca82ae3d895f68886ee"
-  integrity sha512-ffjv9zwDQlgMP1YZn3DLPqRmAvYL2WjhUgBoFnmvMpTvW1Qcojz6E/aJJvXxNZ8vboBC/46eqM4KvxrQCINJ/g==
+"@univerjs/thread-comment@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/thread-comment/-/thread-comment-0.20.1.tgz#05eccfbaa8a84f4b015d464a82229ecad199722a"
+  integrity sha512-jiDS+pQ5d1312tz2AO2ry0bLd0qkjjAaqjsSH9a87H4vSYwAVgbrK19m4UrTadYouL6LspxqwylXa7xsf9YXNg==
   dependencies:
-    "@univerjs/core" "0.10.14"
+    "@univerjs/core" "0.20.1"
 
-"@univerjs/ui@0.10.14":
-  version "0.10.14"
-  resolved "https://registry.yarnpkg.com/@univerjs/ui/-/ui-0.10.14.tgz#82d9dfd50a6c92fb92af5eff1c19b89afed23416"
-  integrity sha512-+a0UhTDfzy6SSrowaY1wIHZztHFWhO+dpyeb+gFIsj1Fy8agiiDSsN1Au3Nn9DsZzKDHS4HOcjCQGyrmOXRz4w==
+"@univerjs/ui@0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@univerjs/ui/-/ui-0.20.1.tgz#50aab850a2443d8e061bdb0b97ac82f1483ea951"
+  integrity sha512-EsDteeB9G4URTVRt3u5rSC8M5xEnOllHDEq77LCqLY34fZxQX5qpnb3z8IjcRCnQWBFM+aFfzMwqmQ1Y2cqZ0w==
   dependencies:
-    "@univerjs/core" "0.10.14"
-    "@univerjs/design" "0.10.14"
-    "@univerjs/engine-render" "0.10.14"
-    "@univerjs/icons" "^1.0.2"
-    "@wendellhu/redi" "1.0.1"
+    "@univerjs/core" "0.20.1"
+    "@univerjs/design" "0.20.1"
+    "@univerjs/engine-render" "0.20.1"
+    "@univerjs/icons" "^1.1.1"
+    "@wendellhu/redi" "1.1.1"
     localforage "^1.10.0"
 
 "@webassemblyjs/ast@1.14.1", "@webassemblyjs/ast@^1.14.1":
@@ -3618,10 +3623,10 @@
   resolved "https://registry.yarnpkg.com/@webpack-cli/serve/-/serve-3.0.1.tgz#bd8b1f824d57e30faa19eb78e4c0951056f72f00"
   integrity sha512-sbgw03xQaCLiT6gcY/6u3qBDn01CWw/nbaXl3gTdTFuJJ75Gffv3E3DBpgvY2fkkrdS1fpjaXNOmJlnbtKauKg==
 
-"@wendellhu/redi@1.0.1":
-  version "1.0.1"
-  resolved "https://registry.yarnpkg.com/@wendellhu/redi/-/redi-1.0.1.tgz#e52556351bfa708fc5498ffdc66befe78d9c969f"
-  integrity sha512-vKJFlaPjXsyqcJFNKJGmdLRup5uUZGQuZUA41e67at5y93kEYJo5FpJebAfs8LStJjItHWv21t0Aq+0UCSYSsw==
+"@wendellhu/redi@1.1.1":
+  version "1.1.1"
+  resolved "https://registry.yarnpkg.com/@wendellhu/redi/-/redi-1.1.1.tgz#99eb56f604c1a2a8607309da1aa70a20ccb08258"
+  integrity sha512-y2fuAgHJ2n8sI8Pe/1QtAuPQ6ZbZ9/Dn3uVQI8cctVqLZzp/0OpLM7DSMOU6vmGYXNsIQwsquR91WcxZ4jrRvA==
 
 "@xml-tools/parser@^1.0.11":
   version "1.0.11"
@@ -4663,7 +4668,7 @@ cipher-base@^1.0.0, cipher-base@^1.0.1, cipher-base@^1.0.3:
     inherits "^2.0.4"
     safe-buffer "^5.2.1"
 
-cjk-regex@^3.3.0:
+cjk-regex@^3.4.0:
   version "3.4.0"
   resolved "https://registry.yarnpkg.com/cjk-regex/-/cjk-regex-3.4.0.tgz#7364b9c1cf54eeee31ffe37458d0ee0dfdce62ed"
   integrity sha512-m+gbmlIP6gAG7tDvo2kpeSPAz/uh5wY5/zx10ymjdpbbiTHNTNoYnP2lCiyqtmbLxwhEdq8/lsVbsy4GTc9oUw==
@@ -4687,11 +4692,6 @@ class-variance-authority@^0.7.1:
   integrity sha512-Ka+9Trutv7G8M6WT6SeiRWz792K5qEqIGEGzXKhAE6xOWAY6pPH8U+9IY3oCMv6kqTmLsv7Xh/2w2RigkePMsg==
   dependencies:
     clsx "^2.1.1"
-
-classnames@2.x, classnames@^2.2.1, classnames@^2.2.6, classnames@^2.3.2:
-  version "2.5.1"
-  resolved "https://registry.yarnpkg.com/classnames/-/classnames-2.5.1.tgz#ba774c614be0f016da105c858e7159eae8e7687b"
-  integrity sha512-saHYOzhIQs6wy2sVxTM6bUDsQO4F50V9RQ22qBpEdCW+I+/Wmke2HOl6lS6dTpdxVhb88/I6+Hs+438c3lfUow==
 
 clean-stack@^2.0.0:
   version "2.2.0"
@@ -5274,13 +5274,6 @@ crypto-random-string@^2.0.0:
   resolved "https://registry.yarnpkg.com/crypto-random-string/-/crypto-random-string-2.0.0.tgz#ef2a7a966ec11083388369baa02ebead229b30d5"
   integrity sha512-v1plID3y9r/lPhviJ1wrXpLeyUIGAZ2SHNYTEapm7/8A9nLPoyvVp3RK/EPFqn5kEznyWgYZNsRtYYIWbuG8KA==
 
-css-box-model@^1.2.0:
-  version "1.2.1"
-  resolved "https://registry.yarnpkg.com/css-box-model/-/css-box-model-1.2.1.tgz#59951d3b81fd6b2074a62d49444415b0d2b4d7c1"
-  integrity sha512-a7Vr4Q/kd/aw96bnJG332W9V9LkJO69JRcaCYDUqjp6/z0w6VcZjgAcTbgFxEPfBgdnAwlh3iwu+hLopa+flJw==
-  dependencies:
-    tiny-invariant "^1.0.6"
-
 css-declaration-sorter@^6.3.1:
   version "6.4.1"
   resolved "https://registry.yarnpkg.com/css-declaration-sorter/-/css-declaration-sorter-6.4.1.tgz#28beac7c20bad7f1775be3a7129d7eae409a3a71"
@@ -5382,11 +5375,6 @@ csstype@^3.0.2:
   version "3.1.3"
   resolved "https://registry.yarnpkg.com/csstype/-/csstype-3.1.3.tgz#d80ff294d114fb0e6ac500fbf85b60137d7eff81"
   integrity sha512-M1uQkMl8rQK/szD0LNhtqxIPLpimGm8sOBwU7lLnCpSbTyY3yeU1Vc7l4KT5zT4s/yOxHH5O7tIuuLOCnLADRw==
-
-csstype@^3.2.2:
-  version "3.2.3"
-  resolved "https://registry.yarnpkg.com/csstype/-/csstype-3.2.3.tgz#ec48c0f3e993e50648c86da559e2610995cf989a"
-  integrity sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==
 
 cytoscape-cose-bilkent@^4.1.0:
   version "4.1.0"
@@ -5697,7 +5685,7 @@ dateformat@^3.0.0:
   resolved "https://registry.yarnpkg.com/dateformat/-/dateformat-3.0.3.tgz#a6e37499a4d9a9cf85ef5872044d62901c9889ae"
   integrity sha512-jyCETtSl3VMZMWeRo7iY1FL19ges1t55hMo5yaam4Jrsm5EPL89UQkoQRyiI+Yf4k8r2ZpdngkV8hr1lIdjb3Q==
 
-dayjs@^1.10.0, dayjs@^1.11.18, dayjs@^1.11.7:
+dayjs@^1.10.0, dayjs@^1.11.7:
   version "1.11.20"
   resolved "https://registry.yarnpkg.com/dayjs/-/dayjs-1.11.20.tgz#88d919fd639dc991415da5f4cb6f1b6650811938"
   integrity sha512-YbwwqR/uYpeoP4pu043q+LTDLFBLApUP6VxRihdfNTqu4ubqMlGDLd6ErXhEgsyvY0K6nCs7nggYumAN+9uEuQ==
@@ -6085,19 +6073,6 @@ eastasianwidth@^0.2.0:
   version "0.2.0"
   resolved "https://registry.yarnpkg.com/eastasianwidth/-/eastasianwidth-0.2.0.tgz#696ce2ec0aa0e6ea93a397ffcf24aa7840c827cb"
   integrity sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==
-
-echarts-wordcloud@^2.1.0:
-  version "2.1.0"
-  resolved "https://registry.yarnpkg.com/echarts-wordcloud/-/echarts-wordcloud-2.1.0.tgz#c3de6fe267044f6c3343e4ff0e05eedb01c05096"
-  integrity sha512-Kt1JmbcROgb+3IMI48KZECK2AP5lG6bSsOEs+AsuwaWJxQom31RTNd6NFYI01E/YaI1PFZeueaupjlmzSQasjQ==
-
-echarts@^5.6.0:
-  version "5.6.0"
-  resolved "https://registry.yarnpkg.com/echarts/-/echarts-5.6.0.tgz#2377874dca9fb50f104051c3553544752da3c9d6"
-  integrity sha512-oTbVTsXfKuEhxftHqL5xprgLoc0k7uScAwtryCgWF6hPYFLRwOUHiFmHGCBKP5NPFNkDVopOieyUqYGH8Fa3kA==
-  dependencies:
-    tslib "2.3.0"
-    zrender "5.6.1"
 
 electron-to-chromium@^1.5.263:
   version "1.5.313"
@@ -6492,11 +6467,6 @@ fast-diff@1.3.0, fast-diff@^1.3.0:
   version "1.3.0"
   resolved "https://registry.yarnpkg.com/fast-diff/-/fast-diff-1.3.0.tgz#ece407fa550a64d638536cd727e129c61616e0f0"
   integrity sha512-VxPP4NqbUjj6MaAOafWeUn2cXWLcCtljklUtZf0Ind4XQ+QPtmA0b18zZy0jIQx+ExRVCR/ZQpBmik5lXshNsw==
-
-fast-equals@^4.0.3:
-  version "4.0.3"
-  resolved "https://registry.yarnpkg.com/fast-equals/-/fast-equals-4.0.3.tgz#72884cc805ec3c6679b99875f6b7654f39f0e8c7"
-  integrity sha512-G3BSX9cfKttjr+2o1O22tYMLq0DPluZnYtq1rXumE1SpL/F/SLIfHx08WYQoWSIpeMYf8sRbJ8++71+v6Pnxfg==
 
 fast-fifo@^1.2.0, fast-fifo@^1.3.2:
   version "1.3.2"
@@ -7428,7 +7398,7 @@ hnswlib-wasm@^0.8.2:
   resolved "https://registry.yarnpkg.com/hnswlib-wasm/-/hnswlib-wasm-0.8.2.tgz#8b6a9534d99f23d30b1fd29ac7c45410ee5941c1"
   integrity sha512-qEgKETj4rMOYRA1esP0bxVosw9Wrz5S/HvjI2FBWOXG5rf5/Es4OoEWGVvztFihDNU5if61l6QGhW5ILtt+PqA==
 
-hoist-non-react-statics@^3.3.0, hoist-non-react-statics@^3.3.2:
+hoist-non-react-statics@^3.3.2:
   version "3.3.2"
   resolved "https://registry.yarnpkg.com/hoist-non-react-statics/-/hoist-non-react-statics-3.3.2.tgz#ece0acaf71d62c2969c2ec59feff42a4b1a85b45"
   integrity sha512-/gGivxi8JPKWNm/W0jSmzcMPpfpPLc3dY/6GxhX2hQ9iGj3aDfklV4ET7NjKpSinLpJ5vafa9iiGIEZg10SfBw==
@@ -8365,7 +8335,7 @@ locate-path@^5.0.0:
   dependencies:
     p-locate "^4.1.0"
 
-lodash-es@^4.17.21:
+lodash-es@^4.17.21, lodash-es@^4.18.1:
   version "4.18.1"
   resolved "https://registry.yarnpkg.com/lodash-es/-/lodash-es-4.18.1.tgz#b962eeb80d9d983a900bf342961fb7418ca10b1d"
   integrity sha512-J8xewKD/Gk22OZbhpOVSwcs60zhd95ESDwezOFuA3/099925PdHJ7OFHNTGtajL3AlZkykD32HykiMo+BIBI8A==
@@ -8634,11 +8604,6 @@ mem@^4.0.0:
     map-age-cleaner "^0.1.1"
     mimic-fn "^2.0.0"
     p-is-promise "^2.0.0"
-
-memoize-one@^5.1.1:
-  version "5.2.1"
-  resolved "https://registry.yarnpkg.com/memoize-one/-/memoize-one-5.2.1.tgz#8337aa3c4335581839ec01c3d594090cebe8f00e"
-  integrity sha512-zYiwtZUcYyXKo/np96AGZAckk+FWWsUdJ3cHGGmld7+AhvcWmQyGCYUh1hc4Q/pkOhb65dQR/pqCyK0cOaHz4Q==
 
 memory-fs@^0.3.0:
   version "0.3.0"
@@ -9219,10 +9184,10 @@ nanoid@4.0.2:
   resolved "https://registry.yarnpkg.com/nanoid/-/nanoid-4.0.2.tgz#140b3c5003959adbebf521c170f282c5e7f9fb9e"
   integrity sha512-7ZtY5KTCNheRGfEFxnedV5zFiORN1+Y1N6zvPTnHQd8ENUvfaDBeuJDZb2bN/oXwXxu3qkTXDzy57W5vAmDTBw==
 
-nanoid@5.1.6:
-  version "5.1.6"
-  resolved "https://registry.yarnpkg.com/nanoid/-/nanoid-5.1.6.tgz#30363f664797e7d40429f6c16946d6bd7a3f26c9"
-  integrity sha512-c7+7RQ+dMB5dPwwCp4ee1/iV/q2P6aK1mTZcfr1BTuVlyW9hJYiMPybJCcnBlQtuSmTIWNeazm/zqNoZSSElBg==
+nanoid@5.1.7:
+  version "5.1.7"
+  resolved "https://registry.yarnpkg.com/nanoid/-/nanoid-5.1.7.tgz#a9f09a4ce73ba0b88830af36ee49666bad7827b6"
+  integrity sha512-ua3NDgISf6jdwezAheMOk4mbE1LXjm1DfMUDMuJf4AqxLFK3ccGpgWizwa5YV7Yz9EpXwEaWoRXSb/BnV0t5dQ==
 
 nanoid@^3.3.11:
   version "3.3.11"
@@ -10692,7 +10657,7 @@ prompts@^2.4.2:
     kleur "^3.0.3"
     sisteransi "^1.0.5"
 
-prop-types@15.x, prop-types@^15.6.2, prop-types@^15.7.2, prop-types@^15.8.1:
+prop-types@^15.6.2, prop-types@^15.7.2:
   version "15.8.1"
   resolved "https://registry.yarnpkg.com/prop-types/-/prop-types-15.8.1.tgz#67d87bf1a694f48435cf332c24af10214a3140b5"
   integrity sha512-oj87CgZICdulUohogVAR7AjlC0327U4el4L6eAvOqCeudMDVU0NThNaV+b9Df4dXgSP1gXMTnPdhfe/2qDH5cg==
@@ -10822,11 +10787,6 @@ quill@^2.0.3:
     parchment "^3.0.0"
     quill-delta "^5.1.0"
 
-raf-schd@^4.0.2:
-  version "4.0.3"
-  resolved "https://registry.yarnpkg.com/raf-schd/-/raf-schd-4.0.3.tgz#5d6c34ef46f8b2a0e880a8fcdb743efc5bfdbc1a"
-  integrity sha512-tQkJl2GRWh83ui2DiPTJz9wEiMN20syf+5oKfB03yYP7ioZcJwsIK8FjrtLwH1m7C7e+Tt2yYBlrOpdT+dyeIQ==
-
 randombytes@^2.0.0, randombytes@^2.0.1, randombytes@^2.0.5, randombytes@^2.1.0:
   version "2.1.0"
   resolved "https://registry.yarnpkg.com/randombytes/-/randombytes-2.1.0.tgz#df6f84372f0270dc65cdf6291349ab7a473d4f2a"
@@ -10849,75 +10809,6 @@ rbush@^4.0.1:
   dependencies:
     quickselect "^3.0.0"
 
-rc-dropdown@^4.2.1:
-  version "4.2.1"
-  resolved "https://registry.yarnpkg.com/rc-dropdown/-/rc-dropdown-4.2.1.tgz#44729eb2a4272e0353d31ac060da21e606accb1c"
-  integrity sha512-YDAlXsPv3I1n42dv1JpdM7wJ+gSUBfeyPK59ZpBD9jQhK9jVuxpjj3NmWQHOBceA1zEPVX84T2wbdb2SD0UjmA==
-  dependencies:
-    "@babel/runtime" "^7.18.3"
-    "@rc-component/trigger" "^2.0.0"
-    classnames "^2.2.6"
-    rc-util "^5.44.1"
-
-rc-menu@^9.16.0:
-  version "9.16.1"
-  resolved "https://registry.yarnpkg.com/rc-menu/-/rc-menu-9.16.1.tgz#9df1168e41d87dc7164c582173e1a1d32011899f"
-  integrity sha512-ghHx6/6Dvp+fw8CJhDUHFHDJ84hJE3BXNCzSgLdmNiFErWSOaZNsihDAsKq9ByTALo/xkNIwtDFGIl6r+RPXBg==
-  dependencies:
-    "@babel/runtime" "^7.10.1"
-    "@rc-component/trigger" "^2.0.0"
-    classnames "2.x"
-    rc-motion "^2.4.3"
-    rc-overflow "^1.3.1"
-    rc-util "^5.27.0"
-
-rc-motion@^2.0.0, rc-motion@^2.4.3:
-  version "2.9.5"
-  resolved "https://registry.yarnpkg.com/rc-motion/-/rc-motion-2.9.5.tgz#12c6ead4fd355f94f00de9bb4f15df576d677e0c"
-  integrity sha512-w+XTUrfh7ArbYEd2582uDrEhmBHwK1ZENJiSJVb7uRxdE7qJSYjbO2eksRXmndqyKqKoYPc9ClpPh5242mV1vA==
-  dependencies:
-    "@babel/runtime" "^7.11.1"
-    classnames "^2.2.1"
-    rc-util "^5.44.0"
-
-rc-overflow@^1.3.1:
-  version "1.5.0"
-  resolved "https://registry.yarnpkg.com/rc-overflow/-/rc-overflow-1.5.0.tgz#02e58a15199e392adfcc87e0d6e9e7c8e57f2771"
-  integrity sha512-Lm/v9h0LymeUYJf0x39OveU52InkdRXqnn2aYXfWmo8WdOonIKB2kfau+GF0fWq6jPgtdO9yMqveGcK6aIhJmg==
-  dependencies:
-    "@babel/runtime" "^7.11.1"
-    classnames "^2.2.1"
-    rc-resize-observer "^1.0.0"
-    rc-util "^5.37.0"
-
-rc-resize-observer@^1.0.0, rc-resize-observer@^1.3.1:
-  version "1.4.3"
-  resolved "https://registry.yarnpkg.com/rc-resize-observer/-/rc-resize-observer-1.4.3.tgz#4fd41fa561ba51362b5155a07c35d7c89a1ea569"
-  integrity sha512-YZLjUbyIWox8E9i9C3Tm7ia+W7euPItNWSPX5sCcQTYbnwDb5uNpnLHQCG1f22oZWUhLw4Mv2tFmeWe68CDQRQ==
-  dependencies:
-    "@babel/runtime" "^7.20.7"
-    classnames "^2.2.1"
-    rc-util "^5.44.1"
-    resize-observer-polyfill "^1.5.1"
-
-rc-util@^5.24.4, rc-util@^5.27.0, rc-util@^5.36.0, rc-util@^5.37.0, rc-util@^5.44.0, rc-util@^5.44.1:
-  version "5.44.4"
-  resolved "https://registry.yarnpkg.com/rc-util/-/rc-util-5.44.4.tgz#89ee9037683cca01cd60f1a6bbda761457dd6ba5"
-  integrity sha512-resueRJzmHG9Q6rI/DfK6Kdv9/Lfls05vzMs1Sk3M2P+3cJa+MakaZyWY8IPfehVuhPJFKrIY1IK4GqbiaiY5w==
-  dependencies:
-    "@babel/runtime" "^7.18.3"
-    react-is "^18.2.0"
-
-rc-virtual-list@^3.16.1:
-  version "3.19.2"
-  resolved "https://registry.yarnpkg.com/rc-virtual-list/-/rc-virtual-list-3.19.2.tgz#1dd2d782c9a3ccbe537bb873447d73f83af8de0f"
-  integrity sha512-Ys6NcjwGkuwkeaWBDqfI3xWuZ7rDiQXlH1o2zLfFzATfEgXcqpk8CkgMfbJD81McqjcJVez25a3kPxCR807evA==
-  dependencies:
-    "@babel/runtime" "^7.20.0"
-    classnames "^2.2.6"
-    rc-resize-observer "^1.0.0"
-    rc-util "^5.36.0"
-
 rc@^1.2.7:
   version "1.2.8"
   resolved "https://registry.yarnpkg.com/rc/-/rc-1.2.8.tgz#cd924bf5200a075b83c188cd6b9e211b7fc0d3ed"
@@ -10928,19 +10819,6 @@ rc@^1.2.7:
     minimist "^1.2.0"
     strip-json-comments "~2.0.1"
 
-react-beautiful-dnd@^13.1.1:
-  version "13.1.1"
-  resolved "https://registry.yarnpkg.com/react-beautiful-dnd/-/react-beautiful-dnd-13.1.1.tgz#b0f3087a5840920abf8bb2325f1ffa46d8c4d0a2"
-  integrity sha512-0Lvs4tq2VcrEjEgDXHjT98r+63drkKEgqyxdA7qD3mvKwga6a5SscbdLPO2IExotU1jW8L0Ksdl0Cj2AF67nPQ==
-  dependencies:
-    "@babel/runtime" "^7.9.2"
-    css-box-model "^1.2.0"
-    memoize-one "^5.1.1"
-    raf-schd "^4.0.2"
-    react-redux "^7.2.0"
-    redux "^4.0.4"
-    use-memo-one "^1.1.1"
-
 react-dom@18.3.1:
   version "18.3.1"
   resolved "https://registry.yarnpkg.com/react-dom/-/react-dom-18.3.1.tgz#c2265d79511b57d479b3dd3fdfa51536494c5cb4"
@@ -10948,26 +10826,6 @@ react-dom@18.3.1:
   dependencies:
     loose-envify "^1.1.0"
     scheduler "^0.23.2"
-
-react-draggable@^4.4.6, react-draggable@^4.5.0:
-  version "4.5.0"
-  resolved "https://registry.yarnpkg.com/react-draggable/-/react-draggable-4.5.0.tgz#0b274ccb6965fcf97ed38fcf7e3cc223bc48cdf5"
-  integrity sha512-VC+HBLEZ0XJxnOxVAZsdRi8rD04Iz3SiiKOoYzamjylUcju/hP9np/aZdLHf/7WOD268WMoNJMvYfB5yAK45cw==
-  dependencies:
-    clsx "^2.1.1"
-    prop-types "^15.8.1"
-
-react-grid-layout@^1.5.1:
-  version "1.5.3"
-  resolved "https://registry.yarnpkg.com/react-grid-layout/-/react-grid-layout-1.5.3.tgz#802de040616c443b0162d73cecde792cb5beeaa2"
-  integrity sha512-KaG6IbjD6fYhagUtIvOzhftXG+ViKZjCjADe86X1KHl7C/dsBN2z0mi14nbvZKTkp0RKiil9RPcJBgq3LnoA8g==
-  dependencies:
-    clsx "^2.1.1"
-    fast-equals "^4.0.3"
-    prop-types "^15.8.1"
-    react-draggable "^4.4.6"
-    react-resizable "^3.0.5"
-    resize-observer-polyfill "^1.5.1"
 
 react-intersection-observer@^9.3.5:
   version "9.16.0"
@@ -10978,28 +10836,6 @@ react-is@^16.13.1, react-is@^16.7.0:
   version "16.13.1"
   resolved "https://registry.yarnpkg.com/react-is/-/react-is-16.13.1.tgz#789729a4dc36de2999dc156dd6c1d9c18cea56a4"
   integrity sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ==
-
-react-is@^17.0.2:
-  version "17.0.2"
-  resolved "https://registry.yarnpkg.com/react-is/-/react-is-17.0.2.tgz#e691d4a8e9c789365655539ab372762b0efb54f0"
-  integrity sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w==
-
-react-is@^18.2.0:
-  version "18.3.1"
-  resolved "https://registry.yarnpkg.com/react-is/-/react-is-18.3.1.tgz#e83557dc12eae63a99e003a46388b1dcbb44db7e"
-  integrity sha512-/LLMVyas0ljjAtoYiPqYiL8VWXzUUdThrmU5+n20DZv+a+ClRoevUzw5JxU+Ieh5/c87ytoTBV9G1FiKfNJdmg==
-
-react-redux@^7.2.0:
-  version "7.2.9"
-  resolved "https://registry.yarnpkg.com/react-redux/-/react-redux-7.2.9.tgz#09488fbb9416a4efe3735b7235055442b042481d"
-  integrity sha512-Gx4L3uM182jEEayZfRbI/G11ZpYdNAnBs70lFVMNdHJI76XYtR+7m0MN+eAs7UHBPhWXcnFPaS+9owSCJQHNpQ==
-  dependencies:
-    "@babel/runtime" "^7.15.4"
-    "@types/react-redux" "^7.1.20"
-    hoist-non-react-statics "^3.3.2"
-    loose-envify "^1.4.0"
-    prop-types "^15.7.2"
-    react-is "^17.0.2"
 
 react-remove-scroll-bar@^2.3.7:
   version "2.3.8"
@@ -11019,14 +10855,6 @@ react-remove-scroll@^2.6.3:
     tslib "^2.1.0"
     use-callback-ref "^1.3.3"
     use-sidecar "^1.1.3"
-
-react-resizable@^3.0.5:
-  version "3.1.3"
-  resolved "https://registry.yarnpkg.com/react-resizable/-/react-resizable-3.1.3.tgz#b8c3f8aeffb7b0b2c2306bfc7a742462e58125fb"
-  integrity sha512-liJBNayhX7qA4tBJiBD321FDhJxgGTJ07uzH5zSORXoE8h7PyEZ8mLqmosST7ppf6C4zUsbd2gzDMmBCfFp9Lw==
-  dependencies:
-    prop-types "15.x"
-    react-draggable "^4.5.0"
 
 react-style-singleton@^2.2.2, react-style-singleton@^2.2.3:
   version "2.2.3"
@@ -11217,13 +11045,6 @@ redent@^3.0.0:
     indent-string "^4.0.0"
     strip-indent "^3.0.0"
 
-redux@^4.0.0, redux@^4.0.4:
-  version "4.2.1"
-  resolved "https://registry.yarnpkg.com/redux/-/redux-4.2.1.tgz#c08f4306826c49b5e9dc901dee0452ea8fce6197"
-  integrity sha512-LAUYz4lc+Do8/g7aeRa8JkyDErK6ekstQaqWQrNRW//MY1TvCEpMtpTWvlQ+FPbWCx+Xixu/6SHt5N0HR+SB4w==
-  dependencies:
-    "@babel/runtime" "^7.9.2"
-
 regex-not@^1.0.0, regex-not@^1.0.2:
   version "1.0.2"
   resolved "https://registry.yarnpkg.com/regex-not/-/regex-not-1.0.2.tgz#1f4ece27e00b0b65e0247a6810e6a85d83a5752c"
@@ -11353,11 +11174,6 @@ require-main-filename@^2.0.0:
   version "2.0.0"
   resolved "https://registry.yarnpkg.com/require-main-filename/-/require-main-filename-2.0.0.tgz#d0b329ecc7cc0f61649f62215be69af54aa8989b"
   integrity sha512-NKN5kMDylKuldxYLSUfrbo5Tuzh4hd+2E8NPPX02mZtn1VuREQToYe/ZdlJy+J3uCpfaiGF05e7B8W0iXbQHmg==
-
-resize-observer-polyfill@^1.5.1:
-  version "1.5.1"
-  resolved "https://registry.yarnpkg.com/resize-observer-polyfill/-/resize-observer-polyfill-1.5.1.tgz#0e9020dd3d21024458d4ebd27e23e40269810464"
-  integrity sha512-LwZrotdHOo12nQuZlHEmtuXdqGoOD0OhaxopaNFxWzInpEgaLWoVuAMbTzixuosCx2nEG58ngzW3vxdWoxIgdg==
 
 resolve-cwd@^3.0.0:
   version "3.0.0"
@@ -11506,7 +11322,7 @@ rw@1:
   resolved "https://registry.yarnpkg.com/rw/-/rw-1.3.3.tgz#3f862dfa91ab766b14885ef4d01124bfda074fb4"
   integrity sha512-PdhdWy89SiZogBLaw42zdeqtRJ//zFd2PgQavcICDUgJT5oW10QCRKbJ6bg4r0/UY2M6BWd5tkxuGFRvCkgfHQ==
 
-rxjs@^7.8.1, rxjs@^7.8.2:
+rxjs@^7.8.1:
   version "7.8.2"
   resolved "https://registry.yarnpkg.com/rxjs/-/rxjs-7.8.2.tgz#955bc473ed8af11a002a2be52071bf475638607b"
   integrity sha512-dhKf903U/PQZY6boNNtAGdWbG85WAbjT/1xYoZIC7FAY0yWapOBQVsVrDl58W86//e1VpMNBtRV4MaXfdMySFA==
@@ -12719,11 +12535,6 @@ tiny-inflate@^1.0.3:
   resolved "https://registry.yarnpkg.com/tiny-inflate/-/tiny-inflate-1.0.3.tgz#122715494913a1805166aaf7c93467933eea26c4"
   integrity sha512-pkY1fj1cKHb2seWDy0B16HeWyczlJA9/WW3u3c4z/NiWDsO3DOU5D7nhTLE9CF0yXv/QZFY7sEJmj24dK+Rrqw==
 
-tiny-invariant@^1.0.6:
-  version "1.3.3"
-  resolved "https://registry.yarnpkg.com/tiny-invariant/-/tiny-invariant-1.3.3.tgz#46680b7a873a0d5d10005995eb90a70d74d60127"
-  integrity sha512-+FbBPE1o9QAYvviau/qC5SE3caw21q3xkvWKBtja5vgqOWIHHJ3ioaq1VPfn/Szqctz2bU/oYeKd9/z5BL+PVg==
-
 tiny-typed-emitter@^2.0.3:
   version "2.1.0"
   resolved "https://registry.yarnpkg.com/tiny-typed-emitter/-/tiny-typed-emitter-2.1.0.tgz#b3b027fdd389ff81a152c8e847ee2f5be9fad7b5"
@@ -12865,11 +12676,6 @@ ts-node@^10.2.1:
     make-error "^1.1.1"
     v8-compile-cache-lib "^3.0.1"
     yn "3.1.1"
-
-tslib@2.3.0:
-  version "2.3.0"
-  resolved "https://registry.yarnpkg.com/tslib/-/tslib-2.3.0.tgz#803b8cdab3e12ba581a4ca41c8839bbb0dacb09e"
-  integrity sha512-N82ooyxVNm6h1riLCoyS9e3fuJ3AMG2zIZs2Gd1ATcSFjSA23Q0fzjjZeh0jbJvWVDZ0cJT8yaNNaaXHzueNjg==
 
 tslib@2.6.2:
   version "2.6.2"
@@ -13139,11 +12945,6 @@ use-latest@^1.0.0:
   integrity sha512-mhg3xdm9NaM8q+gLT8KryJPnRFOz1/5XPBhmDEVZK1webPzDjrPk7f/mbpeLqTgB9msytYWANxgALOCJKnLvcQ==
   dependencies:
     use-isomorphic-layout-effect "^1.1.1"
-
-use-memo-one@^1.1.1:
-  version "1.1.3"
-  resolved "https://registry.yarnpkg.com/use-memo-one/-/use-memo-one-1.1.3.tgz#2fd2e43a2169eabc7496960ace8c79efef975e99"
-  integrity sha512-g66/K7ZQGYrI6dy8GLpVcMsBp4s17xNkYJVSMvTEevGy3nDxHOfE6z8BVE22+5G5x7t3+bhzrlTDB7ObrEE0cQ==
 
 use-sidecar@^1.1.3:
   version "1.1.3"
@@ -13830,13 +13631,6 @@ yn@3.1.1:
   version "3.1.1"
   resolved "https://registry.yarnpkg.com/yn/-/yn-3.1.1.tgz#1e87401a09d767c1d5eab26a6e4c185182d2eb50"
   integrity sha512-Ux4ygGWsu2c7isFWe8Yu1YluJmqVhxqK2cLXNQA5AcC3QfbGNpM7fu0Y8b/z16pXLnFxZYvWhd3fhBY9DLmC6Q==
-
-zrender@5.6.1:
-  version "5.6.1"
-  resolved "https://registry.yarnpkg.com/zrender/-/zrender-5.6.1.tgz#e08d57ecf4acac708c4fcb7481eb201df7f10a6b"
-  integrity sha512-OFXkDJKcrlx5su2XbzJvj/34Q3m6PvyCZkVPHGYpcCJ52ek4U/ymZyfuV1nKE23AyBJ51E/6Yr0mhZ7xGTO4ag==
-  dependencies:
-    tslib "2.3.0"
 
 zustand@^4.3.2:
   version "4.5.7"
