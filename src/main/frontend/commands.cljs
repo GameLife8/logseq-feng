@@ -337,7 +337,13 @@
         [[:editor/clear-current-slash]
          [:editor/insert-mindmap]]
         "Insert or create a mind map"
-        :icon/brain]]
+        :icon/brain]
+
+       ["Universheet"
+        [[:editor/clear-current-slash]
+         [:editor/insert-sheet]]
+        "Insert or create a spreadsheet"
+        :icon/table]]
 
       (let [commands (->> @*extend-slash-commands
                           (remove (fn [command] (when (map? (last command))
@@ -649,6 +655,9 @@
 
 (defmethod handle-step :editor/insert-mindmap [[_]]
   (state/set-editor-action! :mindmap-search))
+
+(defmethod handle-step :editor/insert-sheet [[_]]
+  (state/set-editor-action! :sheet-search))
 
 (defmethod handle-step :editor/search-page [_]
   (state/set-editor-action! :page-search))

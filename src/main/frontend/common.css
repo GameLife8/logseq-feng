@@ -215,6 +215,18 @@ body {
     text-align: center;
   }
 
+  /* ── Sheet embed ────────────────────────────────────────────── */
+  .sheet-editor-area {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .sheet-editor-area .univer-container,
+  .sheet-univer-container {
+    width: 100%;
+    height: 100%;
+  }
+
   @media (max-width: 768px) {
     .visual-doc-embed-preview {
       min-height: 156px;

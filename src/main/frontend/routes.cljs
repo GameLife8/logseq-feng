@@ -15,6 +15,7 @@
             [frontend.components.settings :as settings]
             [frontend.components.user.login :as login]
             [frontend.components.whiteboard :as whiteboard]
+            [frontend.components.sheet]  ;; side-effect: registers {{sheet}} macro
             [frontend.config :as config]
             [logseq.shui.demo :as shui]))
 

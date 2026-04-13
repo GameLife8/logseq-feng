@@ -134,6 +134,48 @@ var SimpleMindMapConfig = {
   },
 };
 
+// Univer spreadsheet bundled separately, exposed as window.UniverSheet
+var UniverSheetConfig = {
+  name: "univer-sheet",
+  mode: "production",
+  entry: "./src/main/js/univer-sheet-entry.js",
+  externals: {
+    'react': 'React',
+    'react-dom': 'ReactDOM',
+  },
+  module: {
+    rules: [
+      {
+        test: /\.m?js/,
+        resolve: { fullySpecified: false },
+      },
+      {
+        test: /\.css$/,
+        type: 'asset/source',
+      },
+      {
+        test: /\.(woff|woff2|ttf|eot|otf|svg|png)$/,
+        type: 'asset/inline',
+      },
+    ]
+  },
+  resolve: {
+    alias: {
+      vue: false,
+    },
+  },
+  output: {
+    path: path.resolve(__dirname, 'static/js'),
+    filename: 'univer-sheet-bundle.js',
+    library: {
+      name: 'UniverSheet',
+      type: 'window',
+    },
+    publicPath: '/static/js/',
+    clean: false,
+  },
+};
+
 module.exports = [
-  AppConfig, MobileConfig, ExcalidrawConfig, SimpleMindMapConfig,
+  AppConfig, MobileConfig, ExcalidrawConfig, SimpleMindMapConfig, UniverSheetConfig,
 ];

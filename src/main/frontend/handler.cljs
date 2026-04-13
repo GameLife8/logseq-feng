@@ -20,7 +20,6 @@
             [frontend.handler.e2ee]
             [frontend.handler.events :as events]
             [frontend.handler.events.export]
-            [frontend.handler.events.rtc]
             [frontend.handler.events.ui]
             [frontend.handler.global-config :as global-config-handler]
             [frontend.handler.page :as page-handler]

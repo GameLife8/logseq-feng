@@ -455,7 +455,7 @@
                  :light? light?
                  :db-restoring? db-restoring?
                  :main-content main-content'
-                 :show-action-bar? show-action-bar?}))]
+                 :show-action-bar? show-action-bar?})]
 
        (when window-controls?
          (window-controls/container))

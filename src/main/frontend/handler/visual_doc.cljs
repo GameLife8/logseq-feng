@@ -147,6 +147,7 @@
   (case attr
     :block/whiteboard-canvas :whiteboard
     :block/mind-map-data :mind-map
+    :block/sheet-data :sheet
     :visual-doc))
 
 (defn- normalize-worker-result

@@ -96,7 +96,7 @@
   (p/do!
    (repo-handler/restore-and-setup-repo! graph)
    (graph-switch graph)
-   (state/set-state! :sync-graph/init? false))))
+   (state/set-state! :sync-graph/init? false)))
 
 (defmethod handle :graph/switch [[_ graph opts]]
   (let [switch-promise

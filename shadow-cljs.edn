@@ -22,7 +22,9 @@
                                   "@excalidraw/excalidraw" {:target :global
                                                             :global "ExcalidrawLib"}
                                   "simple-mind-map" {:target :global
-                                                     :global "SimpleMindMap"}}}
+                                                     :global "SimpleMindMap"}
+                                  "universheet" {:target :global
+                                                 :global "UniverSheet"}}}
         :modules       {:main
                         {:init-fn frontend.core/init}
                         :code-editor
@@ -33,6 +35,9 @@
                          :depends-on #{:main}}
                         :mind-map
                         {:entries    [frontend.extensions.mind-map.core]
+                         :depends-on #{:main}}
+                        :sheet
+                        {:entries    [frontend.extensions.sheet.core]
                          :depends-on #{:main}}}
 
         :output-dir       "./static/js"

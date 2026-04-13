@@ -14,6 +14,7 @@
             [frontend.handler.editor :as editor-handler :refer [get-state]]
             [frontend.handler.editor.lifecycle :as lifecycle]
             [frontend.handler.mind-map :as mind-map-handler]
+            [frontend.handler.sheet :as sheet-handler]
             [frontend.handler.page :as page-handler]
             [frontend.handler.paste :as paste-handler]
             [frontend.handler.whiteboard :as whiteboard-handler]
@@ -713,6 +714,28 @@
         :empty-placeholder [:div.text-gray-500.text-sm.px-4.py-2 "未找到思维导图"]
         :class "mindmap-search"}))))
 
+(rum/defc sheet-search
+  "Picker for creating a new spreadsheet (no gallery — always creates new)."
+  [id _format]
+  (let [create-item {:block/title (str "＋ 新建表格")
+                     :create-new? true}
+        all-items [create-item]]
+    (ui/auto-complete
+     all-items
+     {:on-chosen (fn [_chosen]
+                   ;; Always create a new sheet
+                   (p/let [name (gen-auto-name "sheet")
+                           page (sheet-handler/<create-sheet! name)]
+                     (when page
+                       (insert-macro-and-close! id "sheet" (str (:block/uuid page))))))
+      :on-enter (fn [] (state/clear-editor-action!))
+      :item-render (fn [item _chosen?]
+                     [:div.flex.items-center.gap-2
+                      (ui/icon "plus" {:size 14})
+                      [:span "新建表格"]])
+      :empty-placeholder [:div.text-gray-500.text-sm.px-4.py-2 ""]
+      :class "sheet-search"})))
+
 (rum/defc shui-editor-popups
   [id format action _data]
   (hooks/use-effect!
@@ -774,6 +797,14 @@
                                                       (when (= :mindmap-search (state/get-editor-action))
                                                         (state/clear-editor-action!)))}})
 
+                 :sheet-search
+                 (open-editor-popup! :sheet-search
+                                     (sheet-search id format)
+                                     {:root-props {:onOpenChange
+                                                   #(when-not %
+                                                      (when (= :sheet-search (state/get-editor-action))
+                                                        (state/clear-editor-action!)))}})
+
                  ;; TODO: try remove local model state
                  false)]
        #(when pid
@@ -801,7 +832,7 @@
 
       (or (contains?
            #{:commands :page-search :page-search-hashtag :block-search :template-search
-             :datepicker :whiteboard-search :mindmap-search}
+             :datepicker :whiteboard-search :mindmap-search :sheet-search}
            action)
           (and (keyword? action)
                (= (namespace action) "editor.action")))
