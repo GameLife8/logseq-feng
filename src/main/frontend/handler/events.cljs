@@ -325,6 +325,16 @@
 (defmethod handle :vector-search/sync-state [[_ state]]
   (state/set-state! :vector-search/state state))
 
+(defmethod handle :db/sync-changes [[_ data]]
+  (let [retract-datoms     (filter (fn [d]
+                                     (and (= :block/uuid (:a d))
+                                          (false? (:added d))))
+                                   (:tx-data data))
+        retracted-tx-data  (map (fn [d] [:db/retractEntity (:e d)]) retract-datoms)
+        tx-data            (concat (:tx-data data) retracted-tx-data)]
+    (pipeline/invoke-hooks (assoc data :tx-data tx-data))
+    nil))
+
 (defmethod handle :db/export-sqlite [_]
   (export/export-repo-as-sqlite-db! (state/get-current-repo))
   nil)

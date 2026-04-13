@@ -2,38 +2,65 @@
  * Univer spreadsheet webpack entry point.
  * Bundled into static/js/univer-sheet-bundle.js and exposed as window.UniverSheet.
  *
- * The CSS imports are bundled as raw strings by webpack and injected into
- * <style> tags once so the sheet UI renders correctly inside Logseq.
+ * Uses the Univer Preset architecture (@univerjs/presets + @univerjs/preset-sheets-core).
+ * Exports a factory function `createSheetInstance` that hides all Univer internals
+ * so ClojureScript only needs to call one function and use the returned univerAPI facade.
  */
 
-import designCss from '@univerjs/design/lib/index.css';
-import uiCss from '@univerjs/ui/lib/index.css';
-import sheetsUiCss from '@univerjs/sheets-ui/lib/index.css';
+import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
+import UniverPresetSheetsCoreZhCN from '@univerjs/preset-sheets-core/locales/zh-CN';
+import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets';
+import presetCSS from '@univerjs/preset-sheets-core/lib/index.css';
 
-import DesignZhCN from '@univerjs/design/lib/es/locale/zh-CN';
-import UIZhCN from '@univerjs/ui/lib/es/locale/zh-CN';
-import SheetsZhCN from '@univerjs/sheets/lib/es/locale/zh-CN';
-import SheetsUIZhCN from '@univerjs/sheets-ui/lib/es/locale/zh-CN';
-
+// ── Inject CSS once ─────────────────────────────────────────────────────────
 const injectStyle = (id, cssText) => {
   if (typeof document === 'undefined' || !cssText || document.getElementById(id)) {
     return;
   }
-
   const style = document.createElement('style');
   style.id = id;
   style.textContent = cssText;
   document.head.appendChild(style);
 };
 
-injectStyle('univer-design-style', designCss);
-injectStyle('univer-ui-style', uiCss);
-injectStyle('univer-sheets-ui-style', sheetsUiCss);
+injectStyle('univer-preset-sheets-core', presetCSS);
 
-export { Univer, UniverInstanceType, LocaleType } from '@univerjs/core';
-export { defaultTheme } from '@univerjs/design';
-export { UniverSheetsPlugin } from '@univerjs/sheets';
-export { UniverRenderEnginePlugin } from '@univerjs/engine-render';
-export { UniverSheetsUIPlugin } from '@univerjs/sheets-ui';
-export { UniverUIPlugin } from '@univerjs/ui';
-export { DesignZhCN, UIZhCN, SheetsZhCN, SheetsUIZhCN };
+// Hide Univer protection/permission button — not needed in embedded Logseq context.
+// 1. The protect icon button in the toolbar overflow panel
+// 2. The stuck tooltip ("保护") that Radix renders on <body> at (0,0)
+injectStyle('univer-logseq-overrides', `
+  button:has(.univerjs-icon-protect-icon),
+  a:has(.univerjs-icon-protect-icon) {
+    display: none !important;
+  }
+  body > [role="tooltip"].univer-bg-gray-700 {
+    display: none !important;
+  }
+`);
+
+// ── Factory: creates a Univer sheet instance ────────────────────────────────
+/**
+ * @param {HTMLElement} containerEl  — the DOM element to mount the sheet into
+ * @param {object}      workbookData — IWorkbookData JSON object (parsed, not string)
+ * @returns {{ univer: object, univerAPI: object }}
+ */
+export function createSheetInstance(containerEl, workbookData) {
+  const { univer, univerAPI } = createUniver({
+    locale: LocaleType.ZH_CN,
+    locales: {
+      [LocaleType.ZH_CN]: mergeLocales(UniverPresetSheetsCoreZhCN),
+    },
+    presets: [
+      UniverSheetsCorePreset({
+        container: containerEl,
+        footer: false,
+      }),
+    ],
+  });
+
+  univerAPI.createWorkbook(workbookData);
+
+  return { univer, univerAPI };
+}
+
+export { LocaleType };

@@ -620,21 +620,43 @@
          "-" (pad (.getHours now)) "-" (pad (.getMinutes now)) "-" (pad (.getSeconds now)))))
 
 (defn- insert-macro-and-close!
-  "Insert a macro string into the editor and clear editor action."
+  "Insert a macro string into the current editing block and clear editor action.
+
+   Page creation can briefly re-render the current editor, so the original
+   `input-id` may disappear for a frame before the new textarea is mounted.
+   Retry a few frames and fall back to the current edit input id."
   [input-id macro-name page-uuid]
-  (when-let [input (gdom/getElement input-id)]
-    (let [macro-str (str "{{" macro-name " " page-uuid "}}")
-          value     (.-value input)
-          pos       (cursor/pos input)
-          new-value (str (subs value 0 pos) macro-str (subs value pos))]
-      (state/set-block-content-and-last-pos! input-id new-value (+ pos (count macro-str)))
-      (state/clear-editor-action!))))
+  (let [macro-str (str "{{" macro-name " " page-uuid "}}")]
+    (letfn [(resolve-input-id []
+              (let [preferred (when input-id (gdom/getElement input-id))
+                    current-id (state/get-edit-input-id)
+                    current    (when current-id (gdom/getElement current-id))]
+                (cond
+                  preferred input-id
+                  current current-id
+                  :else nil)))
+            (attempt-insert! [retries-left]
+              (if-let [target-id (resolve-input-id)]
+                (when-let [input (gdom/getElement target-id)]
+                  (let [value     (.-value input)
+                        pos       (or (cursor/pos input) (count value))
+                        new-value (str (subs value 0 pos) macro-str (subs value pos))]
+                    (state/set-block-content-and-last-pos! target-id new-value (+ pos (count macro-str)))
+                    (state/clear-editor-action!)))
+                (when (pos? retries-left)
+                  (js/requestAnimationFrame
+                   (fn []
+                     (attempt-insert! (dec retries-left)))))))]
+      (attempt-insert! 8))))
+
+(defonce ^:private *sheet-creating? (atom false))
 
 (rum/defc whiteboard-search
   "Picker for inserting existing whiteboards or creating a new one."
   [id _format]
   (let [[items set-items!] (rum/use-state nil)
-        [q set-q!] (rum/use-state "")]
+        [q set-q!] (rum/use-state "")
+        [creating? set-creating!] (rum/use-state false)]
     (hooks/use-effect!
      (fn []
        (let [all (whiteboard-handler/get-all-whiteboards)]
@@ -653,13 +675,16 @@
        all-items
        {:on-chosen (fn [chosen]
                      (if (:create-new? chosen)
-                       ;; Create new whiteboard with auto name, no redirect
-                       (p/let [name (gen-auto-name "excalidraw")
-                               page (whiteboard-handler/<create-whiteboard! name {:redirect? false})]
-                         (when page
-                           (insert-macro-and-close! id "whiteboard" (str (:block/uuid page)))))
-                       ;; Insert existing
-                       (insert-macro-and-close! id "whiteboard" (str (:block/uuid chosen)))))
+                        ;; Create new whiteboard with auto name, no redirect
+                        (when-not creating?
+                          (set-creating! true)
+                          (state/clear-editor-action!)
+                          (p/let [name (gen-auto-name "excalidraw")
+                                  page (whiteboard-handler/<create-whiteboard! name {:redirect? false})]
+                            (when page
+                              (insert-macro-and-close! id "whiteboard" (str (:block/uuid page))))))
+                        ;; Insert existing
+                        (insert-macro-and-close! id "whiteboard" (str (:block/uuid chosen)))))
         :on-enter (fn [] (state/clear-editor-action!))
         :item-render (fn [item _chosen?]
                        (if (:create-new? item)
@@ -676,7 +701,8 @@
   "Picker for inserting existing mind maps or creating a new one."
   [id _format]
   (let [[items set-items!] (rum/use-state nil)
-        [q set-q!] (rum/use-state "")]
+        [q set-q!] (rum/use-state "")
+        [creating? set-creating!] (rum/use-state false)]
     (hooks/use-effect!
      (fn []
        (let [all (mind-map-handler/get-all-mind-maps)]
@@ -695,13 +721,16 @@
        all-items
        {:on-chosen (fn [chosen]
                      (if (:create-new? chosen)
-                       ;; Create new mind map with auto name, no redirect
-                       (p/let [name (gen-auto-name "mindmap")
-                               page (mind-map-handler/<create-mind-map! name {:redirect? false})]
-                         (when page
-                           (insert-macro-and-close! id "mindmap" (str (:block/uuid page)))))
-                       ;; Insert existing
-                       (insert-macro-and-close! id "mindmap" (str (:block/uuid chosen)))))
+                        ;; Create new mind map with auto name, no redirect
+                        (when-not creating?
+                          (set-creating! true)
+                          (state/clear-editor-action!)
+                          (p/let [name (gen-auto-name "mindmap")
+                                  page (mind-map-handler/<create-mind-map! name {:redirect? false})]
+                            (when page
+                              (insert-macro-and-close! id "mindmap" (str (:block/uuid page))))))
+                        ;; Insert existing
+                        (insert-macro-and-close! id "mindmap" (str (:block/uuid chosen)))))
         :on-enter (fn [] (state/clear-editor-action!))
         :item-render (fn [item _chosen?]
                        (if (:create-new? item)
@@ -723,11 +752,16 @@
     (ui/auto-complete
      all-items
      {:on-chosen (fn [_chosen]
-                   ;; Always create a new sheet
-                   (p/let [name (gen-auto-name "sheet")
-                           page (sheet-handler/<create-sheet! name)]
-                     (when page
-                       (insert-macro-and-close! id "sheet" (str (:block/uuid page))))))
+                   (when (compare-and-set! *sheet-creating? false true)
+                     ;; Close the popup immediately so Enter key repeat
+                     ;; cannot create duplicate sheets while the page is being created.
+                     (state/clear-editor-action!)
+                     (-> (p/let [name (gen-auto-name "sheet")
+                                  page (sheet-handler/<create-sheet! name)]
+                           (when page
+                             (insert-macro-and-close! id "sheet" (str (:block/uuid page)))))
+                         (p/finally (fn []
+                                      (reset! *sheet-creating? false))))))
       :on-enter (fn [] (state/clear-editor-action!))
       :item-render (fn [item _chosen?]
                      [:div.flex.items-center.gap-2
