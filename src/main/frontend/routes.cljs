@@ -15,7 +15,7 @@
             [frontend.components.settings :as settings]
             [frontend.components.user.login :as login]
             [frontend.components.whiteboard :as whiteboard]
-            [frontend.components.sheet]  ;; side-effect: registers {{sheet}} macro
+            [frontend.components.sheet :as sheet]  ;; side-effect: registers {{sheet}} macro; also gallery + page routes
             [frontend.config :as config]
             [logseq.shui.demo :as shui]))
 
@@ -101,6 +101,14 @@
    ["/mind-maps"
     {:name :all-mind-maps
      :view (fn [_] (mind-map/all-mind-maps))}]
+
+   ["/sheet/:name"
+    {:name :sheet
+     :view sheet/sheet-page}]
+
+   ["/sheets"
+    {:name :all-sheets
+     :view (fn [_] (sheet/all-sheets))}]
 
    ["/tag-manager"
     {:name :tag-manager

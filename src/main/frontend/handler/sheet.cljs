@@ -1,20 +1,24 @@
 (ns frontend.handler.sheet
   "Spreadsheet data persistence using the visual-doc sidecar pattern.
 
-   Unlike mind-map, sheet does NOT need a gallery page or class tags.
-   Each sheet = a page entity, identified by :block/sheet-data attribute.
+   Each sheet = a page entity tagged with a hidden 'Sheet' class,
+   identified by :block/sheet-data attribute.
    The full workbook payload lives in the worker SQLite sidecar."
   (:require [clojure.string :as string]
             [datascript.core :as d]
             [frontend.db :as db]
             [frontend.handler.common.page :as common-page-handler]
             [frontend.handler.notification :as notification]
+            [frontend.handler.page :as page-handler]
+            [frontend.handler.route :as route-handler]
             [frontend.handler.visual-doc :as visual-doc]
             [frontend.state :as state]
             [promesa.core :as p]))
 
 (def sheet-attr :block/sheet-data)
 (def sheet-cache-prefix "sheet-data")
+
+;; ── Sidecar persistence ─────────────────────────────────────────────────────
 
 (defn save-sheet-to-db!
   "Writes the sheet payload to sidecar storage."
@@ -32,24 +36,137 @@
   [page-uuid]
   (visual-doc/<load-doc (state/get-current-repo) page-uuid sheet-attr sheet-cache-prefix))
 
+;; ── Class tag management ────────────────────────────────────────────────────
+
+(defn- <ensure-sheet-class-tag!
+  "Find or create a 'Sheet' class entity (tagged with :logseq.class/Tag).
+   Marks it :logseq.property/hide? so it doesn't appear in All Pages."
+  []
+  (let [database (db/get-db)
+        existing-eid (when database
+                       (first (d/q '[:find [?e ...]
+                                     :where [?e :block/title "Sheet"]
+                                            [?e :block/tags ?tag]
+                                            [?tag :db/ident :logseq.class/Tag]]
+                                   database)))]
+    (if existing-eid
+      (let [ent (db/entity existing-eid)]
+        (when-not (:logseq.property/hide? ent)
+          (db/transact! [{:db/id existing-eid :logseq.property/hide? true}]))
+        (p/resolved ent))
+      (p/let [ent (common-page-handler/<create! "Sheet" {:redirect? false :class? true})]
+        (when-let [eid (:db/id ent)]
+          (db/transact! [{:db/id eid :logseq.property/hide? true}]))
+        ent))))
+
+;; ── Query ───────────────────────────────────────────────────────────────────
+
+(defn get-all-sheets
+  "Returns all sheet page manifests from the local DataScript replica."
+  []
+  (when-let [database (db/get-db)]
+    (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
+                :where [?class :block/title "Sheet"]
+                       [?class :block/tags :logseq.class/Tag]
+                       [?b :block/tags ?class]
+                       [(missing? $ ?b :logseq.property/deleted-at)]]
+              database)
+         (map first)
+         (filter #(and (:block/title %)
+                       (:block/uuid %)
+                       (not (:db/ident %))))
+         (sort-by #(or (:block/updated-at %) 0) >))))
+
+(defn- sheet-name-exists?
+  [title]
+  (some #(= (string/lower-case (or (:block/title %) ""))
+            (string/lower-case title))
+        (get-all-sheets)))
+
+;; ── CRUD ────────────────────────────────────────────────────────────────────
+
 (defn <create-sheet!
-  "Creates a new sheet page with a default empty workbook. Returns the page entity."
-  [name]
-  (let [title (string/trim (or name "新建表格"))]
-    (p/let [page (common-page-handler/<create! title {:redirect? false})]
-      (when page
-        (let [repo      (state/get-current-repo)
-              page-uuid (str (:block/uuid page))
-              initial   (js/JSON.stringify
-                         (clj->js {:id    "workbook_1"
-                                   :name  title
-                                   :sheetOrder ["sheet_1"]
-                                   :sheets {:sheet_1
-                                            {:id         "sheet_1"
-                                             :name       "Sheet1"
-                                             :rowCount   50
-                                             :columnCount 20
-                                             :cellData   {}}}}))]
-          (visual-doc/save-doc-cache! sheet-cache-prefix page-uuid initial)
-          (p/let [_ (visual-doc/<flush-doc! repo page-uuid sheet-attr initial)]
-            page))))))
+  "Creates a new sheet page with a default empty workbook.
+   Tags it with the Sheet class. Returns the page entity."
+  [name opts]
+  (let [redirect? (if (some? opts) (get opts :redirect? true) true)
+        title     (string/trim (or name "新建表格"))]
+    (if (sheet-name-exists? title)
+      (do (notification/show! (str "表格「" title "」已存在，请使用不同的名称") :warning)
+          nil)
+      (p/let [page (common-page-handler/<create! title {:redirect? false})
+              tag  (<ensure-sheet-class-tag!)]
+        (when page
+          (let [repo      (state/get-current-repo)
+                page-uuid (str (:block/uuid page))
+                initial   (js/JSON.stringify
+                           (clj->js {:id    "workbook_1"
+                                     :name  title
+                                     :sheetOrder ["sheet_1"]
+                                     :sheets {:sheet_1
+                                              {:id         "sheet_1"
+                                               :name       "Sheet1"
+                                               :rowCount   50
+                                               :columnCount 20
+                                               :cellData   {}}}}))]
+            ;; Tag with Sheet class
+            (if tag
+              (db/transact! repo
+                            [{:db/id      (:db/id page)
+                              :block/tags #{(:db/id tag)}}]
+                            {:outliner-op :save-block})
+              (notification/show! "Sheet 标签创建失败，页面可能不会出现在表格列表中" :warning))
+            ;; Seed data
+            (visual-doc/save-doc-cache! sheet-cache-prefix page-uuid initial)
+            (p/let [_ (visual-doc/<flush-doc! repo page-uuid sheet-attr initial)]
+              (when redirect?
+                (route-handler/redirect!
+                 {:to          :sheet
+                  :path-params {:name page-uuid}}))
+              page)))))))
+
+(defn <rename-sheet!
+  "Renames a sheet page."
+  [page-uuid-str new-name]
+  (let [trimmed (string/trim (or new-name ""))]
+    (if (sheet-name-exists? trimmed)
+      (do (notification/show! (str "表格「" trimmed "」已存在，请使用不同的名称") :warning)
+          nil)
+      (p/do!
+       (page-handler/rename! page-uuid-str trimmed)
+       (notification/show! "表格已重命名" :success)))))
+
+(defn <delete-sheet!
+  "Deletes a sheet page after removing its sidecar payload and local cache."
+  [page-uuid-str]
+  (let [page (db/entity [:block/uuid (uuid page-uuid-str)])]
+    (cond
+      (nil? page)
+      (do
+        (notification/show! "表格页面未找到" :warning)
+        (p/resolved false))
+
+      (:db/ident page)
+      (do
+        (notification/show! "内置表格页面不能删除" :warning)
+        (p/resolved false))
+
+      (:logseq.property/deleted-at page)
+      (do
+        (notification/show! "该表格已被删除" :warning)
+        (p/resolved false))
+
+      :else
+      (p/do!
+       (visual-doc/<delete-doc! (state/get-current-repo) page-uuid-str sheet-cache-prefix)
+       (common-page-handler/<delete!
+        (uuid page-uuid-str)
+        (fn [] (notification/show! "表格已删除" :success))
+        :error-handler (fn [] (notification/show! "删除表格失败" :error)))))))
+
+(defn redirect-to-sheet!
+  "Navigate to the sheet editor page."
+  [page-uuid]
+  (route-handler/redirect!
+   {:to          :sheet
+    :path-params {:name (str page-uuid)}}))

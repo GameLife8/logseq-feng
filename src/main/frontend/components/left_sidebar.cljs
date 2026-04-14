@@ -136,6 +136,7 @@
   "导航项显示名称（无对应 i18n key 的项）。"
   {:whiteboard  "白板"
    :mind-map    "思维导图"
+   :sheet       "表格"
    :tag-manager "标签管理"})
 
 (rum/defc sidebar-navigations-edit-content
@@ -182,9 +183,9 @@
 
 (rum/defc ^:large-vars/cleanup-todo sidebar-navigations
   [{:keys [default-home route-match route-name srs-open?]}]
-  (let [navs [:whiteboard :mind-map :tag-manager :flashcards :all-pages :graph-view :tag/tasks :tag/assets]
+  (let [navs [:whiteboard :mind-map :sheet :tag-manager :flashcards :all-pages :graph-view :tag/tasks :tag/assets]
         [checked-navs set-checked-navs!] (rum/use-state (or (storage/get :ls-sidebar-navigations)
-                                                            [:whiteboard :mind-map :tag-manager :flashcards :all-pages :graph-view]))]
+                                                            [:whiteboard :mind-map :sheet :tag-manager :flashcards :all-pages :graph-view]))]
 
     (hooks/use-effect!
      (fn []
@@ -258,6 +259,14 @@
             :title "思维导图"
             :icon "brand-apple-arcade"
             :href (rfe/href :all-mind-maps)})
+
+          (= nav :sheet)
+          (sidebar-item
+           {:class "sheet-nav"
+            :active (and (not srs-open?) (#{:all-sheets :sheet} route-name))
+            :title "表格"
+            :icon "table"
+            :href (rfe/href :all-sheets)})
 
           (= nav :tag-manager)
           (sidebar-item
