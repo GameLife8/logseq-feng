@@ -38,12 +38,25 @@
 
 ;; ── Snapshot helpers ─────────────────────────────────────────────────────────
 
-(defn- snapshot->json
-  "Extract workbook snapshot from a running Univer instance as JSON string.
-   Uses the FUniver facade API: univerAPI.getActiveWorkbook().save()."
+(defn- commit-cell-edit!
+  "Force-commit any in-progress cell editing so the value is written to
+   the workbook model before we take a snapshot.  Without this, typing
+   in a cell and immediately navigating away loses the uncommitted text."
   [^js univer-api]
   (try
     (when-let [workbook (.getActiveWorkbook univer-api)]
+      (.endEditing workbook true))
+    (catch :default _
+      ;; endEditing may not exist or may throw if no edit is active — safe to ignore
+      nil)))
+
+(defn- snapshot->json
+  "Extract workbook snapshot from a running Univer instance as JSON string.
+   Commits any active cell edit first, then calls save()."
+  [^js univer-api]
+  (try
+    (when-let [workbook (.getActiveWorkbook univer-api)]
+      (commit-cell-edit! univer-api)
       (js/JSON.stringify (.save workbook)))
     (catch :default e
       (js/console.error "[sheet] snapshot->json failed:" e)
