@@ -13,7 +13,7 @@
             [frontend.handler.editor :as editor-handler]
             [frontend.handler.notification :as notification]
             [frontend.handler.sheet :as sheet-handler]
-            [frontend.mixins :as db-mixins]
+            [frontend.db-mixins :as db-mixins]
             [frontend.state :as state]
             [frontend.ui :as ui]
             [frontend.util :as util]

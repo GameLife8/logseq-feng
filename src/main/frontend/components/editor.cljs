@@ -757,7 +757,7 @@
                      ;; cannot create duplicate sheets while the page is being created.
                      (state/clear-editor-action!)
                      (-> (p/let [name (gen-auto-name "sheet")
-                                  page (sheet-handler/<create-sheet! name)]
+                                  page (sheet-handler/<create-sheet! name nil)]
                            (when page
                              (insert-macro-and-close! id "sheet" (str (:block/uuid page)))))
                          (p/finally (fn []

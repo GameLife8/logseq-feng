@@ -299,11 +299,12 @@
            (save-doc-cache! p-uuid json)
            (when save-fn
              (save-fn p-uuid json))))
-       ;; Destroy Univer
+       ;; Destroy Univer — deferred to next tick to avoid unmounting
+       ;; Univer's internal React root while Logseq React is still rendering
        (when-let [inst @*univer]
-         (destroy-univer-instance! inst)
          (reset! *univer nil)
-         (reset! *univer-api nil)))
+         (reset! *univer-api nil)
+         (js/setTimeout #(destroy-univer-instance! inst) 0)))
      state)}
 
   [state props]

@@ -54,11 +54,12 @@
 ;; 虚拟内置标签：非 logseq.class/* 但应视为系统内置、禁止删除的用户创建标签
 (def ^:private virtual-builtin-titles
   "用户动态创建但应视为内置的标签名称集合"
-  #{"MindMap"})
+  #{"MindMap" "Sheet"})
 
 (def ^:private virtual-builtin-display
   "虚拟内置标签显示名称"
-  {"MindMap" "MindMap（思维导图）"})
+  {"MindMap" "MindMap（思维导图）"
+   "Sheet"   "Sheet（表格）"})
 
 ;; ── 数据加载 ─────────────────────────────────────────────────────────────────
 
