@@ -115,6 +115,60 @@
          (catch :default e
            (js/console.error "[sheet] destroy failed:" e)))))
 
+;; ── Print / PDF export support ───────────────────────────────────────────────
+;; Univer renders on <canvas> which is invisible in print and in Logseq's
+;; DOM-clone-based PDF export.  We keep a hidden HTML <table> always present
+;; in the DOM so that both native print and Logseq PDF export capture it.
+;; The table is updated on every cache-timer tick (≈3 s).
+
+(defn- col-letter
+  "Converts a 0-based column index to Excel-style letter (0→A, 25→Z, 26→AA)."
+  [idx]
+  (loop [n idx result ""]
+    (let [ch (char (+ 65 (mod n 26)))
+          next-result (str ch result)
+          q  (dec (quot n 26))]  ;; dec because A=0, not 1
+      (if (neg? (- n 26))
+        next-result
+        (recur q next-result)))))
+
+(defn- build-print-table-html
+  "Builds an HTML string for a <table> from workbook JSON.
+   Includes column headers (A, B, C...) and row numbers for readability."
+  [json-str]
+  (try
+    (when (seq json-str)
+      (let [wb         (js->clj (js/JSON.parse json-str) :keywordize-keys false)
+            sheet-id   (first (get wb "sheetOrder"))
+            sheet      (get-in wb ["sheets" sheet-id])
+            cell-data  (get sheet "cellData" {})]
+        (when (seq cell-data)
+          (let [parse-int  #(js/parseInt % 10)
+                row-keys   (sort (map parse-int (keys cell-data)))
+                max-row    (inc (apply max row-keys))
+                col-keys   (sort (mapcat (fn [[_ cols]] (map parse-int (keys cols))) cell-data))
+                max-col    (if (seq col-keys) (inc (apply max col-keys)) 1)
+                sb         (js/Array.)]
+            (.push sb "<table class='sheet-print-table'>")
+            ;; Column header row: empty corner + A, B, C...
+            (.push sb "<thead><tr><th class='spt-corner'></th>")
+            (doseq [c (range max-col)]
+              (.push sb (str "<th class='spt-col-hdr'>" (col-letter c) "</th>")))
+            (.push sb "</tr></thead><tbody>")
+            ;; Data rows with row numbers
+            (doseq [r (range max-row)]
+              (.push sb (str "<tr><td class='spt-row-num'>" (inc r) "</td>"))
+              (doseq [c (range max-col)]
+                (let [cell (get-in cell-data [(str r) (str c)])
+                      v    (when cell (or (get cell "v") ""))]
+                  (.push sb (str "<td>" (or v "") "</td>"))))
+              (.push sb "</tr>"))
+            (.push sb "</tbody></table>")
+            (.join sb "")))))
+    (catch :default e
+      (js/console.warn "[sheet] build-print-table failed:" e)
+      nil)))
+
 ;; ── Rum editor component ─────────────────────────────────────────────────────
 
 (rum/defcs editor
@@ -143,6 +197,7 @@
     (rum/local nil    ::visibility-handler)
     (rum/local nil    ::current-save-fn)
     (rum/local nil    ::current-page-uuid)
+    (rum/local nil    ::print-container)      ; DOM ref for the always-present print table div
   {:did-mount
    (fn [state]
      (let [*univer            (::univer state)
@@ -233,14 +288,18 @@
                   (catch :default e
                     (js/console.warn "[sheet] onCommandExecuted listener failed:" e))))
 
-              ;; 3s cache timer — save to localStorage if dirty
+              ;; 3s cache timer — save to localStorage if dirty + refresh print table
               (reset! *cache-timer
                       (js/setInterval
                        (fn []
                          (when (and @*cache-dirty? @*univer-api)
                            (when-let [json (snapshot->json @*univer-api)]
                              (save-doc-cache! @*p-uuid json)
-                             (reset! *last-cached-json json))
+                             (reset! *last-cached-json json)
+                             ;; Update the hidden print table for PDF export
+                             (when-let [el @(::print-container state)]
+                               (when-let [html (build-print-table-html json)]
+                                 (set! (.-innerHTML el) html))))
                            (reset! *cached? true)
                            (reset! *cache-dirty? false)))
                        3000))
@@ -262,6 +321,14 @@
          (reset! *visibility visibility)
          (.addEventListener js/window "pagehide" pagehide)
          (.addEventListener js/document "visibilitychange" visibility))
+
+       ;; Build initial print table from initial data (defer to ensure ref is set)
+       (when initial-json
+         (js/requestAnimationFrame
+          (fn []
+            (when-let [el @(::print-container state)]
+              (when-let [html (build-print-table-html initial-json)]
+                (set! (.-innerHTML el) html))))))
 
        state))
 
@@ -319,6 +386,9 @@
       {:ref   (fn [el] (reset! container-ref el))
        :style {:width "100%" :height "100%"
                :min-height "400px"}}]
+     ;; Hidden print table — always in DOM for Logseq PDF export (DOM clone)
+     [:div.sheet-print-container
+      {:ref (fn [el] (reset! (::print-container state) el))}]
      ;; Sync status overlay (mirrors Excalidraw pattern)
      [:div.sheet-sync-status
       {:style {:position "absolute" :bottom "4px" :right "8px"
