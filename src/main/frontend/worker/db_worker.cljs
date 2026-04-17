@@ -562,23 +562,25 @@
                                                        {:page-uuid  (:page_uuid latest-doc)
                                                         :doc-type   (:doc_type latest-doc)
                                                         :updated-at (:updated_at latest-doc)}))
-                 (clj->js {:page-uuid      (:page_uuid latest-doc)
-                           :doc-type       (:doc_type latest-doc)
-                           :content        (:content latest-doc)
-                           :updated-at     (:updated_at latest-doc)
-                           :schema-version (:schema_version latest-doc)
-                           :storage-format (:storage_format latest-doc)
-                           :storage        "sidecar"})))))))
+                  (clj->js {:page-uuid      (:page_uuid latest-doc)
+                            :doc-type       (:doc_type latest-doc)
+                            :content        (:content latest-doc)
+                            :updated-at     (:updated_at latest-doc)
+                            :schema-version (:schema_version latest-doc)
+                            :storage-format (:storage_format latest-doc)
+                            :write-token    (:write_token latest-doc)
+                            :storage        "sidecar"})))))))
 
 (def-thread-api :thread-api/visual-doc-upsert
-  [repo page-uuid doc-type content]
+  [repo page-uuid doc-type content & [write-token]]
   (when (and (seq repo) (seq page-uuid) (seq content))
     (p/let [visual-doc-db (<get-visual-doc-db repo)
             updated-at    (common-util/time-ms)
             doc-request   {:page-uuid  page-uuid
-                           :doc-type   doc-type
-                           :content    content
-                           :updated-at updated-at}
+                            :doc-type   doc-type
+                            :content    content
+                            :updated-at updated-at
+                            :write-token (or write-token (str (random-uuid)))}
             stored-doc    (worker-visual-doc/upsert-doc! visual-doc-db doc-request)]
       (when stored-doc
         (schedule-visual-doc-index-rebuild! repo
@@ -593,6 +595,12 @@
   (when (and (seq repo) (seq page-uuid))
     (p/let [visual-doc-db (<get-visual-doc-db repo)]
       (worker-visual-doc/delete-doc! visual-doc-db page-uuid))))
+
+(def-thread-api :thread-api/visual-doc-delete-if-token
+  [repo page-uuid write-token]
+  (when (and (seq repo) (seq page-uuid) (seq write-token))
+    (p/let [visual-doc-db (<get-visual-doc-db repo)]
+      (worker-visual-doc/delete-doc! visual-doc-db page-uuid write-token))))
 
 (def ^:private *get-blocks-cache (volatile! (cache/lru-cache-factory {} :threshold 1000)))
 (def ^:private get-blocks-with-cache

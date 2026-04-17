@@ -11,7 +11,7 @@
 
 (def sidecar-path "/visual-doc.sqlite")
 
-(def ^:private current-schema-version 4)
+(def ^:private current-schema-version 5)
 (def ^:private blob-storage-format "blob")
 (def ^:private mind-map-node-storage-format "mind_map_nodes")
 (def ^:private whiteboard-element-storage-format "whiteboard_elements")
@@ -300,6 +300,7 @@
   (exec-ignore-error! db "alter table visual_docs add column schema_version integer not null default 1")
   (exec-ignore-error! db "alter table visual_docs add column storage_format text not null default 'blob'")
   (exec-ignore-error! db "alter table visual_docs add column content_size integer not null default 0")
+  (exec-ignore-error! db "alter table visual_docs add column write_token text not null default ''")
   db)
 
 (defn ensure-table!
@@ -311,8 +312,9 @@
                updated_at integer not null,
                schema_version integer not null default 1,
                storage_format text not null default 'blob',
-               content_size integer not null default 0
-             )")
+               content_size integer not null default 0,
+               write_token text not null default ''
+              )")
   (ensure-doc-columns! db)
   (.exec db "create index if not exists idx_visual_docs_type_updated_at
              on visual_docs(doc_type, updated_at desc)")
@@ -354,10 +356,10 @@
 (defn- manifest-row
   [^js db page-uuid]
   (when (seq page-uuid)
-    (let [rows (exec-select db
-                 "select page_uuid, doc_type, content, updated_at, schema_version, storage_format, content_size
-                  from visual_docs where page_uuid = ? limit 1"
-                 #js [(str page-uuid)])]
+     (let [rows (exec-select db
+                  "select page_uuid, doc_type, content, updated_at, schema_version, storage_format, content_size, write_token
+                   from visual_docs where page_uuid = ? limit 1"
+                  #js [(str page-uuid)])]
       (some-> (first rows) normalize-number-fields normalize-manifest-row))))
 
 (defn- index-state
@@ -371,23 +373,25 @@
 
 (defn- upsert-visual-docs-row!
   "Shared helper to insert/update the visual_docs manifest row."
-  [^js db page-uuid doc-type content updated-at storage-format content-size]
-  (.exec db #js {:sql "insert into visual_docs (page_uuid, doc_type, content, updated_at, schema_version, storage_format, content_size)
-                       values (?, ?, ?, ?, ?, ?, ?)
+  [^js db page-uuid doc-type content updated-at storage-format content-size write-token]
+  (.exec db #js {:sql "insert into visual_docs (page_uuid, doc_type, content, updated_at, schema_version, storage_format, content_size, write_token)
+                       values (?, ?, ?, ?, ?, ?, ?, ?)
                        on conflict(page_uuid) do update set
                          doc_type = excluded.doc_type,
                          content = excluded.content,
                          updated_at = excluded.updated_at,
                          schema_version = excluded.schema_version,
                          storage_format = excluded.storage_format,
-                         content_size = excluded.content_size"
-                 :bind #js [(str page-uuid)
-                            (str doc-type)
-                            (str content)
-                            (js/Number updated-at)
-                            current-schema-version
-                            (str storage-format)
-                            (js/Number content-size)]}))
+                         content_size = excluded.content_size,
+                         write_token = excluded.write_token"
+                  :bind #js [(str page-uuid)
+                             (str doc-type)
+                             (str content)
+                             (js/Number updated-at)
+                             current-schema-version
+                             (str storage-format)
+                             (js/Number content-size)
+                             (str (or write-token ""))]}))
 
 (defn- set-index-state!
   [^js db page-uuid doc-type source-updated-at built-at]
@@ -476,11 +480,11 @@
       (throw error))))
 
 (defn- upsert-blob-doc!
-  [^js db {:keys [page-uuid doc-type content updated-at]}]
+  [^js db {:keys [page-uuid doc-type content updated-at write-token]}]
   (let [content'      (str content)
         content-size  (content-size-bytes content')
         needs-index?  (wants-derived-index? doc-type content-size)]
-    (upsert-visual-docs-row! db page-uuid doc-type content' updated-at blob-storage-format content-size)
+    (upsert-visual-docs-row! db page-uuid doc-type content' updated-at blob-storage-format content-size write-token)
     (if needs-index?
       (clear-derived-index-state! db page-uuid)
       (clear-derived-index! db page-uuid))
@@ -489,7 +493,8 @@
      :updated-at     updated-at
      :schema-version current-schema-version
      :storage-format blob-storage-format
-     :content-size   content-size}))
+     :content-size   content-size
+     :write-token    (or write-token "")}))
 
 (defn- rebuild-mind-map-index!
   [^js db {:keys [page_uuid doc_type content updated_at]}]
@@ -598,11 +603,16 @@
       row'))))
 
 (defn delete-doc!
-  [^js db page-uuid]
+  ([^js db page-uuid]
+   (delete-doc! db page-uuid nil))
+  ([^js db page-uuid write-token]
   (if (seq page-uuid)
-    (do
-      (clear-derived-index! db page-uuid)
-      (.exec db #js {:sql "delete from visual_docs where page_uuid = ?"
-                     :bind #js [(str page-uuid)]})
-      true)
-    false))
+    (if (and (seq write-token)
+             (not= (:write_token (manifest-row db page-uuid)) (str write-token)))
+      false
+      (do
+        (clear-derived-index! db page-uuid)
+        (.exec db #js {:sql "delete from visual_docs where page_uuid = ?"
+                       :bind #js [(str page-uuid)]})
+        true))
+    false)))
