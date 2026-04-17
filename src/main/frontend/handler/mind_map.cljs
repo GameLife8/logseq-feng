@@ -232,30 +232,36 @@
               page)))))))
 
 (defn <delete-mind-map!
-  "Deletes a mind-map page after removing its sidecar payload and local cache."
+  "Deletes a mind-map page manifest first, then clears local cache, thumbnail,
+   and best-effort cleans sidecar storage."
   [page-uuid-str]
-  (let [page (db/entity [:block/uuid (uuid page-uuid-str)])]
+  (let [page (db/entity [:block/uuid (uuid page-uuid-str)])
+        repo (state/get-current-repo)]
     (cond
       (nil? page)
       (do
-        (notification/show! "思维导图页面未找到" :warning)
+        (notification/show! "Mind map page not found" :warning)
         (p/resolved false))
 
       (:db/ident page)
       (do
-        (notification/show! "内置思维导图页面不能删除" :warning)
+        (notification/show! "Built-in mind map pages cannot be deleted" :warning)
         (p/resolved false))
 
       (:logseq.property/deleted-at page)
       (do
-        (notification/show! "该思维导图已被删除" :warning)
+        (notification/show! "This mind map has already been deleted" :warning)
         (p/resolved false))
 
       :else
-      (p/do!
-       (visual-doc/<delete-doc! (state/get-current-repo) page-uuid-str mind-map-cache-prefix)
-       (.removeItem js/localStorage (str "mind-map-thumb-" page-uuid-str))
-       (common-page-handler/<delete!
-        (uuid page-uuid-str)
-        (fn [] (notification/show! "思维导图已删除" :success))
-        :error-handler (fn [] (notification/show! "删除思维导图失败" :error)))))))
+      (common-page-handler/<delete!
+       (uuid page-uuid-str)
+       (fn []
+         (visual-doc/clear-doc-cache! mind-map-cache-prefix page-uuid-str)
+         (.removeItem js/localStorage (str "mind-map-thumb-" page-uuid-str))
+         (-> (visual-doc/<delete-sidecar-doc! repo page-uuid-str)
+             (p/catch (fn [error]
+                        (js/console.error "[mind-map] sidecar cleanup failed after page delete:" error)
+                        false)))
+         (notification/show! "Mind map deleted" :success))
+       :error-handler (fn [] (notification/show! "Failed to delete mind map" :error))))))

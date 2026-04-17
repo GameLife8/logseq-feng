@@ -137,32 +137,38 @@
        (notification/show! "表格已重命名" :success)))))
 
 (defn <delete-sheet!
-  "Deletes a sheet page after removing its sidecar payload and local cache."
+  "Deletes a sheet page manifest first, then clears local cache and
+   best-effort cleans sidecar storage."
   [page-uuid-str]
-  (let [page (db/entity [:block/uuid (uuid page-uuid-str)])]
+  (let [page (db/entity [:block/uuid (uuid page-uuid-str)])
+        repo (state/get-current-repo)]
     (cond
       (nil? page)
       (do
-        (notification/show! "表格页面未找到" :warning)
+        (notification/show! "Sheet page not found" :warning)
         (p/resolved false))
 
       (:db/ident page)
       (do
-        (notification/show! "内置表格页面不能删除" :warning)
+        (notification/show! "Built-in sheet pages cannot be deleted" :warning)
         (p/resolved false))
 
       (:logseq.property/deleted-at page)
       (do
-        (notification/show! "该表格已被删除" :warning)
+        (notification/show! "This sheet has already been deleted" :warning)
         (p/resolved false))
 
       :else
-      (p/do!
-       (visual-doc/<delete-doc! (state/get-current-repo) page-uuid-str sheet-cache-prefix)
-       (common-page-handler/<delete!
-        (uuid page-uuid-str)
-        (fn [] (notification/show! "表格已删除" :success))
-        :error-handler (fn [] (notification/show! "删除表格失败" :error)))))))
+      (common-page-handler/<delete!
+       (uuid page-uuid-str)
+       (fn []
+         (visual-doc/clear-doc-cache! sheet-cache-prefix page-uuid-str)
+         (-> (visual-doc/<delete-sidecar-doc! repo page-uuid-str)
+             (p/catch (fn [error]
+                        (js/console.error "[sheet] sidecar cleanup failed after page delete:" error)
+                        false)))
+         (notification/show! "Sheet deleted" :success))
+       :error-handler (fn [] (notification/show! "Failed to delete sheet" :error))))))
 
 (defn redirect-to-sheet!
   "Navigate to the sheet editor page."

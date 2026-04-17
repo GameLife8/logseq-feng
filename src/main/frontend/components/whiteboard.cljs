@@ -94,16 +94,20 @@
   (when raw
     (try
       (let [data     (js/JSON.parse raw)
-            elements (.-elements data)]
+            elements (.-elements data)
+            app-state (js/Object.assign #js {}
+                                        (or (.-appState data) #js {})
+                                        #js {:exportWithDarkMode false
+                                             :exportBackground   false})
+            files    (or (.-files data) #js {})]
         (when (and elements
                    (pos? (.-length elements))
                    (exists? js/ExcalidrawLib)
                    (.-exportToSvg js/ExcalidrawLib))
           (-> (js/ExcalidrawLib.exportToSvg
                #js {:elements elements
-                    :appState #js {:exportWithDarkMode false
-                                   :exportBackground   false}
-                    :files #js {}})
+                    :appState app-state
+                    :files files})
               (.then (fn [^js svg]
                        (tighten-svg-view-box! svg 10)
                        (.setAttribute svg "width" "100%")

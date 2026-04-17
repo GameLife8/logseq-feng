@@ -1433,8 +1433,8 @@
      state)
    :will-unmount
    (fn [state]
-     (let [args         (-> state :rum/args first)
-           map-id       (:map-id args)
+     (let [map-id       @(::current-map-id state)
+           save-fn      @(::current-save-fn state)
            cache-timer  @(::cache-timer-id state)
            flush-timer  @(::flush-timer-id state)
            ro           @(::resize-observer state)
@@ -1460,13 +1460,18 @@
            (.removeEventListener js/document "contextmenu" ctx-h true))
          (when-let [md-h @(::ctx-md-handler state)]
            (.removeEventListener container "mousedown" md-h true)))
-       (state/set-block-component-editing-mode! false)
-       (when instance
-         (let [data (.getData ^js instance)]
-           ;; Keep the latest draft locally without reviving a page that is being deleted.
+        (state/set-block-component-editing-mode! false)
+        (when instance
+         (let [data (.getData ^js instance)
+               json-str (js/JSON.stringify data)]
            (save-to-ls! map-id data)
            (save-thumbnail! instance map-id)
            (reset! (::cached? state) true)
+           (when save-fn
+             (-> (save-fn map-id json-str)
+                 (p/catch (fn [error]
+                            (js/console.error "[mind-map] final unmount flush failed:" error)
+                            false))))
            (.destroy ^js instance))))
      state)}
   [state {:keys [map-id map-title on-back]}]

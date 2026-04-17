@@ -163,4 +163,11 @@ Component did-mount
 - Preserve manifest-only page writes and worker sidecar reads.
 - `blob snapshot = truth`, `normalized rows = derived index`.
 - Do not move full document payload back onto `:block/mind-map-data`.
-- Do not use `rowMode: "object"` in any `.exec` call — use `exec-select` helper.
+- Do not use `rowMode: "object"` in any `.exec` call – use `exec-select` helper.
+
+## Review Guardrails
+
+- Mind-map page entities are manifest rows only. Keep creation, rename, gallery queries, and delete flows aligned with that model instead of relying on legacy `:block/mind-map-data` assumptions.
+- Treat sidecar and DataScript updates as two stores with no shared transaction boundary. Save failures after sidecar success and delete failures after sidecar cleanup both need explicit recovery semantics.
+- Normal editor unmount should not silently downgrade durability to localStorage-only unless the page is actively being deleted. The localStorage cache is bounded by the shared 5-entry LRU and is not a safe long-term source of truth.
+- Title-based class lookup (`"MindMap"`) is convenient but fragile. If the feature grows, prefer a stable ident or another explicit marker so gallery membership and duplicate-name checks use the same definition.

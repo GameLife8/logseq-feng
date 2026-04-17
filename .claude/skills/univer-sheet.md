@@ -265,6 +265,13 @@ The `sheet-page` component is the ONLY place that mounts a live Univer instance.
 
 - Univer preset CSS is imported as raw string in `univer-sheet-entry.js` and injected via `<style id="univer-preset-sheets-core">`
 - Override CSS hides the "保护" (Protection) button: `button:has(.univerjs-icon-protect-icon)` and stuck Radix tooltip: `body > [role="tooltip"].univer-bg-gray-700`
+
+## Review Guardrails
+
+- Never interpolate raw cell text into HTML preview or print strings. Escape cell values first, or build DOM nodes with `textContent`, before using `dangerouslySetInnerHTML` / `innerHTML`.
+- Keep preview/print rendering bounded. Sparse workbooks can have a single populated cell far down/right; rendering `0..max-row` by `0..max-col` without caps can freeze the UI.
+- When cache wins over sidecar on load, the initial flush must also update the local persisted baseline/status atoms. Otherwise the editor stays in a fake "pending" state until the next user edit.
+- Prefer the sheet editor's current "final unmount flush to sidecar" model over the whiteboard/mind-map local-cache-only fallback when durability matters.
 - `.sheet-editor-wrapper` and `.sheet-univer-container` must keep `min-height: 400px`, otherwise Univer mounts into a zero-height box
 - Shared embed shell styles live in `common.css`
 

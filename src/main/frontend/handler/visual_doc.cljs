@@ -227,12 +227,20 @@
             (p/catch (fn [err]
                        (js/console.error "[visual-doc] <flush-doc! exception:" err)
                        false)))))))
+(defn <delete-sidecar-doc!
+  "Deletes the visual document payload from the worker sidecar."
+  [repo page-uuid]
+  (if-not (and (seq repo) (seq page-uuid))
+    (p/resolved false)
+    (state/<invoke-db-worker-direct-pass :thread-api/visual-doc-delete repo page-uuid)))
+
 (defn <delete-doc!
   "Deletes the visual document payload from the worker sidecar and clears the
-   local draft cache. Callers should delete the page manifest afterwards."
+   local draft cache after the sidecar delete succeeds."
   [repo page-uuid cache-prefix]
   (if-not (and (seq repo) (seq page-uuid))
     (p/resolved false)
-    (p/let [result (state/<invoke-db-worker-direct-pass :thread-api/visual-doc-delete repo page-uuid)]
-      (clear-doc-cache! cache-prefix page-uuid)
+    (p/let [result (<delete-sidecar-doc! repo page-uuid)]
+      (when result
+        (clear-doc-cache! cache-prefix page-uuid))
       result)))

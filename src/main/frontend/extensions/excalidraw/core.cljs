@@ -12,7 +12,7 @@
    IMPORTANT: Excalidraw is a React.memo-wrapped function component.
    Using :ref throws 'Function components cannot be given refs' and never fires.
    The correct API is the :excalidrawAPI prop, which accepts a callback fn(api)."
-  (:require ["@excalidraw/excalidraw" :refer [Excalidraw]]
+  (:require ["@excalidraw/excalidraw" :refer [Excalidraw serializeAsJSON]]
             [frontend.extensions.excalidraw.api :as ex-api]
             [frontend.handler.notification :as notification]
             [frontend.handler.visual-doc :as visual-doc]
@@ -85,12 +85,15 @@
      :graph (str graph-label " " graph-state)}))
 
 (defn- scene-json
-  [elements app-state]
-  (js/JSON.stringify
-   #js {:elements elements
-        :appState #js {:scrollX (gobj/get app-state "scrollX")
-                       :scrollY (gobj/get app-state "scrollY")
-                       :zoom    (gobj/get app-state "zoom")}}))
+  [elements app-state files]
+  (try
+    (serializeAsJSON elements app-state (or files #js {}) "local")
+    (catch :default error
+      (js/console.warn "[excalidraw] serializeAsJSON failed, falling back to manual scene serialization:" error)
+      (js/JSON.stringify
+       #js {:elements elements
+            :appState (or app-state #js {})
+            :files    (or files #js {})}))))
 
 (declare canvas-json)
 
@@ -99,7 +102,7 @@
     (visual-doc/save-doc-cache! cache-prefix page-uuid (canvas-json api))))
 
 (defn- canvas-json [^js api]
-  (scene-json (.getSceneElements api) (.getAppState api)))
+  (scene-json (.getSceneElements api) (.getAppState api) (.getFiles api)))
 
 ;; ── library (shared across whiteboards, per graph) ───────────────────────────
 
@@ -441,7 +444,8 @@
            flush-timer @(::flush-timer-id state)
            pagehide-handler @(::pagehide-handler state)
            visibility-handler @(::visibility-handler state)
-           p-uuid  (-> state :rum/args first :page-uuid)]
+           save-fn @(::current-save-fn state)
+           p-uuid  @(::current-page-uuid state)]
        (when cache-timer (js/clearInterval cache-timer))
        (when flush-timer (js/clearInterval flush-timer))
        (when pagehide-handler
@@ -449,8 +453,13 @@
        (when visibility-handler
          (.removeEventListener js/document "visibilitychange" visibility-handler))
        (when api
-         ;; Keep the latest draft locally without reviving a page that is being deleted.
-         (save-to-ls! p-uuid api)))
+         (let [json-str (canvas-json api)]
+           (save-to-ls! p-uuid api)
+           (when save-fn
+             (-> (save-fn p-uuid json-str)
+                 (p/catch (fn [error]
+                            (js/console.error "[excalidraw] final unmount flush failed:" error)
+                            false)))))))
      state)}
   [state {:keys [page-uuid page-title on-back on-api-ready
                  on-show-linked-blocks on-selection-change
@@ -552,10 +561,10 @@
                                (reset! *library items)
                                (.setItem js/localStorage (lib-key)
                                          (js/JSON.stringify items)))
-            :onChange         (fn [elements ^js app-state _files]
+            :onChange         (fn [elements ^js app-state files]
                                 (let [current-json    (if-let [api @*api]
                                                         (canvas-json api)
-                                                        (scene-json elements app-state))
+                                                        (scene-json elements app-state files))
                                       cache-dirty?    (not= current-json @*last-cached-json)
                                       persist-dirty?  (not= current-json @*last-persisted-json)]
                                   (reset! *cache-dirty? cache-dirty?)

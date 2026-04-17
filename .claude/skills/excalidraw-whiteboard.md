@@ -181,4 +181,11 @@ Key: `exportToSvg` returns a Promise resolving to an SVG DOM element.
 - Preserve sidecar thread APIs and manifest-only page writes.
 - `blob snapshot = truth`, `normalized rows = derived index`.
 - Do not reintroduce page-level scene JSON as the primary store.
-- Do not use `rowMode: "object"` in any `.exec` call — use `exec-select` helper.
+- Do not use `rowMode: "object"` in any `.exec` call – use `exec-select` helper.
+
+## Review Guardrails
+
+- Persist the full Excalidraw scene, not just `elements` plus a tiny `appState` subset. If image/file elements are supported, the serialized payload must include the file map as well or round-trips will drop those assets.
+- Treat sidecar save/delete plus DataScript manifest updates as a split transaction. Avoid sidecar-first destructive flows unless you also have a rollback or retry strategy.
+- For destructive deletes, prefer "page tombstone/delete succeeds first, then sidecar cleanup" over "sidecar cleanup first". Orphaned blobs are easier to repair than user-visible pages whose durable content has already been removed.
+- Normal route changes should not rely on the 5-entry localStorage LRU as the only durable copy. If unmount skips the sidecar flush, make that conditional on an explicit deleting state rather than the default path.

@@ -10,6 +10,7 @@
             [frontend.db :as db]
             [frontend.db.async :as db-async]
             [frontend.db.react :as react]
+            [frontend.extensions.sheet.preview :as sheet-preview]
             [frontend.handler.editor :as editor-handler]
             [frontend.handler.notification :as notification]
             [frontend.handler.sheet :as sheet-handler]
@@ -102,7 +103,7 @@
        (p/let [doc-info (sheet-handler/<load-sheet-doc page-uuid)]
          (reset! (::doc-loaded? state) true)
          (when-let [json (:json doc-info)]
-           (reset! (::preview-html state) (build-preview-table-html json)))))
+           (reset! (::preview-html state) (sheet-preview/build-table-html json)))))
      state)}
   [state page-uuid config]
   (let [preview-html (rum/react (::preview-html state))
@@ -115,7 +116,7 @@
                        (util/stop e)
                        (p/let [doc-info (sheet-handler/<load-sheet-doc page-uuid)]
                          (when-let [json (:json doc-info)]
-                           (reset! (::preview-html state) (build-preview-table-html json)))))
+                           (reset! (::preview-html state) (sheet-preview/build-table-html json)))))
         open!        (fn [e]
                        (util/stop e)
                        (sheet-handler/redirect-to-sheet! page-uuid))

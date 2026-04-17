@@ -11,7 +11,8 @@
    - On pagehide / visibilitychange: explicit immediate save
    - On unmount: fallback save to localStorage
    - Dirty tracking via univerAPI.onCommandExecuted"
-  (:require [frontend.handler.visual-doc :as visual-doc]
+  (:require [frontend.extensions.sheet.preview :as sheet-preview]
+            [frontend.handler.visual-doc :as visual-doc]
             [frontend.state :as state]
             [promesa.core :as p]
             [rum.core :as rum]))
@@ -309,9 +310,23 @@
               (reset! *univer univer)
               (reset! *univer-api api)
 
-              ;; If cache was newer than sidecar, flush immediately
+              ;; If cache was newer than sidecar, flush immediately and reset the
+              ;; persisted baseline only after the authoritative write succeeds.
               (when (and needs-initial-flush? on-save-data initial-json)
-                (on-save-data sheet-id initial-json))
+                (-> (p/let [save-result (on-save-data sheet-id initial-json)]
+                      (let [saved? (boolean save-result)]
+                        (reset! *persisted? saved?)
+                        (if saved?
+                          (do
+                            (reset! *last-persisted-json initial-json)
+                            (reset! *persist-dirty? false))
+                          (reset! *persist-dirty? true))
+                        saved?))
+                    (p/catch (fn [error]
+                               (js/console.error "[sheet] initial flush failed:" error)
+                               (reset! *persisted? false)
+                               (reset! *persist-dirty? true)
+                               false))))
 
               ;; Listen for all command executions → mark dirty
               (when api
@@ -339,7 +354,7 @@
                              (reset! *last-cached-json json)
                              ;; Update the hidden print table for PDF export
                              (when-let [el @(::print-container state)]
-                               (when-let [html (build-print-table-html json)]
+                               (when-let [html (sheet-preview/build-table-html json)]
                                  (set! (.-innerHTML el) html))))
                            (reset! *cached? true)
                            (reset! *cache-dirty? false)))
@@ -371,7 +386,7 @@
          (js/requestAnimationFrame
           (fn []
             (when-let [el @(::print-container state)]
-              (when-let [html (build-print-table-html initial-json)]
+              (when-let [html (sheet-preview/build-table-html initial-json)]
                 (set! (.-innerHTML el) html))))))
 
        state))

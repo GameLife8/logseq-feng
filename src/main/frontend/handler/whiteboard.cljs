@@ -217,31 +217,37 @@
     (editor-handler/open-block-in-sidebar! (uuid block-id-str))))
 
 ;; VISUAL-DOC-SIDECAR: redefine delete flow near EOF so the sidecar payload is
-;; removed before the page manifest, without rewriting the whole file again.
+;; cleaned only after the manifest delete succeeds.
 (defn <delete-whiteboard!
-  "Deletes a whiteboard page after removing its sidecar payload."
+  "Deletes a whiteboard page manifest first, then clears local cache and
+   best-effort cleans sidecar storage."
   [page-uuid-str]
-  (let [page (db/entity [:block/uuid (uuid page-uuid-str)])]
+  (let [page (db/entity [:block/uuid (uuid page-uuid-str)])
+        repo (state/get-current-repo)]
     (cond
       (nil? page)
       (do
-        (notification/show! "白板页面未找到" :warning)
+        (notification/show! "Whiteboard page not found" :warning)
         (p/resolved false))
 
       (:db/ident page)
       (do
-        (notification/show! "内置白板页面不能删除" :warning)
+        (notification/show! "Built-in whiteboard pages cannot be deleted" :warning)
         (p/resolved false))
 
       (:logseq.property/deleted-at page)
       (do
-        (notification/show! "该白板已被删除" :warning)
+        (notification/show! "This whiteboard has already been deleted" :warning)
         (p/resolved false))
 
       :else
-      (p/do!
-       (visual-doc/<delete-doc! (state/get-current-repo) page-uuid-str canvas-cache-prefix)
-       (common-page-handler/<delete!
-        (uuid page-uuid-str)
-        (fn [] (notification/show! "白板已删除" :success))
-        :error-handler (fn [] (notification/show! "删除白板失败" :error)))))))
+      (common-page-handler/<delete!
+       (uuid page-uuid-str)
+       (fn []
+         (visual-doc/clear-doc-cache! canvas-cache-prefix page-uuid-str)
+         (-> (visual-doc/<delete-sidecar-doc! repo page-uuid-str)
+             (p/catch (fn [error]
+                        (js/console.error "[whiteboard] sidecar cleanup failed after page delete:" error)
+                        false)))
+         (notification/show! "Whiteboard deleted" :success))
+       :error-handler (fn [] (notification/show! "Failed to delete whiteboard" :error))))))
