@@ -231,15 +231,72 @@ body {
   }
 
   /* ── Sheet embed ────────────────────────────────────────────── */
-  .sheet-editor-area {
-    position: relative;
-    overflow: hidden;
-  }
-
-  .sheet-editor-area .univer-container,
   .sheet-univer-container {
     width: 100%;
     height: 100%;
+  }
+
+  /* ── Inline embed preview table (read-only card) ────────────── */
+  .sheet-embed-preview {
+    aspect-ratio: auto;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 0;
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .sheet-embed-preview-inner {
+    width: 100%;
+    overflow-x: auto;
+    padding: 4px;
+  }
+
+  .sheet-embed-preview-inner .sheet-print-table {
+    display: table !important;
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  .sheet-embed-preview-inner .sheet-print-table thead th {
+    background: var(--lx-gray-03, #f0f1f4);
+    color: var(--lx-gray-10, #555);
+    font-weight: 600;
+    font-size: 11px;
+    text-align: center;
+    padding: 4px 8px;
+    border: 1px solid var(--lx-gray-05, #d1d5db);
+  }
+
+  .sheet-embed-preview-inner .sheet-print-table .spt-corner {
+    width: 36px;
+    min-width: 36px;
+    background: var(--lx-gray-04, #e8e9ed);
+  }
+
+  .sheet-embed-preview-inner .sheet-print-table .spt-row-num {
+    background: var(--lx-gray-03, #f0f1f4);
+    color: var(--lx-gray-10, #555);
+    font-weight: 600;
+    font-size: 11px;
+    text-align: center;
+    width: 36px;
+    min-width: 36px;
+    padding: 4px 6px;
+  }
+
+  .sheet-embed-preview-inner .sheet-print-table td {
+    border: 1px solid var(--lx-gray-05, #e5e7eb);
+    padding: 5px 10px;
+    min-width: 64px;
+    line-height: 1.4;
+    vertical-align: top;
+  }
+
+  .sheet-embed-preview-inner .sheet-print-table td:empty::after {
+    content: "\00a0";
   }
 
   /* Print-friendly table: hidden on screen, visible in print / PDF export.

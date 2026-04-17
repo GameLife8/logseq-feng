@@ -41,7 +41,11 @@
 (defn- commit-cell-edit!
   "Force-commit any in-progress cell editing so the value is written to
    the workbook model before we take a snapshot.  Without this, typing
-   in a cell and immediately navigating away loses the uncommitted text."
+   in a cell and immediately navigating away loses the uncommitted text.
+
+   WARNING: This EXITS the cell's edit mode. Only call it when it's safe
+   to kick the user out of editing — i.e. final-save paths (unmount,
+   pagehide, visibilitychange). Do NOT call on every command/3s tick."
   [^js univer-api]
   (try
     (when-let [workbook (.getActiveWorkbook univer-api)]
@@ -51,15 +55,29 @@
       nil)))
 
 (defn- snapshot->json
-  "Extract workbook snapshot from a running Univer instance as JSON string.
-   Commits any active cell edit first, then calls save()."
+  "Extract workbook snapshot as JSON string WITHOUT touching edit mode.
+   Safe to call from onCommandExecuted / cache timer — does not disrupt
+   the user's in-progress cell editing. Uncommitted cell text may be
+   missing from the snapshot; use snapshot->json-commit for final saves."
+  [^js univer-api]
+  (try
+    (when-let [workbook (.getActiveWorkbook univer-api)]
+      (js/JSON.stringify (.save workbook)))
+    (catch :default e
+      (js/console.error "[sheet] snapshot->json failed:" e)
+      nil)))
+
+(defn- snapshot->json-commit
+  "Final-save snapshot: commits any in-progress cell edit first, then saves.
+   Only use on paths where it's OK to exit edit mode (unmount, pagehide,
+   visibilitychange, explicit persist)."
   [^js univer-api]
   (try
     (when-let [workbook (.getActiveWorkbook univer-api)]
       (commit-cell-edit! univer-api)
       (js/JSON.stringify (.save workbook)))
     (catch :default e
-      (js/console.error "[sheet] snapshot->json failed:" e)
+      (js/console.error "[sheet] snapshot->json-commit failed:" e)
       nil)))
 
 (defn- json->workbook-data
@@ -234,11 +252,21 @@
            _                  (do (reset! *save-fn on-save-data)
                                   (reset! *p-uuid sheet-id))
 
-           ;; persist! — flush to both localStorage and sidecar DB
+           ;; persist! — flush to both localStorage and sidecar DB.
+           ;; commit?=true: force-commit active cell edit (used on navigation
+           ;;   away: pagehide, visibilitychange, will-unmount). Safe there
+           ;;   because the user is already leaving; kicking them out of edit
+           ;;   mode does not disrupt anything and preserves their data.
+           ;; commit?=false: non-disruptive snapshot (used by the 9s flush
+           ;;   timer while the user may still be typing).
            persist!
-           (fn []
-             (if-let [api @*univer-api]
-               (let [json-str (snapshot->json api)
+           (fn persist!
+             ([] (persist! false))
+             ([commit?]
+              (if-let [api @*univer-api]
+                (let [json-str (if commit?
+                                 (snapshot->json-commit api)
+                                 (snapshot->json api))
                      p-uuid   @*p-uuid
                      save-fn  @*save-fn]
                  (when json-str
@@ -264,7 +292,7 @@
                                     false)))
                      (do (reset! *persisted? false)
                          (p/resolved false)))))
-               (p/resolved false)))]
+                (p/resolved false))))]
 
        ;; Initialize dirty tracking baseline
        (reset! *last-cached-json initial-json)
@@ -325,11 +353,14 @@
                            (persist!)))
                        9000))))))
 
-       ;; Event handlers for immediate save on tab hide/close
-       (let [pagehide   (fn [] (persist!))
+       ;; Event handlers for immediate save on tab hide/close.
+       ;; Pass commit?=true so any in-progress cell edit is flushed to the
+       ;; workbook model before snapshotting — otherwise the uncommitted
+       ;; text would be lost when the user navigates away.
+       (let [pagehide   (fn [] (persist! true))
              visibility (fn []
                           (when (= "hidden" (.-visibilityState js/document))
-                            (persist!)))]
+                            (persist! true)))]
          (reset! *pagehide pagehide)
          (reset! *visibility visibility)
          (.addEventListener js/window "pagehide" pagehide)
@@ -373,9 +404,10 @@
        ;; Dispose command listener
        (when-let [d @*cmd-listener]
          (try (.dispose d) (catch :default _ nil)))
-       ;; Final save
+       ;; Final save on unmount — commit any active cell edit first so
+       ;; uncommitted text is not lost when navigating away.
        (when-let [api @*univer-api]
-         (when-let [json (snapshot->json api)]
+         (when-let [json (snapshot->json-commit api)]
            (save-doc-cache! p-uuid json)
            (when save-fn
              (save-fn p-uuid json))))

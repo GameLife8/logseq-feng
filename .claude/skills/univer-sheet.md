@@ -26,14 +26,22 @@ Use this note when working on the Univer spreadsheet feature, including the slas
 
 Identical to the Excalidraw/whiteboard sidecar pattern. The sheet editor in `core.cljs` is modeled after `excalidraw/core.cljs` for dirty tracking, timers, and sync status.
 
+### Read-only inline embed vs. full-page editor
+
+**Inline embed** `{{sheet uuid}}` (rendered by `sheet-embed-card`) is **read-only** with an HTML table preview. No Univer instance is loaded for inline embeds — this prevents data loss from accidental navigation and keeps block rendering fast. The card has hover-reveal action buttons: **Refresh** (re-reads sidecar), **Edit** (navigates to full-page editor), **Delete** (removes the block).
+
+**Full-page editor** at route `/sheet/:uuid` (rendered by `sheet-page`) mounts the full lazy Univer instance with all editing, dirty tracking, sync status, and print/export support.
+
+Pattern mirrors `{{whiteboard uuid}}` / `{{mindmap uuid}}` — the inline embed is a preview card; real editing happens at the dedicated route.
+
 ## Main Files
 
 | File | Role |
 |------|------|
 | `src/main/frontend/commands.cljs` | Slash command "Universheet" → `:editor/insert-sheet` |
 | `src/main/frontend/components/editor.cljs` | `sheet-search` UI, macro insertion with retry logic |
-| `src/main/frontend/components/sheet.cljs` | Macro registration "sheet", DB bridge, lazy loader |
-| `src/main/frontend/handler/sheet.cljs` | Persistence: `save-sheet-to-db!`, `<load-sheet-doc`, `<create-sheet!` |
+| `src/main/frontend/components/sheet.cljs` | `sheet-embed-card` (read-only inline preview), `sheet-page` (full-page route), `all-sheets` (gallery), macro "sheet" |
+| `src/main/frontend/handler/sheet.cljs` | Persistence + CRUD: `save-sheet-to-db!`, `<load-sheet-doc`, `<create-sheet!`, `<rename-sheet!`, `<delete-sheet!`, `redirect-to-sheet!`, Sheet class tag |
 | `src/main/frontend/handler/visual_doc.cljs` | Shared sidecar helpers (cache, flush, load) |
 | `src/main/frontend/extensions/sheet/core.cljs` | Univer runtime, dirty tracking, sync status UI |
 | `src/main/js/univer-sheet-entry.js` | Webpack entry: JS factory + CSS injection |
@@ -197,28 +205,46 @@ This IWorkbookData schema is stable across Univer versions (0.6.x → 0.20.x). O
 
 ## User Flow
 
-### Create and Insert
+### Create and Insert (slash command)
 
 ```
 slash command "Universheet"
   → [:editor/insert-sheet]
   → state action :sheet-search
   → components/editor.cljs sheet-search
-  → handler/sheet.cljs <create-sheet!
-  → insert {{sheet page-uuid}} into current block
+  → handler/sheet.cljs <create-sheet! name {:redirect? false}
+  → insert-macro-and-close! inserts {{sheet page-uuid}} into current block
+  → sheet-handler/redirect-to-sheet! navigates to /sheet/:uuid
 ```
 
-`sheet-search` currently only creates a new sheet. `insert-macro-and-close!` has retry logic (3 frames) to handle editor re-renders during page creation.
+Order matters: create page → insert macro → THEN redirect. Redirecting before the insert would unmount the editor mid-write and lose the macro. `insert-macro-and-close!` has retry logic (3 frames) to handle editor re-renders during page creation.
 
-### Render
+### Render inline `{{sheet uuid}}`
 
 ```
 routes.cljs requires frontend.components.sheet
   → side-effect registers macro "sheet"
   → {{sheet page-uuid}}
-  → components/sheet.cljs sheet-inline-editor
-  → lazy load frontend.extensions.sheet.core/editor
+  → components/sheet.cljs sheet-embed-card
+  → <load-sheet-doc → JSON → build-preview-table-html → HTML table
+  → NO lazy Univer loading (preview is pure HTML)
 ```
+
+Action buttons (hover-reveal toolbar):
+- **Refresh** — re-runs `<load-sheet-doc` and rebuilds preview HTML
+- **Edit** — `sheet-handler/redirect-to-sheet!` → `/sheet/:uuid` (full Univer editor)
+- **Delete** — `editor-handler/delete-block-aux!` removes the block
+
+### Full-page editor `/sheet/:uuid`
+
+```
+route :sheet → components/sheet.cljs sheet-page
+  → <load-sheet-doc → initial-json
+  → lazy load frontend.extensions.sheet.core/editor
+  → full Univer instance with dirty tracking + sync status
+```
+
+The `sheet-page` component is the ONLY place that mounts a live Univer instance. `margin-less-pages?` in `container.cljs` gives it the full right-side viewport.
 
 ## Bundling Requirements
 
@@ -251,6 +277,10 @@ routes.cljs requires frontend.components.sheet
 - **Radix tooltips** from Univer toolbar can get "stuck" as detached DOM nodes on `<body>`. The CSS override in `univer-sheet-entry.js` hides them.
 - **Webpack chunk loading**: Univer 0.20.x uses dynamic imports internally. If `publicPath` is wrong, chunk 404s will cause silent failures.
 - **Browser cache**: After rebuilding the webpack bundle, a hard refresh (Ctrl+Shift+R) may be needed to pick up changes.
+- **Cell edit commit on snapshot**: `snapshot->json` must call `commit-cell-edit!` (which calls `FWorkbook.endEditing(true)`) BEFORE `workbook.save()`. Otherwise, the value in the cell being actively edited is not yet in the workbook model and will be lost on navigation.
+- **`build-preview-table-html` is duplicated** across `components/sheet.cljs` (inline read-only preview) and `extensions/sheet/core.cljs` (print/PDF hidden table). This is intentional: `core.cljs` must remain DB-free; keeping a copy in the components layer avoids circular deps. If you change one, change both.
+- **Inline embed has NO Univer instance**. Do not try to read live workbook data from an inline embed — it only has the sidecar JSON snapshot. For live data, open the full-page editor.
+- **Slash command redirect order**: Must be `<create-sheet! ... {:redirect? false}` → `insert-macro-and-close!` → `redirect-to-sheet!`. Redirecting before macro insertion unmounts the editor and loses the macro.
 
 ## Persistence Contract
 

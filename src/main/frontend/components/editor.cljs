@@ -757,9 +757,12 @@
                      ;; cannot create duplicate sheets while the page is being created.
                      (state/clear-editor-action!)
                      (-> (p/let [name (gen-auto-name "sheet")
-                                  page (sheet-handler/<create-sheet! name nil)]
+                                  page (sheet-handler/<create-sheet! name {:redirect? false})]
                            (when page
-                             (insert-macro-and-close! id "sheet" (str (:block/uuid page)))))
+                             (let [uuid-str (str (:block/uuid page))]
+                               (insert-macro-and-close! id "sheet" uuid-str)
+                               ;; Auto-redirect to full-page editor after macro insertion
+                               (sheet-handler/redirect-to-sheet! uuid-str))))
                          (p/finally (fn []
                                       (reset! *sheet-creating? false))))))
       :on-enter (fn [] (state/clear-editor-action!))

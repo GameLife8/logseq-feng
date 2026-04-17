@@ -39,75 +39,145 @@
                  (reset! *sheet-loaded? true)
                  (on-done)))))
 
-;; ── Inline sheet editor (full embed in block) ────────────────────────────────
+;; ── Preview table builder (pure functions, no Univer dependency) ─────────────
 
-(rum/defcs sheet-inline-editor
-  "Full inline sheet editor rendered inside a block.
-   Loads data from sidecar, mounts the lazy Univer component."
+(defn- col-letter
+  "Converts a 0-based column index to Excel-style letter (0→A, 25→Z, 26→AA)."
+  [idx]
+  (loop [n idx result ""]
+    (let [ch (char (+ 65 (mod n 26)))
+          next-result (str ch result)
+          q  (dec (quot n 26))]
+      (if (neg? (- n 26))
+        next-result
+        (recur q next-result)))))
+
+(defn- build-preview-table-html
+  "Builds an HTML <table> string from workbook JSON for the inline read-only preview.
+   Includes column headers (A, B, C...) and row numbers."
+  [json-str]
+  (try
+    (when (seq json-str)
+      (let [wb         (js->clj (js/JSON.parse json-str) :keywordize-keys false)
+            sheet-id   (first (get wb "sheetOrder"))
+            sheet      (get-in wb ["sheets" sheet-id])
+            cell-data  (get sheet "cellData" {})]
+        (when (seq cell-data)
+          (let [parse-int  #(js/parseInt % 10)
+                row-keys   (sort (map parse-int (keys cell-data)))
+                max-row    (inc (apply max row-keys))
+                col-keys   (sort (mapcat (fn [[_ cols]] (map parse-int (keys cols))) cell-data))
+                max-col    (if (seq col-keys) (inc (apply max col-keys)) 1)
+                sb         (js/Array.)]
+            (.push sb "<table class='sheet-print-table'>")
+            (.push sb "<thead><tr><th class='spt-corner'></th>")
+            (doseq [c (range max-col)]
+              (.push sb (str "<th class='spt-col-hdr'>" (col-letter c) "</th>")))
+            (.push sb "</tr></thead><tbody>")
+            (doseq [r (range max-row)]
+              (.push sb (str "<tr><td class='spt-row-num'>" (inc r) "</td>"))
+              (doseq [c (range max-col)]
+                (let [cell (get-in cell-data [(str r) (str c)])
+                      v    (when cell (or (get cell "v") ""))]
+                  (.push sb (str "<td>" (or v "") "</td>"))))
+              (.push sb "</tr>"))
+            (.push sb "</tbody></table>")
+            (.join sb "")))))
+    (catch :default e
+      (js/console.warn "[sheet] build-preview-table failed:" e)
+      nil)))
+
+;; ── Inline embed card (read-only preview + action buttons) ──────────────────
+
+(rum/defcs sheet-embed-card
+  "Read-only inline embed card for {{sheet page-uuid}}.
+   Shows an HTML table preview. Action buttons: refresh, edit (→ full-page), delete.
+   Matches the whiteboard/mind-map embed card pattern."
   < rum/reactive
-  (rum/local false ::loaded?)
-  (rum/local {:loaded? false :json nil :needs-flush? false :source :empty}
-             ::initial-doc)
+  (rum/local nil   ::preview-html)
+  (rum/local false ::doc-loaded?)
   {:did-mount
    (fn [state]
      (let [page-uuid (-> state :rum/args first)]
-       (ensure-sheet-loaded!
-        (fn [] (reset! (::loaded? state) true)))
        (p/let [doc-info (sheet-handler/<load-sheet-doc page-uuid)]
-         (reset! (::initial-doc state)
-                 (merge {:loaded? true} doc-info))))
+         (reset! (::doc-loaded? state) true)
+         (when-let [json (:json doc-info)]
+           (reset! (::preview-html state) (build-preview-table-html json)))))
      state)}
   [state page-uuid config]
-  (let [editor-loaded? (rum/react (::loaded? state))
-        {:keys [loaded? json needs-flush?]} (rum/react (::initial-doc state))
-        doc-loaded? loaded?
-        page (when (and page-uuid (util/uuid-string? page-uuid))
-               (db/entity [:block/uuid (uuid page-uuid)]))
-        sheet-title (or (:block/title page) "Sheet")
-        block-id (:block/uuid (:block config))]
-    (cond
-      (or (not editor-loaded?) (not doc-loaded?))
-      [:div.sheet-embed-card.visual-doc-embed-card.forbid-edit
-       {:on-pointer-down util/stop-propagation}
-       [:div {:style {:padding "20px" :text-align "center"
-                      :color "var(--ls-secondary-text-color,#666)"}}
-        "Loading spreadsheet..."]]
+  (let [preview-html (rum/react (::preview-html state))
+        doc-loaded?  (rum/react (::doc-loaded? state))
+        page         (when (and page-uuid (util/uuid-string? page-uuid))
+                       (db/entity [:block/uuid (uuid page-uuid)]))
+        sheet-title  (or (:block/title page) "Sheet")
+        block-id     (:block/uuid (:block config))
+        refresh!     (fn [e]
+                       (util/stop e)
+                       (p/let [doc-info (sheet-handler/<load-sheet-doc page-uuid)]
+                         (when-let [json (:json doc-info)]
+                           (reset! (::preview-html state) (build-preview-table-html json)))))
+        open!        (fn [e]
+                       (util/stop e)
+                       (sheet-handler/redirect-to-sheet! page-uuid))
+        remove!      (fn [e]
+                       (util/stop e)
+                       (when block-id
+                         (editor-handler/delete-block-aux! {:block/uuid block-id})))
+        action-button
+        (fn [{:keys [title on-click icon class]}]
+          [:button {:type "button"
+                    :title title
+                    :class (str "visual-doc-embed-action" (when class (str " " class)))
+                    :on-pointer-down util/stop-propagation
+                    :on-click on-click}
+           (ui/icon icon {:size 14})])]
+    [:div.sheet-embed-card.visual-doc-embed-card.forbid-edit
+     {:on-pointer-down util/stop-propagation}
+     ;; Toolbar (hover-reveal via existing CSS)
+     [:div.visual-doc-embed-toolbar
+      [:button.visual-doc-embed-title
+       {:type "button"
+        :on-pointer-down util/stop-propagation
+        :on-click open!}
+       (ui/icon "table" {:size 14})
+       [:span.visual-doc-embed-title-text sheet-title]]
+      [:div.visual-doc-embed-actions
+       (action-button {:title "Refresh preview"
+                       :on-click refresh!
+                       :icon "refresh"})
+       (action-button {:title "Open spreadsheet"
+                       :on-click open!
+                       :icon "edit"})
+       (when block-id
+         (action-button {:title "Remove embed"
+                         :on-click remove!
+                         :icon "trash"
+                         :class "visual-doc-embed-action-danger"}))]]
+     ;; Preview area (click → open full-page editor)
+     [:div.visual-doc-embed-preview.sheet-embed-preview
+      {:on-pointer-down util/stop-propagation
+       :on-click #(sheet-handler/redirect-to-sheet! page-uuid)}
+      (cond
+        (not doc-loaded?)
+        [:div.visual-doc-embed-empty
+         (ui/icon "table" {:size 32 :class "opacity-30"})
+         [:span "Loading..."]]
 
-      :else
-      [:div.sheet-embed-card.visual-doc-embed-card.forbid-edit
-       {:on-pointer-down util/stop-propagation}
-       ;; Toolbar
-       [:div.visual-doc-embed-toolbar
-        [:div.visual-doc-embed-title
-         (ui/icon "table" {:size 14})
-         [:span.visual-doc-embed-title-text sheet-title]]
-        [:div.visual-doc-embed-actions
-         (when block-id
-           [:button {:type "button"
-                     :title "Remove embed"
-                     :class "visual-doc-embed-action visual-doc-embed-action-danger"
-                     :on-pointer-down util/stop-propagation
-                     :on-click (fn [e]
-                                 (util/stop e)
-                                 (when block-id
-                                   (editor-handler/delete-block-aux! {:block/uuid block-id})))}
-            (ui/icon "trash" {:size 14})])]]
-       ;; Sheet editor area
-       [:div.sheet-editor-area
-        {:style {:width "100%" :height "500px" :overflow "hidden"}}
-        (@lazy-sheet
-         {:sheet-id       page-uuid
-          :sheet-title    sheet-title
-          :initial-json   json
-          :needs-initial-flush? needs-flush?
-          :on-save-data   sheet-handler/save-sheet-to-db!})]])))
+        (seq preview-html)
+        [:div.sheet-embed-preview-inner
+         {:dangerouslySetInnerHTML {:__html preview-html}}]
+
+        :else
+        [:div.visual-doc-embed-empty
+         (ui/icon "table" {:size 40})
+         [:span "Open spreadsheet"]])]]))
 
 ;; ── Macro registration: {{sheet page-uuid}} ──────────────────────────────────
 
 (macro/register "sheet"
   (fn [config options]
     (when-let [page-uuid (first (:arguments options))]
-      (sheet-inline-editor page-uuid config))))
+      (sheet-embed-card page-uuid config))))
 
 ;; ── Full-page sheet editor (route component) ─────────────────────────────────
 
