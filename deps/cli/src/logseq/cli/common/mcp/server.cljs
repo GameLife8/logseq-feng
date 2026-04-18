@@ -96,6 +96,19 @@
   [call-api-fn args]
   (call-api-fn "logseq.cli.getPageData" [(aget args "pageName")]))
 
+(defn- api-get-block
+  [call-api-fn args]
+  (call-api-fn "logseq.block.getBlock"
+               [(aget args "uuid")
+                #js {:includePage (aget args "includePage")}]))
+
+(defn- api-get-block-tree
+  [call-api-fn args]
+  (call-api-fn "logseq.block.getBlock"
+               [(aget args "uuid")
+                #js {:includeChildren true
+                     :includePage true}]))
+
 (defn- api-list-pages
   [call-api-fn args]
   (call-api-fn "logseq.cli.listPages" [#js {:expand (aget args "expand")}]))
@@ -116,6 +129,28 @@
   [call-api-fn args]
   (call-api-fn "logseq.cli.upsertNodes" [(aget args "operations") #js {:dry-run (aget args "dry-run")}]))
 
+(defn- api-create-whiteboard
+  [call-api-fn args]
+  (call-api-fn "logseq.cli.createWhiteboard" [(aget args "name")]))
+
+(defn- api-create-sheet
+  [call-api-fn args]
+  (call-api-fn "logseq.cli.createSheet" [(aget args "name")]))
+
+(defn- api-create-mind-map
+  [call-api-fn args]
+  (call-api-fn "logseq.cli.createMindMap" [(aget args "name")]))
+
+(defn- api-get-visual-doc
+  [call-api-fn args]
+  (call-api-fn "logseq.cli.getVisualDoc"
+               [(aget args "pageUuid") (aget args "docType")]))
+
+(defn- api-update-visual-doc
+  [call-api-fn args]
+  (call-api-fn "logseq.cli.updateVisualDoc"
+               [(aget args "pageUuid") (aget args "docType") (aget args "json")]))
+
 (def ^:large-vars/data-var api-tools
   "MCP Tools when calling API server"
   {:listPages
@@ -129,6 +164,21 @@
     :config #js {:title "Get Page"
                  :description "Get a page's content including its blocks. A property and a tag are pages."
                  :inputSchema #js {:pageName (-> (z/string) (.describe "The page's name or uuid"))}}}
+   :getBlock
+   {:fn api-get-block
+    :config #js {:title "Get Block"
+                 :description
+                 "Fetch a single block by its uuid. Returns the block's title/content, properties, tags and immediate-child references (shallow). For a full nested subtree use getBlockTree instead. Blocks are the atomic unit of a Logseq graph; use this when you have a block uuid from searchBlocks or getPage and want its full details."
+                 :inputSchema
+                 #js {:uuid        (-> (z/string) (.describe "The block's uuid"))
+                      :includePage (-> (z/boolean) .optional (.describe "Also include the block's owning page entity in the response"))}}}
+   :getBlockTree
+   {:fn api-get-block-tree
+    :config #js {:title "Get Block Tree"
+                 :description
+                 "Fetch a block and its full nested children subtree by uuid. Equivalent to getBlock with recursive expansion. Always includes the owning page. Use this when you need the outline structure beneath a block — for example to summarize a section or rewrite a subtree."
+                 :inputSchema
+                 #js {:uuid (-> (z/string) (.describe "The block's uuid (root of the returned subtree)"))}}}
    :upsertNodes
    {:fn api-upsert-nodes
     :config
@@ -207,7 +257,56 @@
     :config #js {:title "List Properties"
                  :description "List all properties in a graph"
                  :inputSchema
-                 #js {:expand (-> (z/boolean) .optional (.describe "Provide additional detail on each property e.g. property type, cardinality"))}}}})
+                 #js {:expand (-> (z/boolean) .optional (.describe "Provide additional detail on each property e.g. property type, cardinality"))}}}
+   :createWhiteboard
+   {:fn api-create-whiteboard
+    :config
+    #js {:title "Create Whiteboard"
+         :description
+         "Create a new whiteboard page. Whiteboards are Excalidraw-based visual canvases stored in a worker-managed sidecar (NOT in the DataScript block tree), so you MUST use this tool — upsertNodes cannot create them. Returns {pageUuid, title, docType}. The whiteboard starts empty; use updateVisualDoc with docType=\"whiteboard\" to set its Excalidraw scene JSON afterwards."
+         :inputSchema
+         #js {:name (-> (z/string) (.describe "The whiteboard page title. Must be unique per graph (case-insensitive). Duplicates are rejected with an error."))}}}
+   :createSheet
+   {:fn api-create-sheet
+    :config
+    #js {:title "Create Sheet"
+         :description
+         "Create a new sheet page. Sheets are Univer-based spreadsheets stored in a worker-managed sidecar (NOT in the DataScript block tree), so you MUST use this tool — upsertNodes cannot create them. Returns {pageUuid, title, docType}. The sheet starts with a default empty workbook (50×20); use updateVisualDoc with docType=\"sheet\" to overwrite it with a full Univer workbook JSON."
+         :inputSchema
+         #js {:name (-> (z/string) (.describe "The sheet page title. Must be unique per graph (case-insensitive). Duplicates are rejected with an error."))}}}
+   :createMindMap
+   {:fn api-create-mind-map
+    :config
+    #js {:title "Create Mind Map"
+         :description
+         "Create a new mind-map page. Mind maps are hierarchical tree structures stored in a worker-managed sidecar (NOT in the DataScript block tree), so you MUST use this tool — upsertNodes cannot create them. Returns {pageUuid, title, docType}. The mind-map starts with a single root node named after the title; use updateVisualDoc with docType=\"mind-map\" to set its full tree JSON."
+         :inputSchema
+         #js {:name (-> (z/string) (.describe "The mind-map page title. Must be unique per graph (case-insensitive). Duplicates are rejected with an error."))}}}
+   :getVisualDoc
+   {:fn api-get-visual-doc
+    :config
+    #js {:title "Get Visual Doc"
+         :description
+         "Fetch the JSON payload of a whiteboard / sheet / mind-map page. Use this INSTEAD of getPage when you need the actual scene data — getPage only returns block metadata for visual-doc pages (their payload lives in the sidecar, not in blocks). Returns {pageUuid, docType, source, json, needsFlush} where json is a string of the format documented by the respective editor (Excalidraw / Univer workbook / mind-map tree)."
+         :inputSchema
+         #js {:pageUuid (-> (z/string) (.describe "The visual-doc page's uuid. Find it via listPages (filter by Whiteboard / Sheet / MindMap tag) or from a createX tool response."))
+              :docType  (-> (z/enum #js ["whiteboard" "sheet" "mind-map"])
+                            (.describe "Which visual-doc kind to load. Must match the page's actual tag."))}}}
+   :updateVisualDoc
+   {:fn api-update-visual-doc
+    :config
+    #js {:title "Update Visual Doc"
+         :description
+         "Overwrite a visual-doc page's JSON payload and flush it to the sidecar. Use this for ANY edit to a whiteboard / sheet / mind-map scene — upsertNodes cannot touch sidecar payloads. The json argument must be a complete, valid payload in the format for the target docType:
+           * whiteboard — Excalidraw scene: {\"elements\":[...],\"appState\":{...},\"files\":{...}}
+           * sheet — Univer workbook: {\"id\":\"workbook_1\",\"name\":\"...\",\"sheetOrder\":[...],\"sheets\":{...}}
+           * mind-map — tree: {\"data\":{\"text\":\"root\"},\"children\":[...]}
+         Fetch the current payload with getVisualDoc first, mutate it, then call this tool with the full result. Returns {pageUuid, docType, updatedAt, writeToken, manifestStatus}."
+         :inputSchema
+         #js {:pageUuid (-> (z/string) (.describe "The visual-doc page's uuid."))
+              :docType  (-> (z/enum #js ["whiteboard" "sheet" "mind-map"])
+                            (.describe "Which visual-doc kind. Must match the page's actual tag."))
+              :json     (-> (z/string) (.describe "The new payload as a JSON string. Must be a complete scene — this is an overwrite, not a patch."))}}}})
 
 (defn call-api-tool [tool-fn api-fn args]
   (tool-fn (partial api-tool api-fn) args))

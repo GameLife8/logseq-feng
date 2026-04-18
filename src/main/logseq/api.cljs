@@ -232,6 +232,11 @@
 (def ^:export upsert_nodes cli-based-api/upsert-nodes)
 (def ^:export import_edn (ensure-db-graph cli-based-api/import-edn))
 (def ^:export export_edn (ensure-db-graph cli-based-api/export-edn))
+(def ^:export create_whiteboard (ensure-db-graph cli-based-api/create-whiteboard))
+(def ^:export create_sheet (ensure-db-graph cli-based-api/create-sheet))
+(def ^:export create_mind_map (ensure-db-graph cli-based-api/create-mind-map))
+(def ^:export get_visual_doc (ensure-db-graph cli-based-api/get-visual-doc))
+(def ^:export update_visual_doc (ensure-db-graph cli-based-api/update-visual-doc))
 
 (comment
   ;; Use the following code to generate export APIs from specific namespaces
