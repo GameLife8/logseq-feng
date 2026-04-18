@@ -66,6 +66,39 @@
                                       (p/finally #(close-panel))))
                  :disabled (not changed?))]]))
 
+(rum/defc panel-of-activity
+  < rum/reactive
+  [close-panel]
+  (let [entries (reverse (or (state/sub :electron/server-activity) []))]
+    [:div.cp__server-activity-panel.pt-5
+     [:h2.text-3xl.-translate-y-4 "Activity log"]
+     [:p.opacity-60.text-xs.pb-3
+      "Last " (count entries) " request(s). Full stream available at "
+      [:code "GET /api/v1/events/stream"] " (SSE, Bearer auth required)."]
+     (if (empty? entries)
+       [:p.opacity-60.py-8.text-center "No requests yet."]
+       [:div.max-h-96.overflow-y-auto.text-xs.font-mono.space-y-1
+        (for [{:keys [id ts kind method route status duration-ms error args-summary]} entries]
+          [:div.flex.items-start.space-x-2.py-1.border-b.border-opacity-20
+           {:key id}
+           [:span.basis-14.shrink-0.opacity-50 (some-> ts (subs 11 19))]
+           [:span.basis-10.shrink-0.uppercase.opacity-70 kind]
+           [:span.basis-16.shrink-0
+            {:class (if (= status "error") "text-red-500" "text-green-600")}
+            status " "
+            (when duration-ms [:span.opacity-70 "(" duration-ms "ms)"])]
+           [:div.grow.break-all
+            [:span.font-semibold method]
+            (when route [:span.opacity-50 " " route])
+            (when error [:div.text-red-500.mt-0.5 (str error)])
+            (when (and args-summary (seq args-summary))
+              [:div.opacity-60.mt-0.5.truncate {:title args-summary} args-summary])]])])
+     [:p.flex.justify-end.pt-6.space-x-3
+      (ui/button "Clear"
+                 :variant :outline
+                 :on-click #(state/set-state! :electron/server-activity []))
+      (ui/button "Close" :on-click close-panel)]]))
+
 (rum/defcs panel-of-configs
   < rum/reactive
   (rum/local nil ::configs)
@@ -170,6 +203,12 @@
                                                             {:title "Start server"
                                                              :options {:on-click #(ipc/ipc :server/do :restart)}
                                                              :icon [:span.text-green-500.flex.items-center (ui/icon "player-play")]})
+
+                                                          {:title "Activity log"
+                                                           :options {:on-click #(shui/dialog-open!
+                                                                                 (fn []
+                                                                                   (panel-of-activity shui/dialog-close!)))}
+                                                           :icon (ui/icon "activity")}
 
                                                           {:title "Authorization tokens"
                                                            :options {:on-click #(shui/dialog-open!

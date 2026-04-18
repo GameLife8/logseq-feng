@@ -126,6 +126,17 @@
                  (fn [^js data]
                    (state/set-state! :electron/server (bean/->clj data))))
 
+  (safe-api-call "syncAPIServerActivity"
+                 (fn [^js data]
+                   (let [entry (bean/->clj data)
+                         max-len 50
+                         cur (or (:electron/server-activity @state/state) [])
+                         nxt (conj cur entry)
+                         nxt (if (> (count nxt) max-len)
+                               (subvec nxt (- (count nxt) max-len))
+                               nxt)]
+                     (state/set-state! :electron/server-activity nxt))))
+
   (safe-api-call "handbook"
                  (fn [^js data]
                    (when-let [k (and data (.-key data))]

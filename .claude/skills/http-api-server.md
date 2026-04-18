@@ -93,8 +93,8 @@ Registered in `register-v1-routes!` (same Fastify instance, same Bearer pre-hand
 |---|---|---|
 | `GET  /api/v1/pages` | `cli@list_pages` | Query `?expand=true` toggles detail |
 | `GET  /api/v1/pages/:name` | `cli@get_page_data` | `:name` is page name or uuid |
-| `GET  /api/v1/blocks/:uuid` | `block@get_block` | Query `?includePage=true` |
-| `GET  /api/v1/blocks/:uuid/tree` | `block@get_block` | Always includes page + full child subtree |
+| `GET  /api/v1/blocks/:uuid` | `editor@get_block` | Query `?includePage=true` |
+| `GET  /api/v1/blocks/:uuid/tree` | `editor@get_block` | Always includes page + full child subtree |
 | `POST /api/v1/upsert` | `cli@upsert_nodes` | Body `{operations, dryRun}` — sole REST write path for DataScript entities |
 | `POST /api/v1/whiteboards` | `cli@create_whiteboard` | Body `{name}` → `{pageUuid, title, docType}` |
 | `GET  /api/v1/whiteboards/:uuid` | `cli@get_visual_doc` | Returns the Excalidraw scene JSON from sidecar |
@@ -105,6 +105,8 @@ Registered in `register-v1-routes!` (same Fastify instance, same Bearer pre-hand
 | `POST /api/v1/mind-maps` | `cli@create_mind_map` | Body `{name}` — creates a rooted tree |
 | `GET  /api/v1/mind-maps/:uuid` | `cli@get_visual_doc` | Returns the mind-map tree JSON from sidecar |
 | `PUT  /api/v1/mind-maps/:uuid` | `cli@update_visual_doc` | Body `{json}` — **full overwrite** |
+| `GET  /api/v1/events` | *(in-process ring buffer)* | Snapshot of the last ≤200 request events. Query `?limit=N` caps the slice. |
+| `GET  /api/v1/events/stream` | *(SSE)* | `text/event-stream`. Fires `hello` once, `activity` per request, `:keepalive` every 20s. Bearer required — use `curl -H 'Authorization: Bearer …' -N`. |
 
 Implementation details:
 - These routes invoke pre-resolved snake-case methods (e.g. `"cli@list_pages"`) directly rather than going through `resolve-real-api-method`. If you add new v1 handlers, stay on this shorter form to avoid redundant string parsing.

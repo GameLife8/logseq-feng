@@ -103,11 +103,82 @@
        (utils/send-to-renderer @*win :invokeLogseqAPI {:syncId sid :method method :args args})
        (.handleOnce ipcMain (str ::sync! sid) ret-handle)))))
 
+;; ── Activity log + SSE event bus ───────────────────────────────────────────
+;; A single in-process ring buffer of the last N request events, plus a set
+;; of SSE subscribers. Events are also pushed to the renderer over IPC so the
+;; server popup can show a live activity tail without an extra HTTP roundtrip.
+
+(def ^:private max-log-entries 200)
+(defonce ^:private *activity-log (atom []))
+(defonce ^:private *sse-clients (atom #{}))
+(defonce ^:private *event-id (volatile! 0))
+
+(defn- summarize-args
+  [args]
+  (try
+    (let [s (js/JSON.stringify args)]
+      (cond
+        (nil? s)        ""
+        (> (count s) 160) (str (subs s 0 157) "...")
+        :else           s))
+    (catch :default _ "<unstringifiable>")))
+
+(defn- broadcast-sse!
+  [^js entry-js]
+  (let [payload (str "event: activity\ndata: " (js/JSON.stringify entry-js) "\n\n")]
+    (doseq [^js rep @*sse-clients]
+      (try
+        (.write (.-raw rep) payload)
+        (catch :default e
+          (js/console.warn "[server] SSE write failed, dropping client:" (.-message e))
+          (swap! *sse-clients disj rep))))))
+
+(defn- record-event!
+  [event]
+  (let [id      (vswap! *event-id inc)
+        entry   (assoc event
+                       :id id
+                       :ts (.toISOString (js/Date.)))
+        entry-js (clj->js entry)]
+    (swap! *activity-log
+           (fn [log]
+             (let [log' (conj log entry)
+                   n (count log')]
+               (if (> n max-log-entries)
+                 (subvec log' (- n max-log-entries))
+                 log'))))
+    (broadcast-sse! entry-js)
+    (doseq [^js w (window/get-all-windows)]
+      (utils/send-to-renderer w :syncAPIServerActivity entry))
+    entry))
+
+(defn- with-activity!
+  "Wraps an IPC invocation promise, recording a single activity event when it
+   settles. `ctx` is a map of {:kind :method :route}."
+  [ctx invoke-thunk]
+  (let [t0 (js/Date.now)]
+    (-> (invoke-thunk)
+        (p/then (fn [result]
+                  (let [err (and result (aget result "error"))]
+                    (record-event! (assoc ctx
+                                          :status (if err "error" "success")
+                                          :error  (when err (str err))
+                                          :duration-ms (- (js/Date.now) t0))))
+                  result))
+        (p/catch (fn [e]
+                   (record-event! (assoc ctx
+                                         :status "error"
+                                         :error  (or (some-> e .-message) (str e))
+                                         :duration-ms (- (js/Date.now) t0)))
+                   (throw e))))))
+
 (defn- api-handler!
   [^js req ^js rep]
   (if-let [^js body (.-body req)]
     (if-let [method (resolve-real-api-method (.-method body))]
-      (-> (invoke-logseq-api! method (.-args body))
+      (-> (with-activity! {:kind "api" :method method :route "/api"
+                           :args-summary (summarize-args (.-args body))}
+            #(invoke-logseq-api! method (.-args body)))
           (p/then #(do
                      ;; Responses with an :error key are unexpected failures from electron.listener
                      (when-let [msg (and % (aget % "error"))]
@@ -138,14 +209,20 @@
   (.send rep result))
 
 (defn- rest-invoke!
-  [^js rep method args]
-  (-> (invoke-logseq-api! method args)
-      (p/then #(send-rest-result! rep %))
-      (p/catch #(.send rep %))))
+  [^js req ^js rep method args]
+  (let [route (or (some-> req .-routeOptions .-url)
+                  (.-routerPath req))]
+    (-> (with-activity! {:kind "rest"
+                         :method method
+                         :route (or route "/api/v1/?")
+                         :args-summary (summarize-args args)}
+          #(invoke-logseq-api! method args))
+        (p/then #(send-rest-result! rep %))
+        (p/catch #(.send rep %)))))
 
 (defn- v1-list-pages!
   [^js req ^js rep]
-  (rest-invoke! rep "cli@list_pages"
+  (rest-invoke! req rep "cli@list_pages"
                 #js [#js {:expand (truthy-query? (.-query req) "expand")}]))
 
 (defn- v1-get-page!
@@ -154,7 +231,7 @@
         name       (and params (.-name params))]
     (if (string/blank? name)
       (-> rep (.code 400) (.send (js/Error. "path parameter :name is required")))
-      (rest-invoke! rep "cli@get_page_data" #js [name]))))
+      (rest-invoke! req rep "cli@get_page_data" #js [name]))))
 
 (defn- v1-get-block!
   [^js req ^js rep]
@@ -162,7 +239,7 @@
         uuid       (and params (.-uuid params))]
     (if (string/blank? uuid)
       (-> rep (.code 400) (.send (js/Error. "path parameter :uuid is required")))
-      (rest-invoke! rep "editor@get_block"
+      (rest-invoke! req rep "editor@get_block"
                     #js [uuid #js {:includePage (truthy-query? (.-query req) "includePage")}]))))
 
 (defn- v1-get-block-tree!
@@ -171,7 +248,7 @@
         uuid       (and params (.-uuid params))]
     (if (string/blank? uuid)
       (-> rep (.code 400) (.send (js/Error. "path parameter :uuid is required")))
-      (rest-invoke! rep "editor@get_block"
+      (rest-invoke! req rep "editor@get_block"
                     #js [uuid #js {:includeChildren true :includePage true}]))))
 
 (defn- v1-upsert!
@@ -183,7 +260,7 @@
             dry-run    (.-dryRun body)]
         (if-not operations
           (-> rep (.code 400) (.send (js/Error. "body.operations is required (array)")))
-          (rest-invoke! rep "cli@upsert_nodes"
+          (rest-invoke! req rep "cli@upsert_nodes"
                         #js [operations #js {:dry-run (boolean dry-run)}]))))))
 
 ;; Visual-doc routes. Whiteboards, sheets, and mind-maps are persisted in the
@@ -202,7 +279,7 @@
           nm       (and body (.-name body))]
       (if (or (nil? nm) (string/blank? (str nm)))
         (-> rep (.code 400) (.send (js/Error. "body.name is required")))
-        (rest-invoke! rep create-method #js [nm])))))
+        (rest-invoke! req rep create-method #js [nm])))))
 
 (defn- v1-visual-doc-get-fn
   [{:keys [doc-type]}]
@@ -211,7 +288,7 @@
           uuid       (and params (.-uuid params))]
       (if (string/blank? uuid)
         (-> rep (.code 400) (.send (js/Error. "path parameter :uuid is required")))
-        (rest-invoke! rep "cli@get_visual_doc" #js [uuid doc-type])))))
+        (rest-invoke! req rep "cli@get_visual_doc" #js [uuid doc-type])))))
 
 (defn- v1-visual-doc-put-fn
   [{:keys [doc-type]}]
@@ -228,7 +305,7 @@
         (-> rep (.code 400) (.send (js/Error. "body.json is required (full JSON payload as string — this is an overwrite, not a patch)")))
 
         :else
-        (rest-invoke! rep "cli@update_visual_doc" #js [uuid doc-type json-str])))))
+        (rest-invoke! req rep "cli@update_visual_doc" #js [uuid doc-type json-str])))))
 
 (defn- register-visual-doc-routes!
   [^js server]
@@ -240,6 +317,45 @@
       (.put  server item       (v1-visual-doc-put-fn info))))
   server)
 
+(defn- v1-events-snapshot!
+  [^js req ^js rep]
+  (let [limit  (let [q (.-query req)
+                     raw (and q (aget q "limit"))
+                     n   (when raw (js/parseInt raw 10))]
+                 (if (and n (pos? n)) (min n max-log-entries) max-log-entries))
+        log   @*activity-log
+        n     (count log)
+        slice (if (> n limit) (subvec log (- n limit)) log)]
+    (.send rep (clj->js slice))))
+
+(defn- v1-events-stream!
+  [^js req ^js rep]
+  (let [^js raw (.-raw rep)]
+    ;; Hijack: stop fastify from sending a body; we write to the raw socket.
+    (when (fn? (aget rep "hijack")) (.hijack rep))
+    (.writeHead raw 200
+                #js {:Content-Type   "text/event-stream"
+                     :Cache-Control  "no-cache, no-transform"
+                     :Connection     "keep-alive"
+                     :X-Accel-Buffering "no"})
+    ;; Initial comment keeps some proxies happy, plus a hello event.
+    (.write raw ":ok\n\n")
+    (.write raw (str "event: hello\ndata: "
+                     (js/JSON.stringify #js {:subscribers (inc (count @*sse-clients))
+                                             :logSize (count @*activity-log)})
+                     "\n\n"))
+    (swap! *sse-clients conj rep)
+    ;; Keep-alive heartbeat every 20s so intermediary proxies don't drop idle.
+    (let [timer (js/setInterval
+                 (fn []
+                   (try (.write raw ":keepalive\n\n")
+                        (catch :default _ nil)))
+                 20000)]
+      (.on (.-raw req) "close"
+           (fn []
+             (js/clearInterval timer)
+             (swap! *sse-clients disj rep))))))
+
 (defn- register-v1-routes!
   [^js server]
   (doto server
@@ -248,6 +364,8 @@
     (.get    "/api/v1/blocks/:uuid"       v1-get-block!)
     (.get    "/api/v1/blocks/:uuid/tree"  v1-get-block-tree!)
     (.post   "/api/v1/upsert"             v1-upsert!)
+    (.get    "/api/v1/events"             v1-events-snapshot!)
+    (.get    "/api/v1/events/stream"      v1-events-stream!)
     (register-visual-doc-routes!)))
 
 (defn close!
