@@ -162,7 +162,7 @@
         uuid       (and params (.-uuid params))]
     (if (string/blank? uuid)
       (-> rep (.code 400) (.send (js/Error. "path parameter :uuid is required")))
-      (rest-invoke! rep "block@get_block"
+      (rest-invoke! rep "editor@get_block"
                     #js [uuid #js {:includePage (truthy-query? (.-query req) "includePage")}]))))
 
 (defn- v1-get-block-tree!
@@ -171,7 +171,7 @@
         uuid       (and params (.-uuid params))]
     (if (string/blank? uuid)
       (-> rep (.code 400) (.send (js/Error. "path parameter :uuid is required")))
-      (rest-invoke! rep "block@get_block"
+      (rest-invoke! rep "editor@get_block"
                     #js [uuid #js {:includeChildren true :includePage true}]))))
 
 (defn- v1-upsert!
