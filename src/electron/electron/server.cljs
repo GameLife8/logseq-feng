@@ -120,6 +120,81 @@
           (.send (js/Error. ":method of body is missing!"))))
     (throw (js/Error. "Body{:method :args} is required!"))))
 
+;; ── REST v1 routes ──────────────────────────────────────────────────────────
+;; Shared invoke helper for /api/v1/* — bridges HTTP → renderer via the same
+;; IPC channel as /api, but with per-route method/args shaping instead of a
+;; JSON-RPC body. Mirrors api-handler!'s `:error` → HTTP 500 convention.
+
+(defn- truthy-query?
+  [^js query k]
+  (let [v (and query (aget query k))]
+    (and v (= "true" (string/lower-case (str v))))))
+
+(defn- send-rest-result!
+  [^js rep result]
+  (when-let [msg (and result (aget result "error"))]
+    (.code rep 500)
+    (js/console.error "Unexpected API error:" msg))
+  (.send rep result))
+
+(defn- rest-invoke!
+  [^js rep method args]
+  (-> (invoke-logseq-api! method args)
+      (p/then #(send-rest-result! rep %))
+      (p/catch #(.send rep %))))
+
+(defn- v1-list-pages!
+  [^js req ^js rep]
+  (rest-invoke! rep "cli@list_pages"
+                #js [#js {:expand (truthy-query? (.-query req) "expand")}]))
+
+(defn- v1-get-page!
+  [^js req ^js rep]
+  (let [^js params (.-params req)
+        name       (and params (.-name params))]
+    (if (string/blank? name)
+      (-> rep (.code 400) (.send (js/Error. "path parameter :name is required")))
+      (rest-invoke! rep "cli@get_page_data" #js [name]))))
+
+(defn- v1-get-block!
+  [^js req ^js rep]
+  (let [^js params (.-params req)
+        uuid       (and params (.-uuid params))]
+    (if (string/blank? uuid)
+      (-> rep (.code 400) (.send (js/Error. "path parameter :uuid is required")))
+      (rest-invoke! rep "block@get_block"
+                    #js [uuid #js {:includePage (truthy-query? (.-query req) "includePage")}]))))
+
+(defn- v1-get-block-tree!
+  [^js req ^js rep]
+  (let [^js params (.-params req)
+        uuid       (and params (.-uuid params))]
+    (if (string/blank? uuid)
+      (-> rep (.code 400) (.send (js/Error. "path parameter :uuid is required")))
+      (rest-invoke! rep "block@get_block"
+                    #js [uuid #js {:includeChildren true :includePage true}]))))
+
+(defn- v1-upsert!
+  [^js req ^js rep]
+  (let [^js body (.-body req)]
+    (if-not body
+      (-> rep (.code 400) (.send (js/Error. "Body{:operations [:dryRun]} is required")))
+      (let [operations (.-operations body)
+            dry-run    (.-dryRun body)]
+        (if-not operations
+          (-> rep (.code 400) (.send (js/Error. "body.operations is required (array)")))
+          (rest-invoke! rep "cli@upsert_nodes"
+                        #js [operations #js {:dry-run (boolean dry-run)}]))))))
+
+(defn- register-v1-routes!
+  [^js server]
+  (doto server
+    (.get    "/api/v1/pages"              v1-list-pages!)
+    (.get    "/api/v1/pages/:name"        v1-get-page!)
+    (.get    "/api/v1/blocks/:uuid"       v1-get-block!)
+    (.get    "/api/v1/blocks/:uuid/tree"  v1-get-block-tree!)
+    (.post   "/api/v1/upsert"             v1-upsert!)))
+
 (defn close!
   []
   (when (and @*server (contains? #{:running :error nil} (:status @*state)))
@@ -158,6 +233,7 @@
               _     (doto s
                       (.addHook "preHandler" api-pre-handler!)
                       (.post "/api" api-handler!)
+                      (register-v1-routes!)
                       (.get "/" (fn [_ ^js rep]
                                   (let [html (fs-extra/readFileSync (.join node-path js/__dirname "./docs/api_server.html"))
                                         HOST (get-host)
