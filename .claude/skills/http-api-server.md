@@ -95,9 +95,21 @@ Registered in `register-v1-routes!` (same Fastify instance, same Bearer pre-hand
 | `GET  /api/v1/pages/:name` | `cli@get_page_data` | `:name` is page name or uuid |
 | `GET  /api/v1/blocks/:uuid` | `block@get_block` | Query `?includePage=true` |
 | `GET  /api/v1/blocks/:uuid/tree` | `block@get_block` | Always includes page + full child subtree |
-| `POST /api/v1/upsert` | `cli@upsert_nodes` | Body `{operations, dryRun}` — sole REST write path |
+| `POST /api/v1/upsert` | `cli@upsert_nodes` | Body `{operations, dryRun}` — sole REST write path for DataScript entities |
+| `POST /api/v1/whiteboards` | `cli@create_whiteboard` | Body `{name}` → `{pageUuid, title, docType}` |
+| `GET  /api/v1/whiteboards/:uuid` | `cli@get_visual_doc` | Returns the Excalidraw scene JSON from sidecar |
+| `PUT  /api/v1/whiteboards/:uuid` | `cli@update_visual_doc` | Body `{json}` — **full overwrite**, not a patch |
+| `POST /api/v1/sheets` | `cli@create_sheet` | Body `{name}` — creates a Univer workbook |
+| `GET  /api/v1/sheets/:uuid` | `cli@get_visual_doc` | Returns the workbook JSON from sidecar |
+| `PUT  /api/v1/sheets/:uuid` | `cli@update_visual_doc` | Body `{json}` — **full overwrite** |
+| `POST /api/v1/mind-maps` | `cli@create_mind_map` | Body `{name}` — creates a rooted tree |
+| `GET  /api/v1/mind-maps/:uuid` | `cli@get_visual_doc` | Returns the mind-map tree JSON from sidecar |
+| `PUT  /api/v1/mind-maps/:uuid` | `cli@update_visual_doc` | Body `{json}` — **full overwrite** |
 
-Implementation detail: these routes invoke pre-resolved snake-case methods (e.g. `"cli@list_pages"`) directly rather than going through `resolve-real-api-method`. If you add new v1 handlers, stay on this shorter form to avoid redundant string parsing.
+Implementation details:
+- These routes invoke pre-resolved snake-case methods (e.g. `"cli@list_pages"`) directly rather than going through `resolve-real-api-method`. If you add new v1 handlers, stay on this shorter form to avoid redundant string parsing.
+- The three visual-doc kinds share one factory triple (`v1-visual-doc-{create,get,put}-fn`) driven by the `visual-doc-kinds` map. To add a new visual-doc type, add a row to that map and the routes get registered automatically.
+- `PUT` on a visual-doc is always a **full overwrite** of the scene JSON — there's no PATCH semantics, mirroring `updateVisualDoc` MCP behavior.
 
 ### `POST /mcp` / `GET /mcp` / `DELETE /mcp`
 

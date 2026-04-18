@@ -186,6 +186,60 @@
           (rest-invoke! rep "cli@upsert_nodes"
                         #js [operations #js {:dry-run (boolean dry-run)}]))))))
 
+;; Visual-doc routes. Whiteboards, sheets, and mind-maps are persisted in the
+;; worker-managed sidecar (see `storage-model` skill) so their scene payload
+;; is NOT reachable via upsertNodes. Each kind gets a flat create/read/update
+;; REST triple that delegates to the already-wired cli API methods.
+(def ^:private visual-doc-kinds
+  {:whiteboard {:segment "whiteboards" :create-method "cli@create_whiteboard" :doc-type "whiteboard"}
+   :sheet      {:segment "sheets"      :create-method "cli@create_sheet"      :doc-type "sheet"}
+   :mind-map   {:segment "mind-maps"   :create-method "cli@create_mind_map"   :doc-type "mind-map"}})
+
+(defn- v1-visual-doc-create-fn
+  [{:keys [create-method]}]
+  (fn [^js req ^js rep]
+    (let [^js body (.-body req)
+          nm       (and body (.-name body))]
+      (if (or (nil? nm) (string/blank? (str nm)))
+        (-> rep (.code 400) (.send (js/Error. "body.name is required")))
+        (rest-invoke! rep create-method #js [nm])))))
+
+(defn- v1-visual-doc-get-fn
+  [{:keys [doc-type]}]
+  (fn [^js req ^js rep]
+    (let [^js params (.-params req)
+          uuid       (and params (.-uuid params))]
+      (if (string/blank? uuid)
+        (-> rep (.code 400) (.send (js/Error. "path parameter :uuid is required")))
+        (rest-invoke! rep "cli@get_visual_doc" #js [uuid doc-type])))))
+
+(defn- v1-visual-doc-put-fn
+  [{:keys [doc-type]}]
+  (fn [^js req ^js rep]
+    (let [^js params (.-params req)
+          uuid       (and params (.-uuid params))
+          ^js body   (.-body req)
+          json-str   (and body (.-json body))]
+      (cond
+        (string/blank? uuid)
+        (-> rep (.code 400) (.send (js/Error. "path parameter :uuid is required")))
+
+        (or (not (string? json-str)) (string/blank? json-str))
+        (-> rep (.code 400) (.send (js/Error. "body.json is required (full JSON payload as string — this is an overwrite, not a patch)")))
+
+        :else
+        (rest-invoke! rep "cli@update_visual_doc" #js [uuid doc-type json-str])))))
+
+(defn- register-visual-doc-routes!
+  [^js server]
+  (doseq [[_ info] visual-doc-kinds]
+    (let [collection (str "/api/v1/" (:segment info))
+          item       (str collection "/:uuid")]
+      (.post server collection (v1-visual-doc-create-fn info))
+      (.get  server item       (v1-visual-doc-get-fn info))
+      (.put  server item       (v1-visual-doc-put-fn info))))
+  server)
+
 (defn- register-v1-routes!
   [^js server]
   (doto server
@@ -193,7 +247,8 @@
     (.get    "/api/v1/pages/:name"        v1-get-page!)
     (.get    "/api/v1/blocks/:uuid"       v1-get-block!)
     (.get    "/api/v1/blocks/:uuid/tree"  v1-get-block-tree!)
-    (.post   "/api/v1/upsert"             v1-upsert!)))
+    (.post   "/api/v1/upsert"             v1-upsert!)
+    (register-visual-doc-routes!)))
 
 (defn close!
   []
