@@ -22,48 +22,6 @@
 
 (declare mind-map-name-exists?)
 
-#_(defn get-all-mind-maps
-  "返回所有思维导图页面实体（按更新时间倒序）。"
-  []
-  (when-let [database (db/get-db)]
-    (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
-                :where [?b :block/mind-map-data _]]
-              database)
-         (map first)
-         (filter :block/title)
-         (sort-by #(or (:block/updated-at %) 0) >))))
-
-#_(defn- mind-map-name-exists?
-  [title]
-  (some #(= (string/lower-case (or (:block/title %) ""))
-            (string/lower-case title))
-        (get-all-mind-maps)))
-
-#_(defn save-mind-map-to-db!
-  "将思维导图 JSON 存储到对应 page 实体的 :block/mind-map-data。
-   Returns a promise that resolves truthy only after the DB flush completes."
-  [page-uuid json-str]
-  (if-not (and (seq page-uuid) (seq json-str))
-    (p/resolved false)
-    (-> (visual-doc/<flush-doc! (state/get-current-repo) page-uuid mind-map-attr json-str)
-        (p/then boolean)
-        (p/catch (fn [error]
-                   (js/console.error "[mind-map] save-mind-map-to-db! failed:" error)
-                   false)))))
-
-#_(defn <load-mind-map-doc
-  "Loads the mind map document using the worker DB first, then resolves
-   whether DB or local cache is newer."
-  [page-uuid]
-  (visual-doc/<load-doc (state/get-current-repo) page-uuid mind-map-attr mind-map-cache-prefix))
-
-#_(defn load-mind-map-from-db
-  "从 page 实体读取思维导图 JSON，若不存在则返回 nil。"
-  [page-uuid]
-  (when (seq page-uuid)
-    (let [data (mind-map-attr (db/entity [:block/uuid (uuid page-uuid)]))]
-      (when (seq data) data))))
-
 (defn- <ensure-mindmap-class-tag!
   "找到或创建名为 'MindMap' 的 Class 实体（可作为 :block/tags 的合法值）。
    Class 实体的 :block/tags 包含 :logseq.class/Tag。
@@ -89,50 +47,6 @@
         (when-let [eid (:db/id ent)]
           (db/transact! [{:db/id eid :logseq.property/hide? true}]))
         ent))))
-
-#_(defn <create-mind-map!
-  "创建新的思维导图页面，并跳转到编辑器。"
-  [name]
-  (let [title (string/trim (or name "新思维导图"))]
-    (if (mind-map-name-exists? title)
-      (do (notification/show! (str "思维导图「" title "」已存在，请使用不同的名称") :warning)
-          nil)
-      (p/let [page (common-page-handler/<create! title {:redirect? false})
-              tag  (<ensure-mindmap-class-tag!)]
-        (when page
-          ;; 写入默认 JSON + 打 MindMap 标签（合并为单次 transact!）
-          (let [repo (state/get-current-repo)
-                tx   (cond-> {:db/id             (:db/id page)
-                               :block/mind-map-data (js/JSON.stringify
-                                                     (clj->js {:data {:text title}
-                                                               :children []}))
-                               :block/updated-at   (.now js/Date)}
-                        (some? tag) (assoc :block/tags #{(:db/id tag)}))]
-            (db/transact! repo [tx] {:outliner-op :save-block}))
-          (route-handler/redirect!
-           {:to          :mind-map
-            :path-params {:name (str (:block/uuid page))}})
-          page)))))
-
-#_(defn <delete-mind-map!
-  "删除思维导图页面。"
-  [page-uuid-str]
-  (let [page (db/entity [:block/uuid (uuid page-uuid-str)])]
-    (cond
-      (nil? page)
-      (do
-        (notification/show! "思维导图页面未找到" :warning)
-        (p/resolved false))
-
-      (:db/ident page)
-      (do
-        (notification/show! "内置思维导图页面不能删除" :warning)
-        (p/resolved false))
-
-      :else
-      (common-page-handler/<delete!
-       (uuid page-uuid-str)
-       (fn [] (notification/show! "思维导图已删除" :success))))))
 
 (defn <rename-mind-map!
   "重命名思维导图页面。"

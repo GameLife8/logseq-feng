@@ -71,16 +71,20 @@ Component did-mount
 ```
 
 ### Delete Order
-1. `visual-doc/<delete-doc!` — remove sidecar payload + localStorage cache
-2. Remove thumbnail cache: `mind-map-thumb-{uuid}`
-3. Delete the page manifest
+`<delete-mind-map!` in `handler/mind_map.cljs` calls `common-page-handler/<delete!` first, then in the success callback:
+1. `visual-doc/clear-doc-cache!` — remove localStorage draft cache
+2. `localStorage.removeItem` thumbnail key `mind-map-thumb-{uuid}`
+3. `visual-doc/<delete-sidecar-doc!` — remove sidecar payload (best-effort, logs on failure)
+4. User-facing notification
+
+Guards: refuses when page is missing, has `:db/ident` (built-in), or already has `:logseq.property/deleted-at`.
 
 ## Key Constants
 
 | Constant | Value | Location |
 |----------|-------|----------|
 | `sidecar-path` | `/visual-doc.sqlite` | `worker/visual_doc.cljs` |
-| `schema-version` | 4 | `worker/visual_doc.cljs` |
+| `schema-version` | 5 | `worker/visual_doc.cljs` (see `current-schema-version`) |
 | `normalized-min-content-bytes` | 256 KB | `worker/visual_doc.cljs` |
 | `cache-version` | 1 | `handler/visual_doc.cljs` |
 | `lru-max-entries` | 5 | `handler/visual_doc.cljs` |
@@ -99,6 +103,8 @@ Component did-mount
 
 ## Known Pitfalls
 
+- **Legacy payload retract is best-effort**: `<flush-doc!` calls `[:db/retract page-id :block/mind-map-data]` after sidecar write; the retract now runs in its own inner `p/catch` so a failure never blocks the timestamp bump or bubbles up (`handler/visual_doc.cljs/<apply-manifest!`). Do not rely on the legacy attr being absent after save — it will be retracted on the next flush if it survived.
+- **Thumbnail `localStorage.setItem` quota defense**: `save-thumbnail!` in `extensions/mind_map/core.cljs` wraps `.setItem` in a try/catch. On `QuotaExceededError` it evicts one older `mind-map-thumb-*` entry (via `evict-oldest-thumb!`) and retries once; if still failing it logs a warning and swallows. The 3s cache timer is protected from this class of exception.
 - **`rowMode: "object"` crashes on OpfsSAHPoolDb** in setTimeout contexts. All SELECT queries must use `exec-select` (callback + columnNames approach) instead.
 - **`(int x)` / `(long x)` in CLJS** truncate to 32-bit signed integer via `(x | 0)`. Timestamps overflow. Always use `(js/Number x)`.
 - **SQL bind values** must be JS primitives (string, number, null). Wrap with `(str x)`, `(js/Number x)`, `(some-> x str)`.
@@ -137,6 +143,8 @@ Component did-mount
 - In tag manager, MindMap is treated as a "virtual builtin" — shown in the system section, not deletable.
 - The `virtual-builtin-titles` set in `tag_manager.cljs` controls which user-created classes are treated as builtin.
 - `<ensure-mindmap-hidden!` in `tag_manager.cljs` also enforces `:logseq.property/hide?` on mount.
+- `get-all-mind-maps` (handler/mind_map.cljs) discovers pages via: class "MindMap" tagged `:logseq.class/Tag`, then `?b :block/tags ?class`, then `(missing? $ ?b :logseq.property/deleted-at)`. The legacy `#_(defn ...)` variants have been removed; the active implementation is the only one.
+- Dirty tracking: `data_change` in `extensions/mind_map/core.cljs` stringifies the current `getData` snapshot and compares against `::last-persisted-json` before flipping `::persist-dirty?`. `::last-persisted-json` is seeded from the initial load and refreshed on every successful `<flush-doc!`. Opening a saved map and dragging without editing no longer pushes the sync-status UI into "pending" — only real data diffs do.
 
 ## Gallery and Thumbnails
 

@@ -484,17 +484,24 @@
   (let [content'      (str content)
         content-size  (content-size-bytes content')
         needs-index?  (wants-derived-index? doc-type content-size)]
-    (upsert-visual-docs-row! db page-uuid doc-type content' updated-at blob-storage-format content-size write-token)
-    (if needs-index?
-      (clear-derived-index-state! db page-uuid)
-      (clear-derived-index! db page-uuid))
-    {:page-uuid      page-uuid
-     :doc-type       doc-type
-     :updated-at     updated-at
-     :schema-version current-schema-version
-     :storage-format blob-storage-format
-     :content-size   content-size
-     :write-token    (or write-token "")}))
+    ;; Atomic: either both the manifest row and the derived-index clear succeed
+    ;; together or both roll back. Without the transaction, a mid-operation
+    ;; crash can leave visual_docs advanced past its matching index state,
+    ;; making `derived-index-current?` return true while rows are stale.
+    (run-in-transaction!
+     db
+     (fn []
+       (upsert-visual-docs-row! db page-uuid doc-type content' updated-at blob-storage-format content-size write-token)
+       (if needs-index?
+         (clear-derived-index-state! db page-uuid)
+         (clear-derived-index! db page-uuid))
+       {:page-uuid      page-uuid
+        :doc-type       doc-type
+        :updated-at     updated-at
+        :schema-version current-schema-version
+        :storage-format blob-storage-format
+        :content-size   content-size
+        :write-token    (or write-token "")}))))
 
 (defn- rebuild-mind-map-index!
   [^js db {:keys [page_uuid doc_type content updated_at]}]
@@ -588,13 +595,18 @@
     (let [row' (cond-> row
                  (derived-index-current? db row)
                  (assoc :derived_index_current true))]
+      ;; Schema v5+ only writes `blob` (see upsert-blob-doc!). The two non-blob
+      ;; branches below hydrate legacy rows written by earlier schema versions
+      ;; (pre-v5), where the canonical payload lived in the per-type side
+      ;; tables (mind_map_nodes / whiteboard_elements). Kept for backward
+      ;; compatibility — no active write path lands here any more.
       (case (:storage_format row')
-      "mind_map_nodes"
+      "mind_map_nodes"              ; legacy pre-v5 rows only
       (let [root-node (some-> (mind-map-node-rows db page-uuid) hydrate-mind-map)]
         (assoc row' :content (or (some-> root-node stringify)
                                  (:content row'))))
 
-      "whiteboard_elements"
+      "whiteboard_elements"         ; legacy pre-v5 rows only
       (let [scene (hydrate-whiteboard (or (whiteboard-element-rows db page-uuid) [])
                                       (whiteboard-scene-meta db page-uuid))]
         (assoc row' :content (or (some-> scene stringify)

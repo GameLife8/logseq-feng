@@ -65,9 +65,23 @@ Component mount
     → Pass initial-json + needs-initial-flush? to Excalidraw
 ```
 
+### Create Path
+```
+<create-whiteboard! name
+  → common-page-handler/<create!
+  → Apply :logseq.class/Whiteboard system class tag (+ user "Whiteboard" tag if present)
+  → visual-doc/save-doc-cache! (localStorage seed with initial-canvas-json)
+  → visual-doc/<flush-doc! (sidecar seed; failure logged, does not fail create)
+  → redirect (if opts :redirect? true)
+```
+
 ### Delete Order
-1. `visual-doc/<delete-doc!` — remove sidecar payload + localStorage cache
-2. Delete the page manifest
+`<delete-whiteboard!` in `handler/whiteboard.cljs` calls `common-page-handler/<delete!` first, then in the success callback:
+1. `visual-doc/clear-doc-cache!` — remove localStorage draft cache
+2. `visual-doc/<delete-sidecar-doc!` — remove sidecar payload (best-effort, logs on failure)
+3. User-facing notification
+
+Guards: refuses when page is missing, has `:db/ident` (built-in), or already has `:logseq.property/deleted-at`. On failure, `:error-handler` callback shows a notification.
 
 ## Sync Status UI
 
@@ -84,7 +98,7 @@ Tracked atoms: `*cached?`, `*persisted?`, `*cache-dirty?`, `*persist-dirty?`
 | Constant | Value | Location |
 |----------|-------|----------|
 | `sidecar-path` | `/visual-doc.sqlite` | `worker/visual_doc.cljs` |
-| `schema-version` | 4 | `worker/visual_doc.cljs` |
+| `schema-version` | 5 | `worker/visual_doc.cljs` (see `current-schema-version`) |
 | `normalized-min-content-bytes` | 256 KB | `worker/visual_doc.cljs` |
 | `cache-version` | 1 | `handler/visual_doc.cljs` |
 | `lru-max-entries` | 5 | `handler/visual_doc.cljs` |
@@ -114,6 +128,10 @@ Tracked atoms: `*cached?`, `*persisted?`, `*cache-dirty?`, `*persist-dirty?`
 - **`.transaction` on OpfsSAHPoolDb** throws "Cannot convert object to primitive value". Use explicit `BEGIN`/`COMMIT`/`ROLLBACK` via `run-in-transaction!`.
 - **`remote-function` in `thread_api.cljc`** transit-encodes errors even in `direct-pass?` mode — main thread receives transit string instead of rejected promise.
 - **Excalidraw `onChange`** fires very frequently — only do lightweight work (flag dirty bits), defer heavy writes to timers.
+- **`<create-whiteboard!` seeds an initial empty scene** into the localStorage draft cache AND the sidecar on create (see `initial-canvas-json` in `handler/whiteboard.cljs`). Navigating away before first edit still yields a valid empty scene from both layers — the load path no longer needs to tolerate an empty sidecar + empty cache for freshly created pages. Sidecar seed failure is logged and swallowed; page creation still succeeds.
+- **`get-all-whiteboards` uses a single `or-join` query** that unions the `:logseq.class/Whiteboard` system class match and the user "Whiteboard" tag match, returning a deduplicated set natively from DataScript. No manual `distinct-by` step. Used only for duplicate-name checks; the gallery UI still uses `react/q` with `db-async/<get-tag-objects` for reactive data.
+- **Tag add and remove share the same outliner write path**: both `add-tag-to-page!` and `remove-tag-from-page!` go through `db-property-handler` (`set-block-property!` and `delete-property-value!` respectively). Outliner middleware and tx metadata now fire symmetrically on add and remove.
+- **Legacy payload retract is best-effort**: `<flush-doc!` calls `[:db/retract page-id :block/whiteboard-canvas]` after sidecar write; the retract now runs in its own inner `p/catch` so a failure never blocks the timestamp bump or bubbles up (`handler/visual_doc.cljs/<apply-manifest!`). Do not rely on the legacy attr being absent after save — it will be retracted on the next flush if it survived.
 
 ## Props Interface (core.cljs)
 

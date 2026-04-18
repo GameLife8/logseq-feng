@@ -393,10 +393,49 @@
 
    :did-update
    (fn [state]
-     ;; Keep save-fn / page-uuid atoms in sync with latest props
-     (let [args (first (:rum/args state))]
-       (reset! (::current-save-fn state) (:on-save-data args))
-       (reset! (::current-page-uuid state) (:sheet-id args)))
+     ;; Keep save-fn / page-uuid atoms in sync with latest props.
+     ;; DEFENSIVE: if :sheet-id has actually changed (caller failed to unmount
+     ;; and remount with a new React key — see components/sheet.cljs sheet-page
+     ;; for the intended key wrapper), flush pending content to the OLD
+     ;; page-uuid first, then dispose the stale Univer instance so nothing can
+     ;; autosave the previous sheet's content to the new page. The container is
+     ;; kept intact but effectively goes blank until a remount; this makes the
+     ;; bug visible instead of silently corrupting data.
+     (let [args        (first (:rum/args state))
+           new-uuid    (:sheet-id args)
+           new-save-fn (:on-save-data args)
+           *p-uuid     (::current-page-uuid state)
+           *save-fn    (::current-save-fn state)
+           *univer     (::univer state)
+           *univer-api (::univer-api state)
+           old-uuid    @*p-uuid
+           old-save-fn @*save-fn]
+       (if (and old-uuid new-uuid (not= old-uuid new-uuid))
+         (do
+           (js/console.warn
+            "[sheet] :did-update detected sheet-id change without remount"
+            #js {:from old-uuid :to new-uuid})
+           ;; Flush the old workbook's content to the OLD page-uuid before we
+           ;; lose the reference. Use snapshot->json-commit so uncommitted
+           ;; cell edits are included.
+           (when-let [api @*univer-api]
+             (when-let [json (snapshot->json-commit api)]
+               (save-doc-cache! old-uuid json)
+               (when old-save-fn
+                 (try (old-save-fn old-uuid json)
+                      (catch :default e
+                        (js/console.error "[sheet] stale-uuid flush failed:" e))))))
+           ;; Dispose the stale Univer so autosave timers noop (guards check
+           ;; @*univer-api before reading) and swap atoms to the new props.
+           (when-let [inst @*univer]
+             (js/setTimeout #(destroy-univer-instance! inst) 0))
+           (reset! *univer nil)
+           (reset! *univer-api nil)
+           (reset! *save-fn new-save-fn)
+           (reset! *p-uuid new-uuid))
+         (do
+           (reset! *save-fn new-save-fn)
+           (reset! *p-uuid new-uuid))))
      state)
 
    :will-unmount

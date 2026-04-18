@@ -392,13 +392,27 @@
       (:db/id page))))
 
 (defn- <apply-manifest!
+  "Retracts the legacy page attribute (best-effort) and updates the manifest
+   timestamp. The retract is wrapped in its own p/catch because the sidecar is
+   the authoritative store once the upsert has already succeeded — a stray
+   retract failure (e.g. schema rejection against a page that never carried
+   the attribute, or a concurrent tx collision) must not block the timestamp
+   bump that drives gallery sort order. Any residue attribute is harmless and
+   will be retracted on the next flush."
   [repo page-id attr updated-at]
-  (p/let [_ (db/transact! repo
-                          [[:db/retract page-id attr]
-                           {:db/id            page-id
-                            :block/updated-at updated-at}]
-                          {:outliner-op :save-block})]
-    true))
+  (-> (p/let [_ (db/transact! repo
+                              [[:db/retract page-id attr]]
+                              {:outliner-op :save-block})]
+        nil)
+      (p/catch (fn [error]
+                 (js/console.warn "[visual-doc] legacy attribute retract skipped:" error)
+                 nil))
+      (p/then (fn [_]
+                (p/let [_ (db/transact! repo
+                                        [{:db/id            page-id
+                                          :block/updated-at updated-at}]
+                                        {:outliner-op :save-block})]
+                  true)))))
 
 (defn- <delete-sidecar-doc-if-token!
   [repo page-uuid write-token]

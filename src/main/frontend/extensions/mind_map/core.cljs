@@ -24,16 +24,63 @@
 ;; ── localStorage fast cache ───────────────────────────────────────────────────
 
 (def ^:private cache-prefix "mind-map-data")
-(defn- thumb-ls-key [map-id] (str "mind-map-thumb-" map-id))
+(def ^:private thumb-prefix "mind-map-thumb-")
+(defn- thumb-ls-key [map-id] (str thumb-prefix map-id))
+
+(defn- quota-exceeded?
+  "Matches the several QuotaExceededError shapes across browsers."
+  [^js e]
+  (let [n (some-> e .-name)
+        c (some-> e .-code)]
+    (or (= n "QuotaExceededError")
+        (= n "NS_ERROR_DOM_QUOTA_REACHED")
+        (= c 22)
+        (= c 1014))))
+
+(defn- evict-oldest-thumb!
+  "Remove one `mind-map-thumb-*` key (excluding `skip-key`) from localStorage so
+   the next setItem has headroom. Best-effort: returns true if anything was evicted."
+  [skip-key]
+  (try
+    (let [ls  ^js js/localStorage
+          n   (.-length ls)
+          ;; Walk indices in reverse so the iteration is stable against concurrent removes.
+          victim (loop [i (dec n)]
+                   (if (neg? i)
+                     nil
+                     (let [k (.key ls i)]
+                       (if (and (string? k)
+                                (.startsWith k thumb-prefix)
+                                (not= k skip-key))
+                         k
+                         (recur (dec i))))))]
+      (when victim
+        (.removeItem ls victim)
+        true))
+    (catch :default _ false)))
 
 ;; Save a static SVG snapshot to localStorage for gallery thumbnails.
 ;; Uses isDownload=false so export() returns the data-url instead of downloading.
+;;
+;; QuotaExceededError defense: localStorage is shared across all visual-doc caches
+;; and gallery thumbnails. A full quota must not propagate back into the 3s cache
+;; timer's promise chain — an uncaught error there would kill the interval.
+;; Strategy: one retry after evicting an older thumb, then swallow silently.
 (defn- save-thumbnail! [instance map-id]
   (when (and instance map-id)
     (-> (.export ^js instance "svg" false "thumb")
         (.then (fn [data-url]
                  (when data-url
-                   (.setItem js/localStorage (thumb-ls-key map-id) data-url))))
+                   (let [k (thumb-ls-key map-id)]
+                     (try
+                       (.setItem js/localStorage k data-url)
+                       (catch :default e
+                         (if (and (quota-exceeded? e) (evict-oldest-thumb! k))
+                           (try
+                             (.setItem js/localStorage k data-url)
+                             (catch :default e2
+                               (js/console.warn "[mind-map] thumbnail cache quota exceeded after eviction:" e2)))
+                           (js/console.warn "[mind-map] thumbnail cache quota exceeded:" e))))))))
         (.catch (fn [e] (js/console.warn "[mind-map] thumbnail export failed:" e))))))
 
 (defn- parse-map-json
@@ -1058,6 +1105,10 @@
   (rum/local false ::show-blocks-panel?)
   (rum/local nil   ::current-save-fn)
   (rum/local nil   ::current-map-id)
+  ;; Baseline snapshot for dirty detection. Compared against the live snapshot
+  ;; inside the `data_change` handler so UI-only events (drag, zoom, selection
+  ;; ripple) don't mark the doc pending. Updated on successful cache / persist.
+  (rum/local nil   ::last-persisted-json)
   {:did-mount
    (fn [state]
      (let [args         (-> state :rum/args first)
@@ -1164,7 +1215,11 @@
                                         (let [saved? (boolean save-result)]
                                           (reset! (::persisted? state) saved?)
                                           (if saved?
-                                            (reset! (::persist-dirty? state) false)
+                                            (do
+                                              (reset! (::persist-dirty? state) false)
+                                              ;; Refresh baseline so subsequent data_change events
+                                              ;; that don't actually mutate content stay clean.
+                                              (reset! (::last-persisted-json state) json-str))
                                             (reset! (::persist-dirty? state) true))
                                           saved?))
                                       (p/catch (fn [error]
@@ -1209,6 +1264,12 @@
                                    (.resize ^js inst w h))))))]
            (reset! (::cached? state) true)
            (reset! (::persisted? state) (not needs-initial-flush?))
+           ;; Seed the dirty-detection baseline from the loaded snapshot. If the
+           ;; sidecar is authoritative, this is the JSON we'd re-emit on save; so
+           ;; UI-only data_change events whose snapshot matches remain clean.
+           (reset! (::last-persisted-json state)
+                   (when-let [inst instance]
+                     (js/JSON.stringify (.getData ^js inst))))
            (reset! (::cache-timer-id state) cache-timer)
            (reset! (::flush-timer-id state) flush-timer)
            (reset! (::pagehide-handler state) pagehide-handler)
@@ -1292,13 +1353,21 @@
                           (js/Math.round (* s 100)))))
            (.on instance "data_change"
                 (fn []
-                  (reset! (::cached? state) false)
-                  (reset! (::persisted? state) false)
-                  (reset! (::cache-dirty? state) true)
-                  (reset! (::persist-dirty? state) true)
-                  (when @(::show-outline? state)
-                    (reset! (::outline-data state)
-                            (.getData ^js instance)))))
+                  (let [^js data (.getData ^js instance)
+                        json-str (js/JSON.stringify data)
+                        baseline @(::last-persisted-json state)
+                        changed? (not= baseline json-str)]
+                    ;; Only flip dirty flags when the serialized snapshot actually
+                    ;; differs from the last-persisted baseline. simple-mind-map
+                    ;; fires data_change for pure UI churn (hover, focus ripple)
+                    ;; and we don't want those to push the sync UI into "pending".
+                    (when changed?
+                      (reset! (::cached? state) false)
+                      (reset! (::persisted? state) false)
+                      (reset! (::cache-dirty? state) true)
+                      (reset! (::persist-dirty? state) true))
+                    (when @(::show-outline? state)
+                      (reset! (::outline-data state) data)))))
            ;; ── association line events ──────────────────────────────────────
            (.on instance "associative_line_click"
                 (fn [_ _ ^js node ^js toNode]

@@ -89,6 +89,14 @@
   "Creates a new sheet page with a default empty workbook.
    Tags it with the Sheet class. Returns the page entity."
   [name opts]
+  ;; NOTE: sheet-name-exists? is a best-effort UX guard, NOT a hard uniqueness
+  ;; constraint. Two tabs (or two clients on the same graph) calling
+  ;; <create-sheet! with the same title concurrently can both see the name as
+  ;; free and both go on to create pages — there is no cross-client lock at
+  ;; this layer. True uniqueness would require a DataScript upsert with a
+  ;; retry loop or server-side enforcement, which is out of scope for the
+  ;; visual-doc iteration. Duplicate titles do not corrupt data: each page
+  ;; has its own :block/uuid and sidecar row.
   (let [redirect? (if (some? opts) (get opts :redirect? true) true)
         title     (string/trim (or name "新建表格"))]
     (if (sheet-name-exists? title)

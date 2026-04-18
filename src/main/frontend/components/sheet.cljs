@@ -40,54 +40,6 @@
                  (reset! *sheet-loaded? true)
                  (on-done)))))
 
-;; ── Preview table builder (pure functions, no Univer dependency) ─────────────
-
-(defn- col-letter
-  "Converts a 0-based column index to Excel-style letter (0→A, 25→Z, 26→AA)."
-  [idx]
-  (loop [n idx result ""]
-    (let [ch (char (+ 65 (mod n 26)))
-          next-result (str ch result)
-          q  (dec (quot n 26))]
-      (if (neg? (- n 26))
-        next-result
-        (recur q next-result)))))
-
-(defn- build-preview-table-html
-  "Builds an HTML <table> string from workbook JSON for the inline read-only preview.
-   Includes column headers (A, B, C...) and row numbers."
-  [json-str]
-  (try
-    (when (seq json-str)
-      (let [wb         (js->clj (js/JSON.parse json-str) :keywordize-keys false)
-            sheet-id   (first (get wb "sheetOrder"))
-            sheet      (get-in wb ["sheets" sheet-id])
-            cell-data  (get sheet "cellData" {})]
-        (when (seq cell-data)
-          (let [parse-int  #(js/parseInt % 10)
-                row-keys   (sort (map parse-int (keys cell-data)))
-                max-row    (inc (apply max row-keys))
-                col-keys   (sort (mapcat (fn [[_ cols]] (map parse-int (keys cols))) cell-data))
-                max-col    (if (seq col-keys) (inc (apply max col-keys)) 1)
-                sb         (js/Array.)]
-            (.push sb "<table class='sheet-print-table'>")
-            (.push sb "<thead><tr><th class='spt-corner'></th>")
-            (doseq [c (range max-col)]
-              (.push sb (str "<th class='spt-col-hdr'>" (col-letter c) "</th>")))
-            (.push sb "</tr></thead><tbody>")
-            (doseq [r (range max-row)]
-              (.push sb (str "<tr><td class='spt-row-num'>" (inc r) "</td>"))
-              (doseq [c (range max-col)]
-                (let [cell (get-in cell-data [(str r) (str c)])
-                      v    (when cell (or (get cell "v") ""))]
-                  (.push sb (str "<td>" (or v "") "</td>"))))
-              (.push sb "</tr>"))
-            (.push sb "</tbody></table>")
-            (.join sb "")))))
-    (catch :default e
-      (js/console.warn "[sheet] build-preview-table failed:" e)
-      nil)))
-
 ;; ── Inline embed card (read-only preview + action buttons) ──────────────────
 
 (rum/defcs sheet-embed-card
@@ -97,13 +49,24 @@
   < rum/reactive
   (rum/local nil   ::preview-html)
   (rum/local false ::doc-loaded?)
+  (rum/local false ::mounted?)
   {:did-mount
    (fn [state]
+     (reset! (::mounted? state) true)
      (let [page-uuid (-> state :rum/args first)]
+       ;; Guard the async load: in long pages with many embed cards, the user
+       ;; can scroll a card out of view (Rum unmounts) before <load-sheet-doc
+       ;; resolves. Without this guard Rum logs "cannot update unmounted
+       ;; component" and the state atoms leak.
        (p/let [doc-info (sheet-handler/<load-sheet-doc page-uuid)]
-         (reset! (::doc-loaded? state) true)
-         (when-let [json (:json doc-info)]
-           (reset! (::preview-html state) (sheet-preview/build-table-html json)))))
+         (when @(::mounted? state)
+           (reset! (::doc-loaded? state) true)
+           (when-let [json (:json doc-info)]
+             (reset! (::preview-html state) (sheet-preview/build-table-html json))))))
+     state)
+   :will-unmount
+   (fn [state]
+     (reset! (::mounted? state) false)
      state)}
   [state page-uuid config]
   (let [preview-html (rum/react (::preview-html state))
@@ -115,8 +78,9 @@
         refresh!     (fn [e]
                        (util/stop e)
                        (p/let [doc-info (sheet-handler/<load-sheet-doc page-uuid)]
-                         (when-let [json (:json doc-info)]
-                           (reset! (::preview-html state) (sheet-preview/build-table-html json)))))
+                         (when (and @(::mounted? state) (:json doc-info))
+                           (reset! (::preview-html state)
+                                   (sheet-preview/build-table-html (:json doc-info))))))
         open!        (fn [e]
                        (util/stop e)
                        (sheet-handler/redirect-to-sheet! page-uuid))
@@ -236,12 +200,19 @@
          "Loading spreadsheet..."]
 
         :else
-        (@lazy-sheet
-         {:sheet-id       page-uuid
-          :sheet-title    sheet-title
-          :initial-json   json
-          :needs-initial-flush? needs-flush?
-          :on-save-data   sheet-handler/save-sheet-to-db!}))]]))
+        ;; Key the editor by page-uuid so a route change to a different sheet
+        ;; forces React to unmount the old Univer instance and mount a fresh
+        ;; one for the new page. Without this, the Rum :did-update handler
+        ;; would just update atoms on the existing workbook and autosave ticks
+        ;; could write the previous sheet's content to the new page-uuid.
+        (rum/with-key
+          (@lazy-sheet
+           {:sheet-id       page-uuid
+            :sheet-title    sheet-title
+            :initial-json   json
+            :needs-initial-flush? needs-flush?
+            :on-save-data   sheet-handler/save-sheet-to-db!})
+          (str "sheet-editor-" page-uuid)))]]))
 
 ;; ── Gallery: all sheets ──────────────────────────────────────────────────────
 

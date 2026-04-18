@@ -26,32 +26,29 @@
 
 (defn get-all-whiteboards
   "Returns whiteboard page entities from the local DataScript replica (best-effort).
-   Used only for duplicate-name checks; the gallery UI uses react/q for authoritative data."
+   Used only for duplicate-name checks; the gallery UI uses react/q for authoritative data.
+
+   A page qualifies as a whiteboard if either:
+     - it is tagged with the :logseq.class/Whiteboard system class, or
+     - it is tagged with a user tag page titled \"Whiteboard\" (no :db/ident).
+   Pages with :db/ident (built-ins) and :logseq.property/deleted-at are excluded.
+   Uses a single or-join so DataScript returns a deduplicated set natively."
   []
   (when-let [database (db/get-db)]
-    (let [;; Strategy 1: system class tag
-          with-class  (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
-                                   :where [?b :block/tags ?t]
-                                          [?t :db/ident :logseq.class/Whiteboard]
-                                          [(missing? $ ?b :db/ident)]
-                                          [(missing? $ ?b :logseq.property/deleted-at)]]
-                                 database)
-                           (map first))
-          ;; Strategy 2: user tag named "Whiteboard"
-          with-user-tag (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
-                                     :where [?t :block/title "Whiteboard"]
-                                            [(missing? $ ?t :db/ident)]
-                                            [?b :block/tags ?t]
-                                            [(missing? $ ?b :db/ident)]
-                                            [(missing? $ ?b :logseq.property/deleted-at)]]
-                                   database)
-                             (map first))
-          result (->> (concat with-class with-user-tag)
-                      (into {} (map (juxt :db/id identity)))  ; deduplicate by :db/id
-                      vals
-                      (filter :block/title)
-                      (sort-by #(or (:block/updated-at %) 0) >))]
-      result)))
+    (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
+                :where
+                (or-join [?b]
+                         (and [?b :block/tags ?sys]
+                              [?sys :db/ident :logseq.class/Whiteboard])
+                         (and [?tag :block/title "Whiteboard"]
+                              [(missing? $ ?tag :db/ident)]
+                              [?b :block/tags ?tag]))
+                [(missing? $ ?b :db/ident)]
+                [(missing? $ ?b :logseq.property/deleted-at)]]
+              database)
+         (map first)
+         (filter :block/title)
+         (sort-by #(or (:block/updated-at %) 0) >))))
 
 (defn- whiteboard-name-exists?
   "Returns true if a whiteboard with the given title already exists (case-insensitive)."
@@ -128,15 +125,21 @@
      [:block/uuid page-uuid] :block/tags (:db/id tag-entity))))
 
 (defn remove-tag-from-page!
-  "Removes a tag entity from a whiteboard page via a :db/retract transaction."
+  "Removes a tag entity from a whiteboard page. Uses the outliner op so that
+   the remove goes through the same middleware as `add-tag-to-page!` above —
+   both paths now produce symmetric tx metadata and fire the same hooks."
   [page-uuid tag-entity]
   (when (and page-uuid tag-entity)
-    (when-let [page (db/entity [:block/uuid page-uuid])]
-      (db/transact! (state/get-current-repo)
-                    [[:db/retract (:db/id page) :block/tags (:db/id tag-entity)]]
-                    {:outliner-op :save-block}))))
+    (db-property-handler/delete-property-value!
+     [:block/uuid page-uuid] :block/tags (:db/id tag-entity))))
 
 ;; ── public API ────────────────────────────────────────────────────────────────
+
+(def ^:private initial-canvas-json
+  "Minimal Excalidraw scene written to cache + sidecar on create so that a
+   whiteboard navigated away from before first edit still resolves to a valid
+   empty scene instead of an empty sidecar + empty cache fallthrough."
+  "{\"elements\":[],\"appState\":{\"viewBackgroundColor\":\"#ffffff\"},\"files\":{}}")
 
 (defn <create-whiteboard!
   [name opts]
@@ -147,8 +150,9 @@
           nil)
       (p/let [page (common-page-handler/<create! title {:redirect? false})]
         (when page
-          (let [repo     (state/get-current-repo)
-                tags-ids (atom #{})]
+          (let [repo       (state/get-current-repo)
+                page-uuid  (str (:block/uuid page))
+                tags-ids   (atom #{})]
             ;; Strategy 1: system class tag
             (when-let [wclass (db/entity :logseq.class/Whiteboard)]
               (swap! tags-ids conj (:db/id wclass)))
@@ -165,32 +169,22 @@
               (db/transact! repo
                             [{:db/id      (:db/id page)
                               :block/tags @tags-ids}]
-                            {:outliner-op :save-block})))
+                            {:outliner-op :save-block}))
+            ;; Seed the cache + sidecar with an empty scene so the gallery
+            ;; thumbnail + editor load path always finds something authoritative
+            ;; — without this, navigating away before first edit left the page
+            ;; with no scene payload anywhere. Best-effort: a sidecar failure
+            ;; is logged but does not fail page creation.
+            (visual-doc/save-doc-cache! canvas-cache-prefix page-uuid initial-canvas-json)
+            (-> (visual-doc/<flush-doc! repo page-uuid canvas-attr initial-canvas-json)
+                (p/catch (fn [error]
+                           (js/console.error "[whiteboard] initial scene seed failed:" error)
+                           nil))))
           (when redirect?
             (route-handler/redirect!
              {:to          :whiteboard
               :path-params {:name (str (:block/uuid page))}}))
           page)))))
-
-#_(defn <delete-whiteboard!
-  "Deletes a whiteboard page. Shows success notification on completion."
-  [page-uuid-str]
-  (let [page (db/entity [:block/uuid (uuid page-uuid-str)])]
-    (cond
-      (nil? page)
-      (do
-        (notification/show! "白板页面未找到" :warning)
-        (p/resolved false))
-
-      (:db/ident page)
-      (do
-        (notification/show! "内置白板页面不能删除" :warning)
-        (p/resolved false))
-
-      :else
-      (common-page-handler/<delete!
-       (uuid page-uuid-str)
-       (fn [] (notification/show! "白板已删除" :success))))))
 
 (defn <rename-whiteboard!
   "Renames a whiteboard page. Rejects duplicate names (case-insensitive)."
