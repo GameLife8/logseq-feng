@@ -1294,6 +1294,9 @@
    :did-mount
    (fn [state]
      (let [active-tab (first (:rum/args state))
+           active-tab (if (and (= active-tab :ai) (not (util/electron?)))
+                        :advanced
+                        active-tab)
            *active (::active state)]
        (when (keyword? active-tab)
          (reset! *active [active-tab nil])))
@@ -1323,8 +1326,8 @@
                [:general "general" (t :settings-page/tab-general) (ui/icon "adjustments")]
                [:editor "editor" (t :settings-page/tab-editor) (ui/icon "writing")]
                [:keymap "keymap" (t :settings-page/tab-keymap) (ui/icon "keyboard")]
-
-               [:ai (t :settings-page/tab-ai) (t :settings-page/ai) (ui/icon "wand")]
+               (when (util/electron?)
+                 [:ai (t :settings-page/tab-ai) (t :settings-page/ai) (ui/icon "wand")])
 
                [:excalidraw "excalidraw" "白板" (ui/icon "layout-board")]
                [:advanced "advanced" (t :settings-page/tab-advanced) (ui/icon "bulb")]
@@ -1387,6 +1390,8 @@
          (encryption)
 
          :ai
-         (settings-ai)
+         (if (util/electron?)
+           (settings-ai)
+           (settings-advanced))
 
          nil)]]]))
