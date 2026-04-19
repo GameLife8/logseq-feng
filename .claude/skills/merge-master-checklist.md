@@ -30,6 +30,40 @@ Use this checklist when merging `master` back into the current feature branch.
 - If master adds new RTC state atoms in `state.cljs`, do not include them.
 - `deps.edn` should NOT include `logseq/db-sync` dependency.
 
+## Vector Embeddings Removal Rules (New — 2026-04-19)
+
+- The `inference-worker` shadow-cljs build target has been removed entirely.
+- `src/main/frontend/inference_worker/` directory has been deleted (inference_worker.cljs, state.cljs, text_embedding.cljs).
+- `src/main/frontend/worker/embedding.cljs` has been deleted.
+- `src/main/frontend/handler/db_based/vector_search_background_tasks.cljs` and `vector_search_flows.cljs` have been deleted.
+- `src/main/frontend/components/vector_search/sidebar.cljs` has been deleted.
+- `@huggingface/transformers` dependency has been removed from package.json.
+- `:thread-api/set-infer-worker-proxy` thread-api and `worker-state/*infer-worker` atom have been removed.
+- `:vector-search/sync-state` defmethod in `handler/events.cljs` has been removed.
+- The `remove-old-embeddings-and-reset-new-updates!` function and `:logseq.property.embedding/hnsw-label-updated-at` tx handling in `worker/db_listener.cljs` have been removed.
+- If master re-introduces any of these, remove during merge; yarn scripts must NOT build `inference-worker`.
+
+## Upstream Commits We Deliberately Skip
+
+| Upstream commit | Why we skip |
+|---|---|
+| `f8869978e1` "fix: insert block above" | Depends on upstream `insert-new-block!` refactor that adds `right-sibling` formal; our fork's signature is still `([_state block-value])`. The bug it fixes does not exist on our fork. |
+| `9362dbc847` "fix: set date property value after creating journal page" | Our Chinese calendar in `components/property/value.cljs` already sequences `<create!` via `p/do!` and re-looks-up via `model/get-journal-page`, so the master bug is already not present. |
+| `333f3e10b1` "remove vector embeddings" | Picked onto a dedicated cleanup branch; resolved conflicts by rejecting master's bundled RTC re-additions. Now landed — see Vector Embeddings Removal Rules above. |
+
+## Cherry-Pick Surgery Patterns
+
+When a master commit touches a file that also contains fork-only deletions (modify/delete conflicts):
+
+1. Deleted-in-HEAD / modified-in-master: `git rm` the file (we intentionally removed it).
+2. Modified-in-HEAD / deleted-in-master: `git rm` if we agree with the removal; keep-and-edit otherwise.
+3. Content conflicts where master re-introduces removed namespaces as `:require` entries: drop both sides of the conflict block (the namespace truly does not exist).
+4. If a master commit bundles unrelated RTC re-additions with the actual fix, split mentally: cherry-pick the fix hunk, drop the RTC hunk.
+
+## Post-Merge Yarn Regeneration
+
+After any commit that touches `package.json` (dependencies added/removed), run `yarn install` to regenerate `yarn.lock` so transitive deps are purged/added cleanly. The cherry-picked lockfile diff is not a reliable substitute.
+
 ## Search Markers Before Resolving Conflicts
 
 - `VISUAL-DOC-SIDECAR`

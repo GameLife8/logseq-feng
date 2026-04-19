@@ -4,6 +4,8 @@
 
 **The multi-device sync / RTC collaboration system has been fully removed from this codebase.**
 
+**The vector embeddings / inference worker / semantic search subsystem has also been fully removed (2026-04-19).**
+
 The removal was done to reduce code redundancy. A future AI-based sync replacement is planned.
 
 ## What Was Removed
@@ -72,3 +74,30 @@ Removed from `config.cljs`:
 - The settings collaboration tab has been removed.
 - Header no longer shows RTC collaborator avatars or sync indicator.
 - `deps.edn` no longer includes `logseq/db-sync` dependency.
+
+## Vector Embeddings Removal (2026-04-19)
+
+Removed modules:
+
+- `src/main/frontend/inference_worker/` — entire directory (inference_worker.cljs, state.cljs, text_embedding.cljs)
+- `src/main/frontend/worker/embedding.cljs` — vector search worker
+- `src/main/frontend/handler/db_based/vector_search_background_tasks.cljs`
+- `src/main/frontend/handler/db_based/vector_search_flows.cljs`
+- `src/main/frontend/components/vector_search/sidebar.cljs`
+- `@huggingface/transformers` — npm dependency and all transitive deps
+
+Removed build targets / APIs:
+
+- `inference-worker` shadow-cljs build target (all yarn scripts updated)
+- `:thread-api/set-infer-worker-proxy` thread API
+- `worker-state/*infer-worker` atom
+- `:vector-search/sync-state` defmethod
+- `remove-old-embeddings-and-reset-new-updates!` in `worker/db_listener.cljs`
+- `:logseq.property.embedding/hnsw-label-updated-at` property tracking on tx
+
+Practical consequences:
+
+- No semantic / vector search. `worker/search.cljs` now only does SQLite FTS.
+- No AI-powered similarity over notes; the "(Dev) vector-search" sidebar button is gone.
+- No download of HuggingFace transformer models at runtime.
+- Upstream commits that re-add any of the above (e.g. master's `:thread-api/set-db-sync-config`, `:thread-api/db-sync-start`, `.rtc/*` defmethods that piggyback on the same files) must be excluded during merges.
