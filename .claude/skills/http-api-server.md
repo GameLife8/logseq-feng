@@ -228,3 +228,7 @@ Write paths:
 - `.claude/skills/excalidraw-whiteboard.md` — whiteboard data model, useful when wiring MCP tools that create whiteboards.
 - `.claude/skills/publish-page.md` — cloud publish (separate service; do not confuse with this local server).
 - `.claude/skills/storage-model.md` — visual-doc sidecar shape, needed for any tool that touches whiteboards / sheets / mind maps.
+
+## External-facing Reference
+
+- `docs/http-api.md` — self-contained external-facing reference intended for AI models / third-party clients. Covers auth, every route, MCP tool catalog, visual-doc payload formats, SSE event shapes, and worked curl examples. Keep this doc in sync when adding new routes or MCP tools.
