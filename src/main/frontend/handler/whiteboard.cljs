@@ -1,83 +1,99 @@
 (ns frontend.handler.whiteboard
   "Handlers for creating, opening and managing whiteboard pages.
 
-   Whiteboard pages are tagged with :logseq.class/Whiteboard in :block/tags
-   so they remain queryable from DataScript and visible in the Pages view.
+   Whiteboard pages follow the same visual-doc modeling as sheets and
+   mind-maps: each page keeps normal Page semantics and is additionally tagged
+   with a hidden user-defined `Whiteboard` class entity.
 
    VISUAL-DOC-SIDECAR: the page entity is a lightweight manifest only.
    The full Excalidraw payload lives in the worker sqlite sidecar."
   (:require [clojure.string :as string]
-             [datascript.core :as d]
-             [frontend.db :as db]
-             [frontend.handler.common.page :as common-page-handler]
-             [frontend.handler.db-based.property :as db-property-handler]
-             [frontend.handler.editor :as editor-handler]
-             [frontend.handler.notification :as notification]
-             [frontend.handler.page :as page-handler]
-             [frontend.handler.route :as route-handler]
-             [frontend.handler.visual-doc :as visual-doc]
-             [frontend.state :as state]
-             [promesa.core :as p]))
+            [datascript.core :as d]
+            [frontend.db :as db]
+            [frontend.handler.common.page :as common-page-handler]
+            [frontend.handler.db-based.property :as db-property-handler]
+            [frontend.handler.editor :as editor-handler]
+            [frontend.handler.notification :as notification]
+            [frontend.handler.page :as page-handler]
+            [frontend.handler.route :as route-handler]
+            [frontend.handler.visual-doc :as visual-doc]
+            [frontend.state :as state]
+            [promesa.core :as p]))
 
 (def canvas-attr :block/whiteboard-canvas)
 (def canvas-cache-prefix "whiteboard-data")
+(def ^:private whiteboard-class-title "Whiteboard")
 
-;; ── whiteboard identification ─────────────────────────────────────────────────
-
-(defn get-all-whiteboards
-  "Returns whiteboard page entities from the local DataScript replica (best-effort).
-   Used only for duplicate-name checks; the gallery UI uses react/q for authoritative data.
-
-   A page qualifies as a whiteboard if either:
-     - it is tagged with the :logseq.class/Whiteboard system class, or
-     - it is tagged with a user tag page titled \"Whiteboard\" (no :db/ident).
-   Pages with :db/ident (built-ins) and :logseq.property/deleted-at are excluded.
-   Uses a single or-join so DataScript returns a deduplicated set natively."
+(defn get-whiteboard-class-tag
+  "Returns the hidden user-defined Whiteboard class entity, if it exists."
   []
   (when-let [database (db/get-db)]
-    (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
-                :where
-                (or-join [?b]
-                         (and [?b :block/tags ?sys]
-                              [?sys :db/ident :logseq.class/Whiteboard])
-                         (and [?tag :block/title "Whiteboard"]
-                              [(missing? $ ?tag :db/ident)]
-                              [?b :block/tags ?tag]))
-                [(missing? $ ?b :db/ident)]
-                [(missing? $ ?b :logseq.property/deleted-at)]]
-              database)
-         (map first)
-         (filter :block/title)
-         (sort-by #(or (:block/updated-at %) 0) >))))
+    (some->> (d/q '[:find [?e ...]
+                    :in $ ?title
+                    :where [?e :block/title ?title]
+                           [?e :block/tags ?tag]
+                           [?tag :db/ident :logseq.class/Tag]
+                           [?e :db/ident ?ident]
+                           [(namespace ?ident) ?ns]
+                           [(= ?ns "user.class")]
+                           [(missing? $ ?e :logseq.property/deleted-at)]]
+                  database whiteboard-class-title)
+             first
+             db/entity)))
+
+(defn <ensure-whiteboard-class-tag!
+  "Find or create the hidden `Whiteboard` class entity used to classify
+   whiteboard pages."
+  []
+  (if-let [ent (get-whiteboard-class-tag)]
+    (do
+      (when-not (:logseq.property/hide? ent)
+        (db/transact! [{:db/id (:db/id ent) :logseq.property/hide? true}]))
+      (p/resolved ent))
+    (p/let [ent (common-page-handler/<create! whiteboard-class-title {:redirect? false
+                                                                      :class? true})]
+      (when-let [eid (:db/id ent)]
+        (db/transact! [{:db/id eid :logseq.property/hide? true}]))
+      ent)))
+
+(defn get-all-whiteboards
+  "Returns whiteboard page entities from the local DataScript replica."
+  []
+  (if-let [class-tag (get-whiteboard-class-tag)]
+    (when-let [database (db/get-db)]
+      (->> (d/q '[:find (pull ?b [:db/id :block/uuid :block/title :block/updated-at])
+                  :in $ ?class-id
+                  :where [?b :block/tags ?class-id]
+                         [(missing? $ ?b :db/ident)]
+                         [(missing? $ ?b :logseq.property/deleted-at)]]
+                database (:db/id class-tag))
+           (map first)
+           (filter :block/title)
+           (sort-by #(or (:block/updated-at %) 0) >)))
+    []))
 
 (defn- whiteboard-name-exists?
-  "Returns true if a whiteboard with the given title already exists (case-insensitive)."
+  "Returns true if a whiteboard with the given title already exists."
   [title]
   (some #(= (string/lower-case (or (:block/title %) ""))
             (string/lower-case title))
         (get-all-whiteboards)))
 
-;; ── canvas data (stored on the page entity) ───────────────────────────────────
-
 (defn save-canvas-to-db!
-  "Saves Excalidraw canvas as a JSON string on the whiteboard page entity.
-   Also bumps :block/updated-at so the gallery sorts correctly.
-   Resolves truthy only after the DB flush completes."
+  "Writes the whiteboard payload to sidecar storage."
   [page-uuid canvas-json]
   (if-not (and (seq page-uuid) (seq canvas-json))
     (do
       (js/console.warn "[whiteboard] save-canvas-to-db! skipped: missing page-uuid or canvas-json")
       (p/resolved false))
     (-> (visual-doc/<flush-doc! (state/get-current-repo) page-uuid canvas-attr canvas-json)
-        (p/then (fn [result]
-                  (boolean result)))
+        (p/then boolean)
         (p/catch (fn [error]
                    (js/console.error "[whiteboard] save-canvas-to-db! failed:" error)
                    false)))))
 
 (defn <load-canvas-doc
-  "Loads the whiteboard document using the worker DB first, then resolves
-   whether DB or local cache is newer."
+  "Loads the whiteboard payload from sidecar, resolving whether DB or cache is newer."
   [page-uuid]
   (visual-doc/<load-doc (state/get-current-repo) page-uuid canvas-attr canvas-cache-prefix))
 
@@ -87,23 +103,26 @@
   (when (seq page-uuid)
     (some-> (visual-doc/read-doc-cache canvas-cache-prefix page-uuid) :data)))
 
-;; ── tag management ────────────────────────────────────────────────────────────
-
 (def ^:private system-tag-idents
   "Tag idents that should not be shown as user tags in the whiteboard toolbar."
   #{:logseq.class/Whiteboard :logseq.class/Page :logseq.class/Journal})
 
+(defn- whiteboard-class-tag?
+  [tag-entity]
+  (or (= :logseq.class/Whiteboard (:db/ident tag-entity))
+      (and (= whiteboard-class-title (:block/title tag-entity))
+           (= "user.class" (namespace (:db/ident tag-entity))))))
+
 (defn get-page-user-tags
-  "Returns user-visible tags for a page entity (excludes internal system tags)."
+  "Returns user-visible tags for a page entity."
   [page-entity]
   (->> (:block/tags page-entity)
-       (remove #(contains? system-tag-idents (:db/ident %)))))
+       (remove #(or (contains? system-tag-idents (:db/ident %))
+                    (whiteboard-class-tag? %)))))
 
 (defn search-tags
   "Returns user-created tag entities whose titles match `query`.
-   Excludes built-in system classes (entities with :db/ident) which cannot
-   be assigned to pages via set-block-property!.
-   If query is blank, returns all eligible tag entities."
+   Built-in and hidden class tags are excluded because they all carry :db/ident."
   [query]
   (when-let [database (db/get-db)]
     (let [all-tags (->> (d/q '[:find (pull ?b [:db/id :db/ident :block/uuid :block/title])
@@ -111,7 +130,7 @@
                              database)
                         (map first)
                         (filter :block/title)
-                        (remove :db/ident))]   ; built-in entities have :db/ident; user tags do not
+                        (remove :db/ident))]
       (if (string/blank? query)
         all-tags
         (let [q (string/lower-case (string/trim query))]
@@ -125,56 +144,35 @@
      [:block/uuid page-uuid] :block/tags (:db/id tag-entity))))
 
 (defn remove-tag-from-page!
-  "Removes a tag entity from a whiteboard page. Uses the outliner op so that
-   the remove goes through the same middleware as `add-tag-to-page!` above —
-   both paths now produce symmetric tx metadata and fire the same hooks."
+  "Removes a tag entity from a whiteboard page."
   [page-uuid tag-entity]
   (when (and page-uuid tag-entity)
     (db-property-handler/delete-property-value!
      [:block/uuid page-uuid] :block/tags (:db/id tag-entity))))
 
-;; ── public API ────────────────────────────────────────────────────────────────
-
 (def ^:private initial-canvas-json
-  "Minimal Excalidraw scene written to cache + sidecar on create so that a
-   whiteboard navigated away from before first edit still resolves to a valid
-   empty scene instead of an empty sidecar + empty cache fallthrough."
+  "Minimal Excalidraw scene seeded on create."
   "{\"elements\":[],\"appState\":{\"viewBackgroundColor\":\"#ffffff\"},\"files\":{}}")
 
 (defn <create-whiteboard!
   [name opts]
   (let [redirect? (if (some? opts) (get opts :redirect? true) true)
-        title     (string/trim (or name "Untitled Whiteboard"))]
+        title (string/trim (or name "Untitled Whiteboard"))]
     (if (whiteboard-name-exists? title)
-      (do (notification/show! (str "白板「" title "」已存在，请使用不同的名称") :warning)
-          nil)
-      (p/let [page (common-page-handler/<create! title {:redirect? false})]
+      (do
+        (notification/show! (str "Whiteboard \"" title "\" already exists, please use a different name") :warning)
+        nil)
+      (p/let [page (common-page-handler/<create! title {:redirect? false})
+              tag (<ensure-whiteboard-class-tag!)]
         (when page
-          (let [repo       (state/get-current-repo)
-                page-uuid  (str (:block/uuid page))
-                tags-ids   (atom #{})]
-            ;; Strategy 1: system class tag
-            (when-let [wclass (db/entity :logseq.class/Whiteboard)]
-              (swap! tags-ids conj (:db/id wclass)))
-             ;; Strategy 2: user tag page named "Whiteboard"
-             (let [database (db/get-db)
-                  tag-eid  (first (d/q '[:find [?e ...]
-                                         :where [?e :block/title "Whiteboard"]
-                                                [(missing? $ ?e :db/ident)]]
-                                       database))]
-              (when tag-eid
-                (swap! tags-ids conj tag-eid)))
-            ;; Apply all collected tags in one transaction
-            (when (seq @tags-ids)
+          (let [repo (state/get-current-repo)
+                page-uuid (str (:block/uuid page))]
+            (if tag
               (db/transact! repo
-                            [{:db/id      (:db/id page)
-                              :block/tags @tags-ids}]
-                            {:outliner-op :save-block}))
-            ;; Seed the cache + sidecar with an empty scene so the gallery
-            ;; thumbnail + editor load path always finds something authoritative
-            ;; — without this, navigating away before first edit left the page
-            ;; with no scene payload anywhere. Best-effort: a sidecar failure
-            ;; is logged but does not fail page creation.
+                            [{:db/id (:db/id page)
+                              :block/tags #{(:db/id tag)}}]
+                            {:outliner-op :save-block})
+              (notification/show! "Whiteboard class tag creation failed; the page may not appear in the whiteboard list" :warning))
             (visual-doc/save-doc-cache! canvas-cache-prefix page-uuid initial-canvas-json)
             (-> (visual-doc/<flush-doc! repo page-uuid canvas-attr initial-canvas-json)
                 (p/catch (fn [error]
@@ -182,26 +180,27 @@
                            nil))))
           (when redirect?
             (route-handler/redirect!
-             {:to          :whiteboard
+             {:to :whiteboard
               :path-params {:name (str (:block/uuid page))}}))
           page)))))
 
 (defn <rename-whiteboard!
-  "Renames a whiteboard page. Rejects duplicate names (case-insensitive)."
+  "Renames a whiteboard page."
   [page-uuid-str new-name]
   (let [trimmed (string/trim new-name)]
     (if (whiteboard-name-exists? trimmed)
-      (do (notification/show! (str "白板「" trimmed "」已存在，请使用不同的名称") :warning)
-          nil)
+      (do
+        (notification/show! (str "Whiteboard \"" trimmed "\" already exists, please use a different name") :warning)
+        nil)
       (p/do!
        (page-handler/rename! page-uuid-str trimmed)
-       (notification/show! "白板已重命名" :success)))))
+       (notification/show! "Whiteboard renamed" :success)))))
 
 (defn redirect-to-whiteboard!
-  "Navigate to the whiteboard identified by page-uuid (string or uuid)."
+  "Navigate to the whiteboard identified by page-uuid."
   [page-uuid]
   (route-handler/redirect!
-   {:to          :whiteboard
+   {:to :whiteboard
     :path-params {:name (str page-uuid)}}))
 
 (defn open-block-in-sidebar!
@@ -210,8 +209,6 @@
   (when (seq block-id-str)
     (editor-handler/open-block-in-sidebar! (uuid block-id-str))))
 
-;; VISUAL-DOC-SIDECAR: redefine delete flow near EOF so the sidecar payload is
-;; cleaned only after the manifest delete succeeds.
 (defn <delete-whiteboard!
   "Deletes a whiteboard page manifest first, then clears local cache and
    best-effort cleans sidecar storage."

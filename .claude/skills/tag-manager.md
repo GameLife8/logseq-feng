@@ -12,15 +12,15 @@ Use this guide when modifying the tag management page, tag classification, or ta
 
 ### Tag Classification (Three Categories)
 
-1. **System tags** — `:db/ident` in `logseq.class/*` namespace (e.g. `:logseq.class/Whiteboard`)
-   - Defined in `system-class-idents` vector (16 entries)
+1. **System tags** — `:db/ident` in `logseq.class/*` namespace (for example `:logseq.class/Task`)
+   - Defined in `system-class-idents` vector
    - Filtered via `system-class-ident-set` (the set version)
    - Display names in `system-tag-display` map
    - Shown with lock icon, "系统内置" label, no delete button
    - Counts from separate `<load-system-tag-counts` query
 
 2. **Virtual builtin tags** — User-created classes treated as system tags
-   - Defined in `virtual-builtin-titles` set (currently `#{"MindMap"}`)
+   - Defined in `virtual-builtin-titles` set (currently `#{"MindMap" "Sheet" "Whiteboard"}`)
    - Display names in `virtual-builtin-display` map
    - Shown in system section after real system tags
    - NOT deletable
@@ -33,7 +33,7 @@ Use this guide when modifying the tag management page, tag classification, or ta
 ### System Class Idents (Full List)
 
 ```clojure
-[:logseq.class/Journal :logseq.class/Task :logseq.class/Whiteboard
+[:logseq.class/Journal :logseq.class/Task
  :logseq.class/Asset :logseq.class/Tag :logseq.class/Page
  :logseq.class/Property :logseq.class/Root :logseq.class/Query
  :logseq.class/Cards :logseq.class/Card :logseq.class/Code-block
@@ -52,18 +52,18 @@ user-only (->> all-tags
                (remove #(virtual-builtin-titles (:block/title %)))
                ...)
 
-;; Virtual builtins: match by title, exclude system idents
+;; Virtual builtins: match by title, exclude real logseq.class/* entities
 vb-only   (->> all-tags
                (filter #(virtual-builtin-titles (:block/title %)))
-               (remove #(system-class-ident-set (:db/ident %)))
+               (remove #(= "logseq.class" (namespace (:db/ident %))))
                ...)
 ```
 
-**Critical**: Do NOT filter by `:db/ident` presence. ALL class entities (including user-created ones) have `:db/ident`. User classes get idents like `:user.class/Foo-XxxXx`, not `logseq.class/*`.
+**Critical**: Do NOT filter virtual builtins by `:db/ident` presence. ALL class entities, including user-created ones such as `:user.class/Whiteboard-xxxxx`, have `:db/ident`. Distinguish real system tags from virtual builtins by namespace (`logseq.class` vs `user.class`) or by membership in `system-class-ident-set`.
 
 ### Hiding from All Pages
 
-Virtual builtin tags (MindMap) are hidden from All Pages via `:logseq.property/hide? true`, set by `<ensure-mindmap-hidden!` in the tag manager's `did-mount`.
+Virtual builtin tags (MindMap, Sheet, Whiteboard) are hidden from All Pages via `:logseq.property/hide? true`, set by `<ensure-virtual-builtins-hidden!` in the tag manager's `did-mount`.
 
 The `get-exclude-page-ids` function in `deps/db/src/logseq/db/common/view.cljs` checks this property to exclude pages from the All Pages view.
 
@@ -88,7 +88,7 @@ To make a user-created class act as a system tag:
 
 1. Add its title to `virtual-builtin-titles`
 2. Add display name to `virtual-builtin-display`
-3. Ensure it has `:logseq.property/hide? true` (add to `<ensure-mindmap-hidden!` or its creation function)
+3. Ensure it has `:logseq.property/hide? true` (add to `<ensure-virtual-builtins-hidden!` or its creation function)
 
 ## UI Components
 

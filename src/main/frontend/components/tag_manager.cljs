@@ -14,7 +14,6 @@
   "所有系统内置 class ident，这些对应的标签禁止删除。"
   [:logseq.class/Journal
    :logseq.class/Task
-   :logseq.class/Whiteboard
    :logseq.class/Asset
    :logseq.class/Tag
    :logseq.class/Page
@@ -54,11 +53,12 @@
 ;; 虚拟内置标签：非 logseq.class/* 但应视为系统内置、禁止删除的用户创建标签
 (def ^:private virtual-builtin-titles
   "用户动态创建但应视为内置的标签名称集合"
-  #{"MindMap" "Sheet"})
+  #{"MindMap" "Sheet" "Whiteboard"})
 
 (def ^:private virtual-builtin-display
   "虚拟内置标签显示名称"
   {"MindMap" "MindMap（思维导图）"
+   "Whiteboard" "Whiteboard（白板）"
    "Sheet"   "Sheet（表格）"})
 
 ;; ── 数据加载 ─────────────────────────────────────────────────────────────────
@@ -99,7 +99,7 @@
                                [?block :block/uuid _]])]
     (into {} rows)))
 
-(defn- <ensure-mindmap-hidden!
+(defn- <ensure-virtual-builtins-hidden!
   "确保 MindMap 类标签设置了 :logseq.property/hide? 使其不显示在 All Pages。"
   [all-tags]
   (doseq [t all-tags]
@@ -195,9 +195,9 @@
                                   (sort-by #(str (:block/title %))))
                  vb-only     (->> all-tags
                                   (filter #(virtual-builtin-titles (:block/title %)))
-                                  (remove #(system-class-ident-set (:db/ident %)))
+                                  (remove #(= "logseq.class" (namespace (:db/ident %))))
                                   (map (fn [t] (assoc t :ref-count (get ref-counts (:db/id t) 0)))))]
-           (<ensure-mindmap-hidden! all-tags)
+           (<ensure-virtual-builtins-hidden! all-tags)
            (reset! *user-tags user-only)
            (reset! *vb-tags vb-only)
            (reset! *sys sys-counts)

@@ -946,10 +946,10 @@
         editing-uuid  (rum/react *editing-uuid)
         rename-val    (rum/react *rename-val)
         repo          (state/get-current-repo)
-        wclass-id     (:db/id (db/entity :logseq.class/Whiteboard))
+        wclass-id     (some-> (whiteboard-handler/get-whiteboard-class-tag) :db/id)
         ;; Async reactive query via DB worker. react/q sends the query to the DB worker
         ;; (not the local replica), and re-runs automatically when whiteboard objects
-        ;; change (the worker emits [::objects wclass-id] affected-keys on :block/tags txns).
+        ;; change on the hidden Whiteboard class tag.
         wb-atom       (when (and repo wclass-id)
                         (react/q repo [:frontend.worker.react/objects wclass-id]
                                  {:query-fn

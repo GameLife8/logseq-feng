@@ -69,7 +69,8 @@ Component mount
 ```
 <create-whiteboard! name
   → common-page-handler/<create!
-  → Apply :logseq.class/Whiteboard system class tag (+ user "Whiteboard" tag if present)
+  → ensure hidden user-defined `Whiteboard` class tag (`:class? true`, `:logseq.property/hide? true`)
+  → tag the page with that class entity
   → visual-doc/save-doc-cache! (localStorage seed with initial-canvas-json)
   → visual-doc/<flush-doc! (sidecar seed; failure logged, does not fail create)
   → redirect (if opts :redirect? true)
@@ -129,7 +130,7 @@ Tracked atoms: `*cached?`, `*persisted?`, `*cache-dirty?`, `*persist-dirty?`
 - **`remote-function` in `thread_api.cljc`** transit-encodes errors even in `direct-pass?` mode — main thread receives transit string instead of rejected promise.
 - **Excalidraw `onChange`** fires very frequently — only do lightweight work (flag dirty bits), defer heavy writes to timers.
 - **`<create-whiteboard!` seeds an initial empty scene** into the localStorage draft cache AND the sidecar on create (see `initial-canvas-json` in `handler/whiteboard.cljs`). Navigating away before first edit still yields a valid empty scene from both layers — the load path no longer needs to tolerate an empty sidecar + empty cache for freshly created pages. Sidecar seed failure is logged and swallowed; page creation still succeeds.
-- **`get-all-whiteboards` uses a single `or-join` query** that unions the `:logseq.class/Whiteboard` system class match and the user "Whiteboard" tag match, returning a deduplicated set natively from DataScript. No manual `distinct-by` step. Used only for duplicate-name checks; the gallery UI still uses `react/q` with `db-async/<get-tag-objects` for reactive data.
+- **`get-all-whiteboards` queries the hidden user-defined `Whiteboard` class directly**. New whiteboards no longer rely on `:logseq.class/Whiteboard` or dual-tag matching, which avoids `ldb/page?` misclassification in All Pages.
 - **Tag add and remove share the same outliner write path**: both `add-tag-to-page!` and `remove-tag-from-page!` go through `db-property-handler` (`set-block-property!` and `delete-property-value!` respectively). Outliner middleware and tx metadata now fire symmetrically on add and remove.
 - **Legacy payload retract is best-effort**: `<flush-doc!` calls `[:db/retract page-id :block/whiteboard-canvas]` after sidecar write; the retract now runs in its own inner `p/catch` so a failure never blocks the timestamp bump or bubbles up (`handler/visual_doc.cljs/<apply-manifest!`). Do not rely on the legacy attr being absent after save — it will be retracted on the next flush if it survived.
 
@@ -152,11 +153,11 @@ Tracked atoms: `*cached?`, `*persisted?`, `*cache-dirty?`, `*persist-dirty?`
 
 ## Whiteboard Class Tag
 
-- Whiteboard pages are tagged with `:logseq.class/Whiteboard` system class.
-- This is a real system class (ident in `logseq.class/*` namespace), NOT a user-created class.
-- In tag manager, Whiteboard appears in the "系统内置标签" section, not deletable.
-- `<create-whiteboard!` applies both the system class tag AND a user tag named "Whiteboard" (dual-tag strategy for backward compatibility).
-- Gallery query: `react/q` with `db-async/<get-tag-objects` on the `:logseq.class/Whiteboard` class id.
+- Whiteboard pages are tagged with a hidden user-created `Whiteboard` class entity (`:class? true`, user-class ident namespace).
+- This keeps the page itself classified as a normal Page while still making whiteboards queryable as a group.
+- In tag manager, Whiteboard appears as a virtual built-in tag, not a real `logseq.class/*` system tag.
+- `<create-whiteboard!` ensures the hidden class exists, marks it `:logseq.property/hide? true`, then tags the page with that class.
+- Gallery query: `react/q` with `db-async/<get-tag-objects` on the hidden Whiteboard class id returned by `get-whiteboard-class-tag`.
 - Gallery filters out entities with `:db/ident` (class definitions) and `:logseq.property/deleted-at`.
 
 ## SVG Thumbnail Generation
@@ -190,7 +191,7 @@ Key: `exportToSvg` returns a Promise resolving to an SVG DOM element.
 - `src/main/frontend/handler/whiteboard.cljs` — Whiteboard specific handlers (CRUD, tag management)
 - `src/main/frontend/components/whiteboard.cljs` — Gallery + editor mount + SVG thumbnails
 - `src/main/frontend/extensions/excalidraw/core.cljs` — Excalidraw wrapper (timers, sync status, lifecycle)
-- `src/main/frontend/components/tag_manager.cljs` — Whiteboard listed as system built-in tag
+- `src/main/frontend/components/tag_manager.cljs` — Whiteboard listed as a virtual built-in tag
 
 ## Merge Notes
 
