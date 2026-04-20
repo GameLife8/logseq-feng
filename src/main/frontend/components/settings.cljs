@@ -221,6 +221,52 @@
       (ui/render-keyboard-shortcut (shortcut-helper/gen-shortcut-seq :ui/toggle-brackets)
                                    :shortcut-id :ui/toggle-brackets)])])
 
+(def ^:private bullet-threading-width-options
+  ["1px" "2px" "3px"])
+
+(defn bullet-threading-toggle-row [enabled?]
+  (toggle "bullet_threading"
+          "Enable bullet threading"
+          enabled?
+          config-handler/toggle-ui-bullet-threading!
+          [:span.text-sm.opacity-70 "Thread nested bullets with focus-aware connector lines."]))
+
+(defn bullet-threading-width-row [current-width]
+  (let [options (cond-> bullet-threading-width-options
+                  (not (some #{current-width} bullet-threading-width-options))
+                  (conj current-width))]
+    (row-with-button-action
+     {:left-label "Bullet threading width"
+      :description "Controls the connector thickness for nested bullet threads."
+      :-for "bullet_threading_width"
+      :action [:select.form-select.is-small
+               {:value current-width
+                :on-change #(config-handler/set-ui-bullet-threading-width! (util/evalue %))}
+               (for [width options]
+                 [:option {:key width :value width} width])]})))
+
+(defn bullet-threading-color-row [current-color]
+  (row-with-button-action
+   {:left-label "Bullet threading highlight"
+    :description "Optional CSS color for the active thread. Leave empty to follow the current theme."
+    :-for "bullet_threading_color"
+    :stretch true
+    :action [:div.flex.items-center.gap-2.w-full
+             [:input.form-input.is-small
+              {:key (str "bullet-threading-color-" current-color)
+               :default-value (or current-color "")
+               :placeholder "theme default"
+               :style {:max-width "14rem"}
+               :on-blur #(config-handler/set-ui-bullet-threading-color! (util/evalue %))
+               :on-key-down (fn [e]
+                              (when (= "Enter" (.-key e))
+                                (.blur (.-target e))))}]
+             (shui/button
+              {:size :sm
+               :variant :secondary
+               :on-click #(config-handler/set-ui-bullet-threading-color! "")}
+              "Use theme")]}))
+
 (defn toggle-wide-mode-row [t wide-mode?]
   [:div.it.sm:grid.sm:grid-cols-3.sm:gap-4.sm:items-center
    [:label.block.text-sm.font-medium.leading-5.opacity-70
@@ -853,8 +899,16 @@
   (let [current-repo (state/get-current-repo)
         enable-journals? (state/enable-journals? current-repo)
         enable-flashcards? (state/enable-flashcards? current-repo)
-        logged-in? (user-handler/logged-in?)]
+        logged-in? (user-handler/logged-in?)
+        bullet-threading? (state/bullet-threading?)
+        bullet-threading-width (state/bullet-threading-width)
+        bullet-threading-color (state/bullet-threading-color)]
     [:div.panel-wrap.is-features.mb-8
+     (bullet-threading-toggle-row bullet-threading?)
+     (when bullet-threading?
+       (bullet-threading-width-row bullet-threading-width))
+     (when bullet-threading?
+       (bullet-threading-color-row bullet-threading-color))
      (journal-row enable-journals?)
      (when (not enable-journals?)
        [:div.it.sm:grid.sm:grid-cols-3.sm:gap-4.sm:items-center

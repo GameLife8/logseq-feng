@@ -131,6 +131,19 @@
  ;; Default value: false
  :ui/show-empty-bullets? false
 
+ ;; Draw focus-aware connector lines between nested bullets.
+ ;; Default value: false
+ ;; :ui/bullet-threading? true
+
+ ;; Set the connector width for bullet threading.
+ ;; Accepts any CSS length value.
+ ;; Default value: "1px"
+ ;; :ui/bullet-threading-width "1px"
+
+ ;; Optional CSS color for the active bullet thread highlight.
+ ;; Leave unset or blank to follow the current theme.
+ ;; :ui/bullet-threading-color "#4f46e5"
+
  ;; Pre-defined :view function to use with advanced queries.
  :query/views
  {:pprint

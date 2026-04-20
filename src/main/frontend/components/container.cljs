@@ -403,7 +403,10 @@
         logged? (user-handler/logged-in?)
         fold-button-on-right? (state/enable-fold-button-right?)
         show-action-bar? (state/sub :mobile/show-action-bar?)
-        preferred-language (state/sub [:preferred-language])]
+        preferred-language (state/sub [:preferred-language])
+        bullet-threading? (state/bullet-threading?)
+        bullet-threading-width (state/bullet-threading-width)
+        bullet-threading-color (state/bullet-threading-color)]
     (theme/container
      {:t t
       :theme theme
@@ -430,7 +433,12 @@
                  :ls-wide-mode wide-mode?
                  :ls-window-controls window-controls?
                  :ls-fold-button-on-right fold-button-on-right?
-                 :ls-hl-colored ls-block-hl-colored?}])
+                 :ls-hl-colored ls-block-hl-colored?
+                 :ls-bullet-threading-enabled bullet-threading?}])
+       :style (cond-> {"--ls-block-bullet-threading-width-overwrite" bullet-threading-width}
+                bullet-threading-color
+                (assoc "--ls-block-bullet-threading-active-color-overwrite"
+                       bullet-threading-color))
        :on-pointer-up (fn []
                         (when-let [container (gdom/getElement "app-container-wrapper")]
                           (d/remove-class! container "blocks-selection-mode")

@@ -35,6 +35,22 @@
   (let [show-brackets? (state/show-brackets?)]
     (set-config! :ui/show-brackets? (not show-brackets?))))
 
+(defn toggle-ui-bullet-threading! []
+  (let [enabled? (state/bullet-threading?)]
+    (set-config! :ui/bullet-threading? (not enabled?))))
+
+(defn set-ui-bullet-threading-width!
+  [width]
+  (set-config! :ui/bullet-threading-width
+               (or (some-> width string/trim not-empty)
+                   "1px")))
+
+(defn set-ui-bullet-threading-color!
+  [color]
+  (set-config! :ui/bullet-threading-color
+               (or (some-> color string/trim)
+                   "")))
+
 (defn toggle-logical-outdenting! []
   (let [logical-outdenting? (state/logical-outdenting?)]
     (set-config! :editor/logical-outdenting? (not logical-outdenting?))))

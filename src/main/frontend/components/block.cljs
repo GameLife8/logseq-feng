@@ -3187,6 +3187,7 @@
        :blockid (str uuid)
        :containerid container-id
        :data-is-property (ldb/property? block)
+       :data-page-title (boolean (:page-title? config))
        :ref #(when (nil? @*ref) (reset! *ref %))
        :data-collapsed (and collapsed? has-child?)
        :class (str (when selected? "selected")

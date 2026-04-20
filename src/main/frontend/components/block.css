@@ -848,6 +848,97 @@
   }
 }
 
+.ls-bullet-threading-enabled {
+  --ls-block-bullet-threading-width: var(--ls-block-bullet-threading-width-overwrite, 1px);
+  /* Idle color is transparent so threading lines are only visible for the
+     :focus-within ancestor chain below. Hover/active rules explicitly
+     override with the active color. */
+  --ls-block-bullet-threading-color: transparent;
+  --ls-block-bullet-threading-active-color: var(
+    --ls-block-bullet-threading-active-color-overwrite,
+    var(--ls-link-text-color, var(--lx-accent-09, var(--rx-accent-09)))
+  );
+
+  .block-control {
+    z-index: 1;
+  }
+
+  .block-children {
+    border-left-color: var(--ls-block-bullet-threading-color) !important;
+    border-left-width: var(--ls-block-bullet-threading-width) !important;
+  }
+
+  .block-children-left-border:hover {
+    background-color: var(--ls-block-bullet-threading-active-color);
+  }
+}
+
+.ls-bullet-threading-enabled .ls-block:not([data-page-title="true"]) > .block-main-container {
+  position: relative;
+}
+
+.ls-bullet-threading-enabled .ls-block .ls-block:not([data-page-title="true"]) > .block-main-container > .block-control-wrap {
+  overflow: visible;
+}
+
+.ls-bullet-threading-enabled .ls-block .ls-block:not([data-page-title="true"]) > .block-main-container > .block-control-wrap::before {
+  pointer-events: none;
+  content: "";
+  position: absolute;
+  left: calc(var(--ls-block-bullet-threading-width) * -1);
+  width: 1.15rem;
+  top: calc(-0.75rem + var(--ls-block-bullet-threading-width) * 0.5 - 1px);
+  bottom: 0.75rem;
+  border-left: var(--ls-block-bullet-threading-width) solid var(--ls-block-bullet-threading-color);
+  border-bottom: var(--ls-block-bullet-threading-width) solid var(--ls-block-bullet-threading-color);
+  border-bottom-left-radius: 10px;
+  transition: border-color 120ms ease;
+}
+
+.ls-bullet-threading-enabled .ls-block .ls-block:not([data-page-title="true"]) > .block-main-container > .block-control-wrap.is-order-list::before {
+  width: 1.4rem;
+}
+
+.ls-bullet-threading-enabled .ls-block .ls-block:not([data-page-title="true"]) > .block-main-container > .block-control-wrap.is-with-icon::before {
+  width: 1.3rem;
+}
+
+.ls-bullet-threading-enabled .ls-block .block-children > .ls-block::before {
+  pointer-events: none;
+  content: "";
+  position: absolute;
+  top: -1rem;
+  bottom: 0;
+  left: calc(var(--ls-block-bullet-threading-width) * -1);
+  border-left: var(--ls-block-bullet-threading-width) solid var(--ls-block-bullet-threading-color);
+  transition: border-color 120ms ease;
+}
+
+.ls-bullet-threading-enabled .ls-block[haschild="true"]:not([data-page-title="true"]) > .block-main-container::after {
+  pointer-events: none;
+  content: "";
+  position: absolute;
+  top: 0.75rem;
+  bottom: -0.25rem;
+  left: calc(0.75rem - var(--ls-block-bullet-threading-width) * 0.5);
+  border-left: var(--ls-block-bullet-threading-width) solid var(--ls-block-bullet-threading-color);
+  transition: border-color 120ms ease;
+}
+
+/* Focus-chain highlight: light up only the ancestor path of the block that
+   currently contains the caret. Idle siblings stay transparent (see
+   --ls-block-bullet-threading-color above). */
+.ls-bullet-threading-enabled .ls-block:focus-within > .block-main-container > .block-control-wrap .bullet-container:not(.typed-list) .bullet {
+  background-color: var(--ls-block-bullet-threading-active-color);
+  box-shadow: 0 0 0 1px var(--ls-block-bullet-threading-active-color);
+}
+
+.ls-bullet-threading-enabled .ls-block .ls-block:focus-within > .block-main-container > .block-control-wrap::before,
+.ls-bullet-threading-enabled .ls-block[haschild="true"]:focus-within > .block-main-container::after,
+.ls-bullet-threading-enabled .ls-block .block-children:focus-within {
+  border-color: var(--ls-block-bullet-threading-active-color) !important;
+}
+
 .content.doc-mode {
   margin-left: -16px;
 
@@ -866,6 +957,17 @@
   .block-children-container {
     margin-left: 18px;
   }
+}
+
+.ls-bullet-threading-enabled .content.doc-mode .block-children {
+  border-left-width: 0 !important;
+}
+
+.ls-bullet-threading-enabled .content.doc-mode .ls-block::before,
+.ls-bullet-threading-enabled .content.doc-mode .ls-block::after,
+.ls-bullet-threading-enabled .content.doc-mode .block-main-container::after,
+.ls-bullet-threading-enabled .content.doc-mode .block-control-wrap::before {
+  display: none;
 }
 
 .ls-block .custom-query {

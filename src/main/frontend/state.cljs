@@ -312,7 +312,9 @@
 (def common-default-config
   "Common default config for a user's repo config"
   {:feature/enable-search-remove-accents? true
-   :ui/auto-expand-block-refs? true})
+   :ui/auto-expand-block-refs? true
+   :ui/bullet-threading? false
+   :ui/bullet-threading-width "1px"})
 
 (def db-default-config
   "Default repo config for DB graphs"
@@ -598,6 +600,23 @@ Similar to re-frame subscriptions"
 (defn show-brackets?
   []
   (not (false? (:ui/show-brackets? (sub-config)))))
+
+(defn bullet-threading?
+  []
+  (true? (:ui/bullet-threading? (sub-config))))
+
+(defn bullet-threading-width
+  []
+  (or (some-> (:ui/bullet-threading-width (sub-config))
+              string/trim
+              not-empty)
+      "1px"))
+
+(defn bullet-threading-color
+  []
+  (some-> (:ui/bullet-threading-color (sub-config))
+          string/trim
+          not-empty))
 
 (defn sub-default-home-page
   []
