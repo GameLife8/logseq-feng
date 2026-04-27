@@ -12,33 +12,74 @@
 (defonce ^:private transports
   (atom {}))
 
+;; Fastify v5 will hang the request if neither `reply.send` nor `reply.hijack`
+;; is called. The MCP transport writes directly to `res.raw`, so we must hijack
+;; on every code-path that delegates to `transport.handleRequest`.
+(defn- hijack-when-fastify!
+  "Call `reply.hijack()` if `res` is a Fastify reply (i.e. has `.hijack`).
+  Safe to call against the raw Node ServerResponse used by the CLI standalone
+  server — it'll be a no-op."
+  [^js res]
+  (when (fn? (.-hijack res))
+    (.hijack res)))
+
 ;; See https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http
-;; for how to respond to different MCP requests
-(defn handle-post-request [mcp-server {:keys [port host]} req res]
+;; for how to respond to different MCP requests.
+;;
+;; `server-factory` is a 0-arg fn that returns a fresh `McpServer` instance.
+;; A `McpServer` can only be connected to ONE transport at a time, so each
+;; session needs its own server (NOT a shared one across requests).
+(defn handle-post-request [server-factory {:keys [port host]} req res]
   (let [session-id (aget (.-headers req) "mcp-session-id")]
     (js/console.log "POST /mcp request" session-id (pr-str (.-body req)))
     (cond
       (and session-id (@transports session-id))
-      (let [^js transport (@transports session-id)]
+      (let [^js transport (:transport (@transports session-id))]
+        (hijack-when-fastify! res)
         (.handleRequest transport (.-raw req) (.-raw res) (.-body req)))
 
       (and (not session-id)
            (isInitializeRequest (.-body req)))
-      (let [transport (StreamableHTTPServerTransport.
+      (let [t0 (js/Date.now)
+            _ (js/console.log "[MCP] [init] start, body=" (pr-str (.-body req)))
+            mcp-server (server-factory)
+            *transport (atom nil)
+            transport (StreamableHTTPServerTransport.
                        #js {:sessionIdGenerator (comp str random-uuid)
                             :enableDnsRebindingProtection true
-                            :allowedHosts #js [(str host ":" port)]})]
+                            :allowedHosts #js [(str host ":" port)]
+                            ;; JSON response mode: single application/json
+                            ;; response body. Avoids chunked-SSE stall under
+                            ;; Fastify+Hono and works with mcp-remote/curl.
+                            :enableJsonResponse true
+                            :onsessioninitialized
+                            (fn [sid]
+                              (js/console.log "[MCP] [init] session initialized" sid "after"
+                                              (- (js/Date.now) t0) "ms")
+                              (when-let [t @*transport]
+                                ;; Store both transport AND its mcp-server so
+                                ;; we can close them together on session end.
+                                (swap! transports assoc sid {:transport t
+                                                              :mcp-server mcp-server})))})]
+        (reset! *transport transport)
         (set! (.-onclose transport)
               (fn []
-                (js/console.log "Transport closed" (.-sessionId transport))
+                (js/console.log "[MCP] transport closed sid=" (.-sessionId transport))
                 (swap! transports dissoc (.-sessionId transport))))
-        (.connect mcp-server transport)
-        (.handleRequest transport (.-raw req) (.-raw res) (.-body req))
-        (js/console.log "Initialize sessionId" (.-sessionId transport))
-        (if (.-sessionId transport)
-          (swap! transports assoc (.-sessionId transport) transport)
-          (js/console.error "No sessionId to initialize!"))
-        res)
+        (set! (.-onerror transport)
+              (fn [^js e]
+                (js/console.error "[MCP] transport error:" (.-message e) e)))
+        (hijack-when-fastify! res)
+        (js/console.log "[MCP] [init] connecting mcp-server to transport")
+        (-> (p/let [_ (.connect mcp-server transport)
+                    _ (js/console.log "[MCP] [init] connect resolved, calling handleRequest")
+                    _ (.handleRequest transport (.-raw req) (.-raw res) (.-body req))]
+              (js/console.log "[MCP] [init] handleRequest resolved after"
+                              (- (js/Date.now) t0) "ms, sid=" (.-sessionId transport)))
+            (p/catch
+             (fn [^js e]
+               (js/console.error "[MCP] [init] FAILED:" (.-message e) "stack:" (.-stack e)))))
+        nil)
 
       :else
       (do
@@ -52,19 +93,21 @@
   [req res]
   (let [session-id (aget (.-headers req) "mcp-session-id")]
     (js/console.log "GET /mcp" session-id)
-    (if-let [transport (and session-id (@transports session-id))]
-      (.handleRequest ^js transport (.-raw req) (.-raw res))
-      (-> res (.status 400) (.send res "Invalid or missing session ID")))))
+    (if-let [^js transport (and session-id (:transport (@transports session-id)))]
+      (do
+        (hijack-when-fastify! res)
+        (.handleRequest transport (.-raw req) (.-raw res)))
+      (-> res (.status 400) (.send "Invalid or missing session ID")))))
 
 (defn handle-delete-request
   [req res]
   (let [session-id (aget (.-headers req) "mcp-session-id")]
     (js/console.log "DELETE /mcp" session-id)
-    (if-let [transport (and session-id (@transports session-id))]
+    (if-let [^js transport (and session-id (:transport (@transports session-id)))]
       (do
         (.close transport)
         (-> res (.code 200) (.send #js {:ok true})))
-      (-> res (.status 400) (.send res "Invalid or missing session ID")))))
+      (-> res (.status 400) (.send "Invalid or missing session ID")))))
 
 (defn mcp-error-response [msg]
   #js {:content

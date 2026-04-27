@@ -385,13 +385,47 @@
                  (if-let [meth' (resolve-real-api-method meth)]
                    (invoke-logseq-api! meth' args)
                    #js {:error (str "No method found for " (pr-str meth))}))
-        mcp-server (cli-common-mcp-server/create-mcp-api-server api-fn)]
+        ;; Each /mcp init request needs its OWN McpServer because a server can
+        ;; only be connected to one transport at a time.
+        server-factory #(cli-common-mcp-server/create-mcp-api-server api-fn)]
     (logger/debug "[server] MCP routes initialized")
+    ;; Pipe deps/cli's console output into electron-log so /mcp diagnostics
+    ;; land in main.log instead of vanishing into the packaged app's stdout.
+    (let [orig-log (.-log js/console)
+          orig-err (.-error js/console)]
+      (set! (.-log js/console)
+            (fn [& args]
+              (let [s (apply str (interpose " " (map #(if (string? %) % (pr-str %)) args)))]
+                (when (or (.startsWith s "[MCP]") (.startsWith s "POST /mcp"))
+                  (logger/info s)))
+              (.apply orig-log js/console (clj->js args))))
+      (set! (.-error js/console)
+            (fn [& args]
+              (let [s (apply str (interpose " " (map #(if (string? %) % (pr-str %)) args)))]
+                (when (or (.startsWith s "[MCP]") (.startsWith s "MCP"))
+                  (logger/error s)))
+              (.apply orig-err js/console (clj->js args)))))
     (.post server "/mcp"
-           #(cli-common-mcp-server/handle-post-request mcp-server {:port (get-port)
-                                                                   :host (get-host)} %1 %2))
-    (.get server "/mcp" cli-common-mcp-server/handle-get-request)
-    (.delete server "/mcp" cli-common-mcp-server/handle-get-request)))
+           (fn [^js req ^js rep]
+             (logger/info (str "[server] POST /mcp from "
+                               (some-> req .-ip)
+                               " body-keys=" (try (vec (js-keys (.-body req)))
+                                                  (catch :default _ "n/a"))))
+             (try
+               (cli-common-mcp-server/handle-post-request server-factory
+                                                          {:port (get-port) :host (get-host)}
+                                                          req rep)
+               (catch :default e
+                 (logger/error (str "[server] /mcp handler threw: " (.-message e)))
+                 (throw e)))))
+    (.get server "/mcp"
+          (fn [^js req ^js rep]
+            (logger/info "[server] GET /mcp")
+            (cli-common-mcp-server/handle-get-request req rep)))
+    (.delete server "/mcp"
+             (fn [^js req ^js rep]
+               (logger/info "[server] DELETE /mcp")
+               (cli-common-mcp-server/handle-get-request req rep)))))
 
 (defn start!
   []

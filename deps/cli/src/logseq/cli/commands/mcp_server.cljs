@@ -51,8 +51,12 @@
 
 (defn- create-http-server
   [mcp-server opts]
-  (let [app (Fastify. #js {:requestTimeout (* 1000 30)})]
-    (.post app "/mcp" #(cli-common-mcp-server/handle-post-request mcp-server opts %1 %2))
+  (let [app (Fastify. #js {:requestTimeout (* 1000 30)})
+        ;; CLI runs single-session; reuse the pre-built mcp-server. The
+        ;; electron caller passes a real factory that creates per-request
+        ;; servers (required for multi-session safety).
+        server-factory (constantly mcp-server)]
+    (.post app "/mcp" #(cli-common-mcp-server/handle-post-request server-factory opts %1 %2))
     (.get app "/mcp" cli-common-mcp-server/handle-get-request)
     (.delete app "/mcp" cli-common-mcp-server/handle-delete-request)
     app))
