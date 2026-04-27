@@ -33,6 +33,11 @@
 (defonce db-version-prefix "logseq_db_")
 (defonce file-version-prefix "logseq_local_")
 
+;; Config key for the map of repo -> custom graph directory.
+;; Stored in electron userData configs.edn so each graph can live at
+;; an arbitrary path chosen by the user at creation time.
+(defonce db-graph-paths-config-key :db/graph-paths)
+
 (defonce local-assets-dir "assets")
 (defonce unlinked-graphs-dir "Unlinked graphs")
 

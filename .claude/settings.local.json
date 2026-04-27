@@ -6,7 +6,24 @@
       "Bash(echo \"EXIT_CODE=$?\")",
       "Bash(ls -la static/js/*.js)",
       "Bash(yarn install:*)",
-      "Bash(clojure -M -e \"\\(require '[cljs.build.api :as b]\\) \\(b/inputs \\\\\"src/main\\\\\"\\)\")"
+      "Bash(clojure -M -e \"\\(require '[cljs.build.api :as b]\\) \\(b/inputs \\\\\"src/main\\\\\"\\)\")",
+      "Bash(command -v clj-kondo)",
+      "Bash(clj-kondo --lint src/electron/electron/db.cljs src/electron/electron/handler.cljs src/main/frontend/handler/repo.cljs src/main/frontend/components/repo.cljs deps/common/src/logseq/common/config.cljs)",
+      "Bash(yarn --version)",
+      "Bash(clojure --version)",
+      "Bash(powershell -Command \"Get-Command clojure -ErrorAction SilentlyContinue | Select-Object -First 1\")",
+      "Bash(powershell -Command \"yarn cljs:build-electron 2>&1 | Select-Object -Last 60\")",
+      "Bash(powershell -ExecutionPolicy Bypass -File scripts/build-msi.ps1)",
+      "Bash(ls static/js/*.js)",
+      "Bash(powershell -ExecutionPolicy Bypass -File scripts/build-msi.ps1 -SkipInstall -SkipSubInstall)",
+      "Bash(where.exe choco:*)",
+      "Bash(where.exe dotnet:*)",
+      "Read(//c/Program Files \\(x86\\)/**)",
+      "Read(//c/Program Files/**)",
+      "Bash(powershell -NoProfile -Command '$url='\\\\''https://github.com/wixtoolset/wix3/releases/download/wix3112rtm/wix311-binaries.zip'\\\\''; $dst='\\\\''C:\\\\wix311'\\\\''; $zip=\"$env:TEMP\\\\wix311-binaries.zip\"; if \\(-not \\(Test-Path $dst\\)\\) { New-Item -ItemType Directory -Path $dst | Out-Null }; if \\(-not \\(Test-Path \\(Join-Path $dst '\\\\''candle.exe'\\\\''\\)\\)\\) { Write-Host '\\\\''Downloading WiX v3.11 binaries...'\\\\''; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing; Write-Host '\\\\''Extracting...'\\\\''; Expand-Archive -Path $zip -DestinationPath $dst -Force; Remove-Item $zip }; Get-ChildItem $dst | Select-Object Name,Length | Format-Table -AutoSize')",
+      "Bash(powershell -ExecutionPolicy Bypass -NoProfile -Command '$env:PATH = '\\\\''C:\\\\wix311;'\\\\'' + $env:PATH; & '\\\\''D:\\\\logseq-feng\\\\logseq-feng\\\\scripts\\\\build-msi.ps1'\\\\'' -SkipInstall -SkipSubInstall -SkipClean')",
+      "Bash(grep -E \"^\\(excalidraw|mind-map|sheet|code-editor|main\\)\\\\.js$\")",
+      "Bash(powershell -ExecutionPolicy Bypass -NoProfile -File scripts/build-msi.ps1 -SkipInstall -SkipSubInstall)"
     ]
   }
 }

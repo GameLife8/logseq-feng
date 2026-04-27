@@ -72,9 +72,28 @@
    (when-not config/publishing?
      (state/set-db-restoring! false))))
 
+(defn- <refresh-graph-paths-cache!
+  "Pull the per-graph custom-directory overrides from electron and stash
+   them in `frontend.config/graph-paths-cache`. Synchronous helpers like
+   `get-local-dir` (and therefore the assets root) consult that cache."
+  []
+  (if (util/electron?)
+    (-> (ipc/ipc "getGraphPaths")
+        (p/then (fn [raw]
+                  (let [m (some-> raw js->clj)
+                        m (when (map? m)
+                            (into {} (map (fn [[k v]] [(name k) v])) m))]
+                    (config/set-graph-paths-cache! (or m {}))
+                    m)))
+        (p/catch (fn [_e]
+                   (config/set-graph-paths-cache! {})
+                   {})))
+    (p/resolved {})))
+
 (defn get-repos
   []
-  (p/let [dbs (db-persist/get-all-graphs)]
+  (p/let [_paths (<refresh-graph-paths-cache!)
+          dbs (db-persist/get-all-graphs)]
     (->> dbs
          (remove (fn [{:keys [name]}]
                    (= "upload-temp" (some-> name str string/lower-case))))
@@ -132,9 +151,21 @@
   (let [full-graph-name (string/lower-case (str config/db-version-prefix graph-name))]
     (some #(= (some-> (:url %) string/lower-case) full-graph-name) (state/get-repos))))
 
-(defn- create-db [full-graph-name {:keys [file-graph-import? remote-graph?]}]
+(defn- create-db [full-graph-name {:keys [file-graph-import? remote-graph? root]}]
   (->
    (p/let [config config/config-default-content
+           ;; IMPORTANT: persist any custom :root BEFORE <new triggers
+           ;; <export-db, otherwise the first sqlite write lands in the
+           ;; default location and the override only takes effect from
+           ;; the *next* save onward.
+           ;; The IPC returns the resolved graph dir (root + sanitized
+           ;; name); cache it so synchronous path lookups (assets,
+           ;; backups, the "Local graphs" UI) immediately reflect the
+           ;; custom location instead of falling back to the default
+           ;; ~/logseq/graphs/<name> path.
+           _ (when (and (util/electron?) (string? root) (seq root))
+               (p/let [graph-dir (ipc/ipc :setGraphPath full-graph-name root)]
+                 (config/assoc-graph-path! full-graph-name graph-dir)))
            _ (persist-db/<new full-graph-name
                               (cond-> {:config config
                                        :graph-git-sha config/revision
@@ -159,7 +190,14 @@
               (js/console.error error)))))
 
 (defn new-db!
-  "Handler for creating a new database graph"
+  "Handler for creating a new database graph.
+
+   Supported opts:
+     :file-graph-import? — create as part of a file-graph import flow
+     :remote-graph?      — placeholder for remote-graph creation
+     :root               — (electron only) absolute parent directory to
+                           store the graph in. If nil/blank the graph
+                           uses the default `<homedir>/logseq/graphs/`."
   ([graph] (new-db! graph {}))
   ([graph opts]
    (let [full-graph-name (str config/db-version-prefix graph)]

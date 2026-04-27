@@ -1,5 +1,6 @@
 (ns frontend.components.repo
   (:require [clojure.string :as string]
+            [electron.ipc :as ipc]
             [frontend.config :as config]
             [frontend.context.i18n :refer [t]]
             [frontend.db :as db]
@@ -267,7 +268,16 @@
 (rum/defc new-db-graph-inner
   []
   (let [[creating-db? set-creating-db?] (hooks/use-state false)
+        [root set-root!] (hooks/use-state nil)
         input-ref (hooks/create-ref)
+        electron? (util/electron?)
+        pick-root! (fn []
+                     (-> (ipc/ipc :openDialog)
+                         (p/then (fn [picked]
+                                   (when (and (string? picked) (seq picked))
+                                     (set-root! picked))))
+                         (p/catch (fn [_e] nil))))
+        clear-root! #(set-root! nil)
         new-db-f (fn new-db-f
                    [graph-name]
                    (when-not (or (string/blank? graph-name)
@@ -276,7 +286,10 @@
                        (invalid-graph-name-warning)
                        (do
                          (set-creating-db? true)
-                         (p/let [_repo (repo-handler/new-db! graph-name {})]
+                         (p/let [opts (cond-> {}
+                                        (and electron? (string? root) (seq root))
+                                        (assoc :root root))
+                                 _repo (repo-handler/new-db! graph-name opts)]
                            (set-creating-db? false)
                            (shui/dialog-close!))))))
         submit! (fn submit!
@@ -297,6 +310,29 @@
        :placeholder "your graph name"
        :on-key-down submit!
        :autoComplete "off"})
+     (when electron?
+       [:div.flex.flex-col.gap-1
+        [:div.flex.flex-row.items-center.gap-2
+         (shui/button
+          {:variant "outline"
+           :size :sm
+           :disabled creating-db?
+           :on-click pick-root!}
+          (shui/tabler-icon "folder" {:size 14})
+          [:span.pl-1 (if root "Change location" "Choose location (optional)")])
+         (when root
+           (shui/button
+            {:variant "ghost"
+             :size :sm
+             :disabled creating-db?
+             :on-click clear-root!}
+            "Use default"))]
+        (when root
+          [:small.text-muted-foreground.break-all
+           (str "Graph will be created under: " root)])
+        (when-not root
+          [:small.text-muted-foreground
+           "Leave unset to use the default graphs folder."])])
      (shui/button
       {:on-click #(submit! % true)
        :on-key-down submit!}

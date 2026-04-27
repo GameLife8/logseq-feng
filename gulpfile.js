@@ -275,9 +275,16 @@ exports.electron = () => {
 }
 
 exports.electronMaker = async () => {
-  cp.execSync('yarn cljs:release-electron', {
-    stdio: 'inherit',
-  })
+  // Skip CLJS release if db-worker.js is already present (the top-level
+  // `release-electron` npm script now invokes `cljs:release-electron` before
+  // `webpack-app-build`, so by the time this task runs the CLJS outputs
+  // already exist). Re-running shadow-cljs release here is idempotent but
+  // costs ~60s; skipping keeps builds quick.
+  if (!fs.existsSync(path.join(__dirname, 'target/db-worker.js'))) {
+    cp.execSync('yarn cljs:release-electron', {
+      stdio: 'inherit',
+    })
+  }
 
   const pkgPath = path.join(outputPath, 'package.json')
   const pkg = require(pkgPath)

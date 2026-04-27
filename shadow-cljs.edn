@@ -42,6 +42,15 @@
 
         :output-dir       "./static/js"
         :asset-path       "/static/js"
+        ;; In packaged electron the page is loaded over `file://` and the
+        ;; lazy-loaded CLJS modules end up at `<app>/js/` (the `static/`
+        ;; prefix is stripped by gulp/electron-forge packaging — see the
+        ;; resulting `resources/app/js/` layout). With an absolute
+        ;; `/static/js` path the browser resolves against the filesystem
+        ;; root → `file:///C:/static/js/...` (404). Override the asset
+        ;; path for release builds to a relative URL that works under
+        ;; both `http://` (yarn watch) and `file://` (packaged).
+        :release          {:asset-path "./js"}
         :compiler-options {:infer-externs      :auto
                            :output-feature-set :es-next-in
                            :source-map true

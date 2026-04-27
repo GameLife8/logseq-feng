@@ -30,6 +30,7 @@
             [logseq.common.config :as common-config]
             [logseq.common.util :as common-util]
             [logseq.common.util.page-ref :as page-ref]
+            [logseq.common.uuid :as common-uuid]
             [logseq.db :as ldb]
             [logseq.graph-parser.text :as text]
             [logseq.outliner.recycle :as outliner-recycle]
@@ -279,7 +280,19 @@
       (when-let [title (date/today)]
         (state/set-today! title)
         (p/let [today-page (util/page-name-sanity-lc title)
-                page (ldb/get-journal-page (db/get-db) (date/today-name))]
+                journal-day (try (date/journal-title->int title) (catch :default _ nil))
+                journal-uuid (when (pos-int? journal-day)
+                               (common-uuid/gen-uuid :journal-page-uuid journal-day))
+                db (db/get-db)
+                ;; Look up by deterministic journal UUID first (stable across title-format
+                ;; differences). Fall back to name-based lookup with both formats so that
+                ;; pages stored under a non-default date-formatter are still found and we
+                ;; don't trigger a duplicate create that conflicts on :block/uuid.
+                page (or (when journal-uuid
+                           (let [e (d/entity db [:block/uuid journal-uuid])]
+                             (when (:db/id e) e)))
+                         (ldb/get-journal-page db (date/today-name))
+                         (ldb/get-journal-page db title))]
           (when-not page
             (p/let [result (<create! title {:redirect? false
                                             :split-namespace? false

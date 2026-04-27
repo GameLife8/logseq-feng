@@ -28,6 +28,7 @@
             [electron.window :as win]
             [logseq.cli.common.graph :as cli-common-graph]
             [logseq.common.graph :as common-graph]
+            [logseq.db.common.sqlite :as common-sqlite]
             [logseq.db.sqlite.util :as sqlite-util]
             [promesa.core :as p]))
 
@@ -194,9 +195,12 @@
                 :files files})))
 
 (defn get-graphs
-  "Returns all graph names"
+  "Returns all graph names. Merges default-location graphs with
+   graphs configured at custom paths via `:db/graph-paths`."
   []
-  (distinct (cli-common-graph/get-db-based-graphs)))
+  (distinct
+   (concat (cli-common-graph/get-db-based-graphs)
+           (db/get-custom-path-graphs))))
 
 ;; TODO support alias mechanism
 (defn get-graph-name
@@ -225,6 +229,33 @@
 
 (defmethod handle :db-get [_window [_ repo]]
   (db/get-db repo))
+
+(defmethod handle :setGraphPath [_window [_ repo root]]
+  ;; Persist a per-graph custom parent directory. `repo` is the full graph
+  ;; name including the `logseq_db_` prefix; `root` is the absolute
+  ;; *parent* directory chosen by the user. The graph directory is
+  ;; `<root>/<sanitized-db-name>`. Passing nil/blank `root` clears the
+  ;; override. Returns the effective graph directory (or nil if cleared).
+  (if (and (string? root) (seq (string/trim root)))
+    (let [sanitized (common-sqlite/sanitize-db-name repo)
+          graph-dir (node-path/join root sanitized)]
+      (db/set-graph-path! repo graph-dir))
+    (db/set-graph-path! repo nil)))
+
+(defmethod handle :getGraphPath [_window [_ repo]]
+  ;; Returns the resolved on-disk directory for `repo` (either its
+  ;; configured custom path or the default under the graphs root).
+  (db/get-graph-dir repo))
+
+(defmethod handle :getGraphPaths [_window _]
+  ;; Returns a map of repo-name -> custom directory for every graph that
+  ;; has a configured override. The frontend uses this to populate
+  ;; assets / backups / display roots so they match the actual on-disk
+  ;; location instead of the default `<homedir>/logseq/graphs/<name>`.
+  ;; Keys are stringified (cljs-bean keywordifies on the receiving end,
+  ;; but the JSON wire form is plain strings).
+  (let [m (db/get-graph-paths)]
+    (reduce-kv (fn [acc k v] (assoc acc (name k) v)) {} m)))
 
 ;; DB related IPCs End
 

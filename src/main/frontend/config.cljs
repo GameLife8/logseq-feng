@@ -235,12 +235,44 @@
   [s]
   (str "/" (string/replace s #"^[./]*" "")))
 
+;; Cache of per-graph custom directories: `{full-graph-name -> absolute-path}`.
+;; Populated from electron at app start (and after `:setGraphPath`) by
+;; `frontend.handler.repo/get-repos`. Strings on both sides because the IPC
+;; boundary stringifies map keys.
+(defonce graph-paths-cache (atom {}))
+
+(defn set-graph-paths-cache!
+  "Replace the cache with a fresh map. The frontend calls this after
+   fetching the override map from electron so that subsequent synchronous
+   path computations (e.g. assets) reflect the user's choice."
+  [m]
+  (reset! graph-paths-cache (or m {})))
+
+(defn assoc-graph-path!
+  "Store/clear a single override entry. Pass nil/blank `dir` to remove it."
+  [repo dir]
+  (swap! graph-paths-cache
+         (fn [m]
+           (if (and (string? dir) (seq dir))
+             (assoc m repo dir)
+             (dissoc m repo)))))
+
+(defn get-graph-path
+  "Returns the cached custom directory for `repo`, or nil. Both string and
+   keyword repo forms are accepted to match electron-side tolerance."
+  [repo]
+  (when repo
+    (let [m @graph-paths-cache
+          s (cond (keyword? repo) (name repo) :else (str repo))]
+      (or (get m s) (get m (keyword s))))))
+
 (defn get-local-dir
   [repo]
-  (path/path-join (get-in @state/state [:system/info :home-dir])
-                  "logseq"
-                  "graphs"
-                  (string/replace repo db-version-prefix "")))
+  (or (get-graph-path repo)
+      (path/path-join (get-in @state/state [:system/info :home-dir])
+                      "logseq"
+                      "graphs"
+                      (string/replace repo db-version-prefix ""))))
 
 (defn get-electron-backup-dir
   [repo]

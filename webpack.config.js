@@ -91,7 +91,12 @@ var ExcalidrawConfig = {
       name: 'ExcalidrawLib',
       type: 'window',
     },
-    publicPath: '/static/js/',
+    // Use 'auto' so webpack resolves chunk URLs relative to the bundle at
+    // runtime. A hard-coded '/static/js/' breaks under file:// (packaged
+    // electron): the browser resolves it against filesystem root instead
+    // of the app directory, causing chunk loads to 404 and leaving
+    // excalidraw / mind-map / univer-sheet stuck on the loading spinner.
+    publicPath: 'auto',
     clean: false,
   },
 };
@@ -128,7 +133,12 @@ var SimpleMindMapConfig = {
       name: 'SimpleMindMap',
       type: 'window',
     },
-    publicPath: '/static/js/',
+    // Use 'auto' so webpack resolves chunk URLs relative to the bundle at
+    // runtime. A hard-coded '/static/js/' breaks under file:// (packaged
+    // electron): the browser resolves it against filesystem root instead
+    // of the app directory, causing chunk loads to 404 and leaving
+    // excalidraw / mind-map / univer-sheet stuck on the loading spinner.
+    publicPath: 'auto',
     clean: false,
   },
 };
@@ -170,7 +180,12 @@ var UniverSheetConfig = {
       name: 'UniverSheet',
       type: 'window',
     },
-    publicPath: '/static/js/',
+    // Use 'auto' so webpack resolves chunk URLs relative to the bundle at
+    // runtime. A hard-coded '/static/js/' breaks under file:// (packaged
+    // electron): the browser resolves it against filesystem root instead
+    // of the app directory, causing chunk loads to 404 and leaving
+    // excalidraw / mind-map / univer-sheet stuck on the loading spinner.
+    publicPath: 'auto',
     clean: false,
   },
 };
